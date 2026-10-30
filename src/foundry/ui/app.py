@@ -105,7 +105,9 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
         response.headers["Content-Security-Policy"] = (
             "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        # Not "no-referrer": with it, browsers send `Origin: null` on form POSTs (Fetch spec), which the Origin
+        # check above rejects. "same-origin" still sends nothing to other sites.
+        response.headers["Referrer-Policy"] = "same-origin"
         response.headers["X-Frame-Options"] = "DENY"
         return response
 

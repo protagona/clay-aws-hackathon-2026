@@ -439,3 +439,16 @@ def test_receiver_start_receive_stop_from_the_ui(tmp_path):
     finally:
         assert c.post("/receiver/stop", data={"csrf": _csrf(app)}).status_code == 303
     assert app.state.ui.receiver is None and "Start receiving" in c.get("/import").text
+
+
+def test_browser_form_post_is_not_refused_as_cross_origin(tmp_path):
+    """Regression: Referrer-Policy no-referrer made browsers send `Origin: null`, so every form POST got 403."""
+    root = _project(tmp_path, [{"text": "done"}])
+    app, c = _client(tmp_path / "runs", root)
+    assert c.get("/").headers["referrer-policy"] == "same-origin"
+    # what a browser sends for a same-origin form under that policy
+    r = c.post("/runs", data={"prompt_id": "adb-001", "config": "test", "csrf": _csrf(app)},
+               headers={"origin": BASE})
+    assert r.status_code == 303
+    assert c.post("/runs", data={"prompt_id": "adb-001", "config": "test", "csrf": _csrf(app)},
+                  headers={"origin": "null"}).status_code == 403  # still refused if a page strips its origin
