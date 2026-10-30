@@ -215,8 +215,18 @@ At the user's request, everything is also available from the UI, alongside the C
 
 - **D-6, judge sanity:** `scripts/judge_sanity.py` scores the five known-verdict cases in `fixtures/judge-cases/` three times each. Live with the Opus 4.6 judge, all 13 checks pass for $0.36: bands, A > B > C, the hallucinated plan capped at 1, and repeats consistent. Results are in the README. Comparing against human graders is still open.
 - **D-8, one command:** `foundry run --evaluate` runs the agent, then summarizes, scores and writes the report. Failed runs are scored too, and the exit code stays the run's. Live on adb-002 (Kimi K3): 0.96, $0.12 for the run and $0.03 for the evaluation. Saving to S3 waits on L4.
-- **A-2, samples:** `scripts/stage_samples.sh` copies a 54 MB NAIP 2022 RGB tile (Fresno) and a 30 MB Vantor open-data tile to `samples/`, with sources and licenses in `samples/README.txt`. The role can read `samples/*`, read-only (infra test updated). Not yet run, because it needs the bucket.
-- **A-1, C-3, L4, deploy check:** `scripts/verify_deploy.sh` assumes the deployed `HarnessRole` and does a live `run --evaluate` with `s3_uri` set. It then checks that the run, trace, scores, report and rubric are under `runs/<id>/`, and that the role can't write outside `runs/`. **Not run yet:** auto mode refused `cdk bootstrap` and `cdk deploy`, so these need the user's approval or the user's own shell.
+- **A-1, deployed:** `cdk bootstrap` and `cdk deploy` of `ClayFoundryEvalSandbox` into 283171504459, us-west-2. The user ran the deploy after reviewing the IAM diff.
+  - Bucket: `clayfoundryevalsandbox-runsbucketf47f9fb8-qedlohtzrfqy`
+  - Role: `ClayFoundryEvalSandbox-HarnessRoleB55BF37F-GJyGbk4kGUbF`
+- **A-2, samples staged:** `scripts/stage_samples.sh` copied two tiles to `samples/`, with sources and licenses in `samples/README.txt`:
+  - NAIP 2022 RGB, Fresno: 54,474,858 bytes
+  - Vantor open data, Nepal: 29,534,465 bytes
+
+  The public source buckets refuse `GetObjectTagging`, so the copies use `--copy-props metadata-directive`. **As the role:** both samples are readable, and a `PutObject` to `samples/` is AccessDenied.
+- **C-3, D-8 and L4, PASS:** `scripts/verify_deploy.sh adb-003` ran with the role's credentials only.
+  - One command, `run --evaluate` with Kimi K3 and the Opus judge, scored 1.00.
+  - Mirrored to `runs/2026-10-30T20-46-07Z_adb-003_a888/`: run, trace, output, scores, report, rubric and MCP logs.
+  - A write outside `runs/` was refused.
 - **A-4 rehearsal:** in a fresh clone with no AWS variables: `uv sync`, an offline run, evaluate, validate, 170 tests and `cdk synth` all pass. The README now includes `cdk bootstrap`, which was missing. Done-when still needs a teammate deploying.
 - **Suite:** 172 passed, ruff clean.
 

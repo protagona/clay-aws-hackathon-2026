@@ -19,8 +19,10 @@ NAIP_SRC=s3://naip-visualization/ca/2022/60cm/rgb/36119/m_3611919_nw_11_060_2022
 # Vantor open data, Nepal flooding, Aug 2026 (30 MB).
 VANTOR_SRC=s3://vantor-opendata/events/Nepal-Flooding-Aug-2026/B120001101250A10.tif
 
-aws s3 cp "$NAIP_SRC" "s3://$BUCKET/samples/naip/$(basename "$NAIP_SRC")" --region "$REGION" --request-payer requester
-aws s3 cp "$VANTOR_SRC" "s3://$BUCKET/samples/vantor/$(basename "$VANTOR_SRC")" --region "$REGION"
+aws s3 cp "$NAIP_SRC" "s3://$BUCKET/samples/naip/$(basename "$NAIP_SRC")" --region "$REGION" --request-payer requester \
+  --copy-props metadata-directive  # public source buckets refuse GetObjectTagging
+aws s3 cp "$VANTOR_SRC" "s3://$BUCKET/samples/vantor/$(basename "$VANTOR_SRC")" --region "$REGION" \
+  --copy-props metadata-directive
 
 cat <<EOF | aws s3 cp - "s3://$BUCKET/samples/README.txt" --region "$REGION"
 Pre-staged imagery samples for the Foundry eval sandbox (backlog A-2). Read-only for the harness role.

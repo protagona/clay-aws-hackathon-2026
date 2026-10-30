@@ -53,7 +53,11 @@ for f in run.json trace.jsonl scores.json report.md rubric.json; do
 done
 
 echo "--- samples/ (read-only)"
-aws s3 ls "s3://$BUCKET/samples/" || echo "(no samples staged; run scripts/stage_samples.sh)"
+if aws s3 ls "s3://$BUCKET/samples/README.txt" >/dev/null 2>&1; then
+  aws s3 cp "s3://$BUCKET/samples/README.txt" - | head -3   # GetObject as the role
+else
+  echo "(no samples staged; run scripts/stage_samples.sh)"
+fi
 if echo probe | aws s3 cp - "s3://$BUCKET/not-runs/probe.txt" 2>/dev/null; then
   echo "FAIL: the role could write outside runs/" >&2; exit 1
 fi
