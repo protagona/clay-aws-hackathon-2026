@@ -1,0 +1,65 @@
+# Live mode on Amazon Bedrock (us-west-2). Needs AWS credentials with bedrock:InvokeModel and
+# bedrock:InvokeModelWithResponseStream, and model access plus non-zero quotas for the models below
+# (Sonnet/Haiku 5.5 had a 0 tokens/minute quota in the sandbox account on 2026-10-30; see design ADR-8).
+
+[task]
+id = "adb"
+
+[model]                      # the agent's model: Kimi K3. Cheaper per token than Opus and caches automatically,
+                             # so it takes the token-heavy role (design ADR-11). No temperature: Kimi K3 rejects it.
+provider = "bedrock"
+id = "qwen.qwen3-235b-a22b-2507-v1:0"
+region = "us-west-2"
+
+[judge]                      # Opus 4.6: pricier per token, so it takes the light role (~3k in / ~2k out per run);
+                             # the sharpest judge in the calibration, and not the agent's vendor
+provider = "bedrock"
+id = "us.anthropic.claude-opus-4-6-v1"
+region = "us-west-2"
+max_tokens = 2048
+timeout_s = 120
+retries = 2
+
+[summarizer]
+provider = "bedrock"
+id = "us.amazon.nova-2-lite-v1:0"
+region = "us-west-2"
+max_tokens = 2048
+timeout_s = 120
+retries = 2
+
+[limits]
+max_model_calls = 12          # live: output room for the final plan within the $2 bound
+max_input_tokens = 200000
+max_seconds = 300
+max_tokens = 4096            # 1024 was too small for the final plan (L1, 2026-10-30)
+model_timeout_s = 120
+model_retries = 2
+mcp_start_timeout_s = 60
+
+[mcp.servers.roda]
+command = "uvx"
+args = ["awslabs.roda-mcp-server@0.1.7"]
+package = "awslabs.roda-mcp-server"
+version = "0.1.7"
+error_detection = "json_status"
+
+[tracing]
+tracers = ["jsonl"]
+
+[storage]
+s3_uri = ""                  # set to "s3://<RunsBucket>" after cdk deploy to mirror runs
+
+[scoring]
+workflow_weight = 0.5
+output_weight = 0.5
+
+[prices]                     # USD per 1M tokens, us-west-2 on-demand, us. geo profile, standard tier.
+                             # Source: AWS Price List API (pricing get-products, AmazonBedrock and
+                             # AmazonBedrockFoundationModels), queried 2026-10-30.
+"us.anthropic.claude-sonnet-4-6"              = { input = 3.30, output = 16.50, cache_read = 0.33 }
+"us.anthropic.claude-haiku-4-5-20251001-v1:0" = { input = 1.10, output = 5.50, cache_read = 0.11 }
+"us.anthropic.claude-opus-4-6-v1"             = { input = 5.50, output = 27.50, cache_read = 0.55 }
+"us.moonshotai.kimi-k3"                       = { input = 3.30, output = 16.50, cache_read = 0.33 }
+"us.amazon.nova-2-lite-v1:0"                  = { input = 0.33, output = 2.75, cache_read = 0.083 }
+"zai.glm-5"                                   = { input = 1.00, output = 3.20 }
