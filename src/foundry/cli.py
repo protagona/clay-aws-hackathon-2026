@@ -121,6 +121,11 @@ COMMANDS = {
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    # Strands logs cancelled/failed tool calls with full tracebacks; the trace already records them,
+    # so keep the terminal readable.
+    import logging
+
+    logging.getLogger("strands").setLevel(logging.CRITICAL)
     handler = COMMANDS.get(args.command)
     if handler is None:
         print(f"foundry {args.command}: not implemented", file=sys.stderr)

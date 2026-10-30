@@ -11,11 +11,23 @@ Per the user's instruction, everything ships on the `prototype` branch with **no
 | Toolchain | asdf + `asdf install` + `uv python install` (README "Local setup") | `uv --version`, `node --version` |
 | Dependencies | `uv sync` at the repo root; `cd infra && npm ci` | `uv run foundry --help` |
 | AWS credentials for **one sandbox account**, region us-west-2 | `aws sso login --profile <sandbox-profile>`, then `export AWS_PROFILE=<sandbox-profile> AWS_REGION=us-west-2` | `aws sts get-caller-identity` shows the sandbox account id |
-| Bedrock model access in us-west-2 for `us.anthropic.claude-sonnet-5-5`, `us.anthropic.claude-haiku-5-5` and `us.amazon.nova-2-lite-v1:0` | Bedrock console → Model access (us-west-2) | `aws bedrock-runtime converse --model-id us.amazon.nova-2-lite-v1:0 --messages '[{"role":"user","content":[{"text":"hi"}]}]' --region us-west-2` returns a reply |
+| Bedrock model access in us-west-2 for `us.anthropic.claude-sonnet-5-5`, `us.anthropic.claude-haiku-5-5` and `us.amazon.nova-2-lite-v1:0` | Bedrock console → Model access (us-west-2) | For each of the three model ids, `aws bedrock-runtime converse --model-id <id> --messages '[{"role":"user","content":[{"text":"hi"}]}]' --region us-west-2` returns a reply. |
+| **Prices checked (required before step 4)** | Read the on-demand prices for the three models in the Bedrock console or on the AWS pricing page for us-west-2 geo inference profiles. Put them in `[prices]` in `config/bedrock*.toml`. The current values come from Anthropic's published first-party prices (Sonnet 5.5: $2/$10 per million tokens; Haiku 5.5: $0.10/$0.50) plus the documented 10% regional premium, with Nova set to Sonnet's rate as an upper bound. | Recompute the bound below with the new prices. If it exceeds $2.00, lower `max_input_tokens` until it doesn't. |
 | CDK bootstrap (once per account and region) | `cd infra && npx cdk bootstrap aws://<account>/us-west-2` | The `CDKToolkit` stack exists in CloudFormation |
 | **Budget alarm (required before step 4).** Owner: the team lead. Notifies the team lead's email at 80% of $50 per month. | `aws budgets create-budget --account-id <account> --budget '{"BudgetName":"foundry-sandbox","BudgetLimit":{"Amount":"50","Unit":"USD"},"TimeUnit":"MONTHLY","BudgetType":"COST"}' --notifications-with-subscribers '[{"Notification":{"NotificationType":"ACTUAL","ComparisonOperator":"GREATER_THAN","Threshold":80,"ThresholdType":"PERCENTAGE"},"Subscribers":[{"SubscriptionType":"EMAIL","Address":"<team-lead-email>"}]}]'` | `aws budgets describe-budget --account-id <account> --budget-name foundry-sandbox` |
 
-**Which credentials runs use.** `foundry` uses whatever the AWS SDK default chain finds, normally the operator's SSO profile (`AWS_PROFILE`). The stack's `HarnessRole` is a least-privilege alternative: Bedrock invoke actions plus `runs/*` in the bucket. To use it, add a profile with `role_arn = <HarnessRoleArn>` and `source_profile = <sandbox-profile>` to `~/.aws/config`, then `export AWS_PROFILE=<that profile>`. The S3-failure runbook below refers to whichever identity is active (check with `aws sts get-caller-identity`).
+**Which credentials live runs use: `HarnessRole` (the default for steps 4–7).** Deploy with your own SSO profile. Then run with the least-privilege role, which allows only Bedrock invoke actions plus `runs/*` in the bucket:
+
+1. Add a profile to `~/.aws/config`:
+   ```
+   [profile foundry-harness]
+   role_arn = <HarnessRoleArn>
+   source_profile = <sandbox-profile>
+   region = us-west-2
+   ```
+2. `export AWS_PROFILE=foundry-harness`, then check with `aws sts get-caller-identity`, which should show the `HarnessRole` assumed-role ARN.
+
+MCP server subprocesses never receive `AWS_*` variables (environment allowlist), so a tool server can't use these credentials.
 
 **Spend bounds per run.** These are the `[limits]` in `config/bedrock*.toml`, so any copy of those files inherits them:
 
@@ -46,7 +58,7 @@ Evaluation makes at most 4 model calls (judge and summarizer, one retry each), w
      cd ..
      ```
      Expect:
-     - The diff shows only additions: 1 bucket, 1 bucket policy, 1 role, 1 policy, and metadata.
+     - The diff shows only additions: 1 bucket, 1 bucket policy, 1 role, 1 policy, and metadata. **If it shows any modification or replacement**, the stack is already deployed (for example, by a teammate). Stop, and coordinate with whoever deployed it. One deployer owns the stack, recorded in the team channel. Nobody else runs `cdk destroy`.
      - The bucket blocks all public access, uses SSE-S3 encryption, is versioned, enforces SSL-only access through its bucket policy, and is retained on stack deletion.
      - All resources are tagged `project=clay-foundry` and `owner=team-46`.
      - Note the `RunsBucketName` and `HarnessRoleArn` outputs. CDK generates the bucket name.
@@ -109,9 +121,9 @@ None blocks a sandbox launch.
 
 | What to undo | Steps | Reversible? |
 |---|---|---|
-| A bad live run or evaluation | Nothing to roll back: runs are separate directories. Delete `runs/<run_id>/` locally. In S3, keep the object versions or remove them with `aws s3 rm --recursive s3://<bucket>/runs/<run_id>/`. | Yes |
+| A bad live run or evaluation | Nothing to roll back: runs are separate directories. Delete `runs/<run_id>/` locally. In S3, `aws s3 rm --recursive s3://<bucket>/runs/<run_id>/` only adds delete markers, because the bucket is versioned, and earlier versions remain as provenance. To purge the data, delete the versions under that prefix in the S3 console (Show versions → select → Delete). | Yes |
 | Live mode itself | Stop using `config/bedrock*.toml` and go back to `config/offline.toml`. No code change is needed. | Yes |
-| Infrastructure | `cd infra && npx cdk destroy`. This removes the role and policy. The **bucket is retained** (`RemovalPolicy.RETAIN`, on purpose: run history is provenance), and it is then no longer managed by any stack. A later `cdk deploy` creates a **new** bucket with a new generated name, so update `s3_uri` in `config/bedrock-live.toml` from the new `RunsBucketName` output. To delete the old bucket deliberately, empty it with the S3 console's **Empty** action, which removes every version and delete marker, then `aws s3 rb s3://<bucket>`. | Deleting the bucket is **irreversible**; do it only on purpose |
+| Infrastructure | `cd infra && npx cdk destroy`. This removes the role and its policy. The **bucket and its SSL-only bucket policy are retained** (`RemovalPolicy.RETAIN`, on purpose: run history is provenance), and it is then no longer managed by any stack. A later `cdk deploy` creates a **new** bucket with a new generated name, so update `s3_uri` in `config/bedrock-live.toml` from the new `RunsBucketName` output. To delete the old bucket deliberately, empty it with the S3 console's **Empty** action, which removes every version and delete marker, then `aws s3 rb s3://<bucket>`. | Deleting the bucket is **irreversible**; do it only on purpose |
 | Code | `git revert <commit>` on `prototype` (one commit per slice; see `git log 605627f..prototype`), or `git switch main`. | Yes |
 
 ## Operating notes
@@ -119,7 +131,7 @@ None blocks a sandbox launch.
 - **Exit codes:**
   - `foundry run`: 0 = succeeded; 1 = the run failed or timed out, and its run directory has the details; 2 = a usage or config error, and nothing was created
   - `foundry evaluate`: 0 = scores and report written; 2 = refused, with the message saying why
-- **SIGKILLed runs:** find a leftover MCP server with `pgrep -fl roda-mcp-server` and stop it with `pkill -f awslabs.roda-mcp-server`. Then run `foundry evaluate --force runs/<id>`.
+- **SIGKILLed runs:** list MCP servers with `pgrep -fl awslabs.roda-mcp-server`. An orphan has parent PID 1; check with `ps -o pid,ppid,command -p <pid>`. Stop only that one with `kill <pid>`, because other runs may be using their own servers. Then run `foundry evaluate --force runs/<id>`.
 - **Several teammates in one account:** run ids carry a timestamp plus a random suffix, so they don't collide in the shared bucket. Bedrock throttling is per account and model. Botocore retries throttled calls with backoff (`model_retries = 2`), and a run that still fails is recorded as failed. Stagger live runs rather than starting many at once.
 
 ## Observability
@@ -143,9 +155,9 @@ This is a local, single-user tool. There are no servers to page on. These signal
   - Act when: you see `OTel export to … failed`. `trace.jsonl` is unaffected; start the backend.
 - **S3 mirror**
   - Where: an `S3 upload to s3://… failed` line on stderr
-  - Act when: you see it. Check credentials and the `HarnessRole` policy, then re-run `foundry evaluate` to upload again.
+  - Act when: you see it. Check credentials (`aws sts get-caller-identity`) and the `HarnessRole` policy. Then re-upload without re-evaluating, since evaluation makes paid model calls: `aws s3 cp --recursive runs/<run_id> s3://<bucket>/runs/<run_id>/ --exclude ".*"`.
 
-**Budget alarm:** this is a prerequisite (see the table above), and it emails the team lead at $40 of a $50 monthly budget.
+**Budget alarm:** this is a prerequisite (see the table above), and it emails the team lead at $40 of a $50 monthly budget. It is account-wide, created by CLI and not in CDK, which is accepted for a sandbox. It is a signal, not a stop. Per-run spend is hard-bounded by `[limits]`; the number of runs is bounded only by people.
 
 ## Communication
 

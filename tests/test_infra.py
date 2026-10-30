@@ -35,6 +35,7 @@ def test_bucket_is_private_encrypted_versioned_ssl_only():
         "VersioningConfiguration": {"Status": "Enabled"},
     })
     t.has_resource("AWS::S3::Bucket", {"DeletionPolicy": "Retain"})
+    t.has_resource("AWS::S3::BucketPolicy", {"DeletionPolicy": "Retain"})  # stays with the retained bucket
     t.has_resource_properties("AWS::S3::BucketPolicy", {"PolicyDocument": {"Statement": Match.array_with([
         Match.object_like({"Effect": "Deny", "Condition": {"Bool": {"aws:SecureTransport": "false"}}})])}})
 

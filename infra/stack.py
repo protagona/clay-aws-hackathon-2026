@@ -23,6 +23,9 @@ class FoundryStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,  # run history is provenance; never deleted by a stack update
         )
 
+        # Keep the SSL-only policy with the retained bucket, so an orphaned bucket stays protected after destroy.
+        bucket.policy.apply_removal_policy(RemovalPolicy.RETAIN)
+
         role = iam.Role(
             self, "HarnessRole",
             assumed_by=iam.AccountRootPrincipal(),

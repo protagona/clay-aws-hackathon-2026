@@ -260,7 +260,7 @@ Live checks against Bedrock and RODA are listed separately.
   - Editing the source rubric does not change `rubric.json` until the run is re-evaluated, and re-evaluating replaces both files together.
   - `--rubric <path>` overrides the rubric resolved from the run's task (see *Rubric resolution*).
 - [ ] **AC20: S3 mirror.** With `[storage] s3_uri` set:
-  - When a run or evaluation finishes, every file in the run directory is uploaded under `<s3_uri>/runs/<run_id>/`. Offline verification uses a stubbed S3 client.
+  - When a run or evaluation finishes, every regular file at the top level of the run directory is uploaded under `<s3_uri>/runs/<run_id>/`. Dotfiles such as the `.evaluating` lock and `.eval-*` staging directories are excluded, as are symlinks. Offline verification uses a stubbed S3 client.
   - With `s3_uri` unset, nothing is uploaded and no AWS client is created.
   - Uploads happen when a run ends and after each evaluation, never at run start. Bucket versioning keeps earlier evaluations on purpose.
   - If the upload fails, a single stderr warning names the bucket and the reason, the exit code is unchanged, and the local files remain.

@@ -88,7 +88,14 @@ def test_timeout_records_inflight_tool(tmp_path):  # AC9
     assert s[0]["type"] == "llm_call"
     tool = [x for x in s if x["type"] == "tool_call"]
     assert tool and tool[0]["status"] == "error" and tool[0]["error"] == "cancelled: run timed out"
-    assert elapsed < 2 + 5 + 3  # bound from AC9 plus MCP startup slack
+    from datetime import datetime
+
+    rj = run_json(run_dir)
+    fmt = "%Y-%m-%dT%H:%M:%S.%f%z"
+    started = datetime.strptime(rj["started_at"].replace("Z", "+0000"), fmt)
+    ended = datetime.strptime(rj["ended_at"].replace("Z", "+0000"), fmt)
+    assert (ended - started).total_seconds() <= 2 + 5  # AC9: ends within T + 5 s
+    assert elapsed < 2 + 5 + 5  # whole call, including MCP server startup
 
 
 def test_model_failure(tmp_path):  # AC9b: the script runs out on the 2nd model call -> the model raises
