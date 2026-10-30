@@ -54,11 +54,11 @@ def test_role_settings_and_strands_model():
                            timeout_s=cfg.limits.model_timeout_s, retries=cfg.limits.model_retries)
     model = agent.strands_model()
     mc = model.get_config()
-    assert mc["model_id"] == "us.anthropic.claude-sonnet-5-5" and mc["max_tokens"] == 1024 and mc["temperature"] == 0.2
+    assert mc["model_id"] == "us.anthropic.claude-sonnet-4-6" and mc["max_tokens"] == 4096 and mc["temperature"] == 0.2
 
 
 def test_bedrock_configs_differ_only_in_model_id():
     a = open("config/bedrock.toml").read().splitlines()
     b = open("config/bedrock-alt.toml").read().splitlines()
     diff = [(x, y) for x, y in zip(a, b, strict=True) if x != y]
-    assert diff == [('id = "us.anthropic.claude-sonnet-5-5"', 'id = "us.anthropic.claude-haiku-5-5"')]
+    assert diff == [('id = "us.anthropic.claude-sonnet-4-6"', 'id = "us.anthropic.claude-haiku-4-5-20251001-v1:0"')]

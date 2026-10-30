@@ -503,6 +503,23 @@ Mitigations:
   - Bedrock account model access is unverified (no credentials). See Risks.
 - **Unverified assumption (owner: builder, checked at L1):** Bedrock's Claude prices equal the first-party prices plus the documented 10% premium for regional and geo endpoints. The Bedrock pricing page renders its tables client-side, so it couldn't be read. Nova 2 Lite's price is unknown, so `bedrock.toml` has **no** `[prices]` entry for it, and evaluation `cost_usd` is `null` under that config until the price is filled in, which AC7 allows. The $2 ceiling check uses Sonnet prices as an upper bound for the judge.
 
+### ADR-8: Live models changed to Sonnet 4.6 and Haiku 4.5 because of account quotas (2026-10-30)
+
+- **Context:** `protagona-sandbox-1` (283171504459), us-west-2. The applied Service Quotas for cross-region inference on Claude Sonnet 5.5 and Haiku 5.5 are **0 tokens per minute**, and a Converse call to `us.anthropic.claude-sonnet-5-5` returned `AccessDeniedException`. Usable quotas: Sonnet 4.6 at 6M tokens/minute and 10k requests/minute, Haiku 4.5 at 5M and 10k, Nova 2 Lite at 8M and 2k. A one-token Converse call to each succeeded.
+- **Options:**
+  - A) request a quota increase for the 5.5 models and wait
+  - B) use the models the account can call now
+- **Decision:** B.
+  - Agent: `us.anthropic.claude-sonnet-4-6`.
+  - Alternative agent: `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
+  - Judge and summarizer stay on `us.amazon.nova-2-lite-v1:0`, a different vendor.
+  - Live `max_input_tokens` is lowered to 350,000, which keeps the worst case at or below $2.00 per run at Sonnet 4.6 prices.
+- **Why:** it unblocks the live checks today. The model is a config value (M6), so moving back to 5.5 later is a one-line change once a quota is granted.
+- **Reversibility:** easy.
+- **Sources:**
+  - `aws service-quotas list-service-quotas --service-code bedrock --region us-west-2` and `aws bedrock-runtime converse`, run 2026-10-30
+  - Anthropic pricing page, accessed 2026-10-29: Sonnet 4.6 $3/$15 per million tokens, Haiku 4.5 $1/$5; plus the 10% regional/geo premium on Bedrock
+
 ## Failure modes
 
 | Failure | Detection | Behavior | Recovery |

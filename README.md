@@ -87,8 +87,10 @@ uv run foundry run --config config/offline-alt.toml --prompt adb-001   # scripte
 
 On Bedrock, with credentials:
 
-- `config/bedrock.toml` runs the agent on Claude Sonnet 5.5, with a Nova 2 Lite judge.
-- `config/bedrock-alt.toml` runs the agent on Claude Haiku 5.5.
+- `config/bedrock.toml` runs the agent on Claude Sonnet 4.6, with a Nova 2 Lite judge.
+- `config/bedrock-alt.toml` runs the agent on Claude Haiku 4.5.
+
+These were the Claude models with usable quotas in the sandbox account on 2026-10-30; see design ADR-8.
 
 ```bash
 uv run foundry run --config config/bedrock.toml     --prompt adb-001
@@ -158,14 +160,14 @@ Then set `[storage] s3_uri = "s3://<RunsBucketName output>"` to mirror every run
 
 Before the first live run, enable model access in the Bedrock console (us-west-2) for the models in `config/bedrock.toml`. The live checks are L1 to L5 in the [spec](docs/eval-sandbox/spec.md#live-checks).
 
-**Cost guardrails, per run:**
+**Cost guardrails, per live run** (`config/bedrock*.toml`):
 
-- at most 20 model calls
-- at most 600k input tokens
-- 1,024 output tokens per agent call
+- at most 12 model calls
+- at most 200k input tokens
+- 4,096 output tokens per agent call
 - 300 s wall clock
 
-The worst case is about $1.82 per run.
+The worst case is about $1.87 per run at Sonnet 4.6 prices. The first live runs cost $0.04 to $0.30.
 
 ## Tests
 

@@ -1,12 +1,13 @@
 # Live mode on Amazon Bedrock (us-west-2). Needs AWS credentials with bedrock:InvokeModel and
-# bedrock:InvokeModelWithResponseStream, and model access enabled for the models below.
+# bedrock:InvokeModelWithResponseStream, and model access plus non-zero quotas for the models below
+# (Sonnet/Haiku 5.5 had a 0 tokens/minute quota in the sandbox account on 2026-10-30; see design ADR-8).
 
 [task]
 id = "adb"
 
 [model]                      # the agent's model
 provider = "bedrock"
-id = "us.anthropic.claude-haiku-5-5"
+id = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 region = "us-west-2"
 temperature = 0.2
 
@@ -27,10 +28,10 @@ timeout_s = 120
 retries = 2
 
 [limits]
-max_model_calls = 20
-max_input_tokens = 600000
+max_model_calls = 12          # live: output room for the final plan within the $2 bound
+max_input_tokens = 200000
 max_seconds = 300
-max_tokens = 1024
+max_tokens = 4096            # 1024 was too small for the final plan (L1, 2026-10-30)
 model_timeout_s = 120
 model_retries = 2
 mcp_start_timeout_s = 60
@@ -52,10 +53,10 @@ s3_uri = ""                  # set to "s3://<RunsBucket>" after cdk deploy to mi
 workflow_weight = 0.5
 output_weight = 0.5
 
-[prices]                     # USD per million tokens. Unverified against the Bedrock console (see design ADR-7);
-                             # Nova 2 Lite is priced as an upper bound below.
-"us.anthropic.claude-sonnet-5-5" = { input = 2.20, output = 11.00 }
-"us.anthropic.claude-haiku-5-5"  = { input = 0.11, output = 0.55 }
-# Nova 2 Lite's price couldn't be read from the Bedrock pricing page; Sonnet's price is used as a
+[prices]                     # USD per million tokens: Anthropic first-party prices + 10% Bedrock geo/regional premium
+                             # (platform.claude.com/docs/en/about-claude/pricing, 2026-10-29). Verify in the console.
+"us.anthropic.claude-sonnet-4-6"              = { input = 3.30, output = 16.50 }
+"us.anthropic.claude-haiku-4-5-20251001-v1:0" = { input = 1.10, output = 5.50 }
+# Nova 2 Lite's price couldn't be read from the Bedrock pricing page; Sonnet 4.6's price is used as a
 # conservative UPPER BOUND so evaluation cost is never null. Replace with the console price.
-"us.amazon.nova-2-lite-v1:0"     = { input = 2.20, output = 11.00 }
+"us.amazon.nova-2-lite-v1:0"                  = { input = 3.30, output = 16.50 }

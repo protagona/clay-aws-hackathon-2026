@@ -11,8 +11,8 @@ Per the user's instruction, everything ships on the `prototype` branch with **no
 | Toolchain | asdf + `asdf install` + `uv python install` (README "Local setup") | `uv --version`, `node --version` |
 | Dependencies | `uv sync` at the repo root; `cd infra && npm ci` | `uv run foundry --help` |
 | AWS credentials for **one sandbox account**, region us-west-2 | `aws sso login --profile <sandbox-profile>`, then `export AWS_PROFILE=<sandbox-profile> AWS_REGION=us-west-2` | `aws sts get-caller-identity` shows the sandbox account id |
-| Bedrock model access in us-west-2 for `us.anthropic.claude-sonnet-5-5`, `us.anthropic.claude-haiku-5-5` and `us.amazon.nova-2-lite-v1:0` | Bedrock console → Model access (us-west-2) | For each of the three model ids, `aws bedrock-runtime converse --model-id <id> --messages '[{"role":"user","content":[{"text":"hi"}]}]' --region us-west-2` returns a reply. |
-| **Prices checked (required before step 4)** | Read the on-demand prices for the three models in the Bedrock console or on the AWS pricing page for us-west-2 geo inference profiles. Put them in `[prices]` in `config/bedrock*.toml`. The current values come from Anthropic's published first-party prices (Sonnet 5.5: $2/$10 per million tokens; Haiku 5.5: $0.10/$0.50) plus the documented 10% regional premium, with Nova set to Sonnet's rate as an upper bound. | Recompute the bound below with the new prices. If it exceeds $2.00, lower `max_input_tokens` until it doesn't. |
+| Bedrock model access **and non-zero quotas** in us-west-2 for `us.anthropic.claude-sonnet-4-6`, `us.anthropic.claude-haiku-4-5-20251001-v1:0` and `us.amazon.nova-2-lite-v1:0` | Bedrock console → Model access. Check quotas with `aws service-quotas list-service-quotas --service-code bedrock --region us-west-2`: look for "Cross-region model inference tokens per minute for <model>" > 0. In the sandbox the 5.5 models were at 0. | For each of the three model ids, `aws bedrock-runtime converse --model-id <id> --messages '[{"role":"user","content":[{"text":"hi"}]}]' --region us-west-2` returns a reply. |
+| **Prices checked (required before step 4)** | Read the on-demand prices for the three models in the Bedrock console or on the AWS pricing page for us-west-2 geo inference profiles. Put them in `[prices]` in `config/bedrock*.toml`. The current values come from Anthropic's published first-party prices (Sonnet 4.6: $3/$15 per million tokens; Haiku 4.5: $1/$5) plus the documented 10% regional premium, with Nova set to Sonnet 4.6's rate as an upper bound. | Recompute the bound below with the new prices. If it exceeds $2.00, lower `max_input_tokens` until it doesn't. |
 | CDK bootstrap (once per account and region) | `cd infra && npx cdk bootstrap aws://<account>/us-west-2` | The `CDKToolkit` stack exists in CloudFormation |
 | **Budget alarm (required before step 4).** Owner: the team lead. Notifies the team lead's email at 80% of $50 per month. | `aws budgets create-budget --account-id <account> --budget '{"BudgetName":"foundry-sandbox","BudgetLimit":{"Amount":"50","Unit":"USD"},"TimeUnit":"MONTHLY","BudgetType":"COST"}' --notifications-with-subscribers '[{"Notification":{"NotificationType":"ACTUAL","ComparisonOperator":"GREATER_THAN","Threshold":80,"ThresholdType":"PERCENTAGE"},"Subscribers":[{"SubscriptionType":"EMAIL","Address":"<team-lead-email>"}]}]'` | `aws budgets describe-budget --account-id <account> --budget-name foundry-sandbox` |
 
@@ -31,12 +31,12 @@ MCP server subprocesses never receive `AWS_*` variables (environment allowlist),
 
 **Spend bounds per run.** These are the `[limits]` in `config/bedrock*.toml`, so any copy of those files inherits them:
 
-- `max_model_calls = 20`
-- `max_input_tokens = 600000`
-- `max_tokens = 1024` per agent call
+- `max_model_calls = 12`
+- `max_input_tokens = 200000`
+- `max_tokens = 4096` per agent call (1,024 was too small for the final plan)
 - `max_seconds = 300`
 
-Evaluation makes at most 4 model calls (judge and summarizer, one retry each), with `max_tokens = 2048` each and the run view capped at about 20k tokens. At the configured prices that's at most $1.32 + $0.23 for the agent plus $0.27 for evaluation, so **≤ $1.82 per run**. Nova is priced at Sonnet's rate as an upper bound.
+Evaluation makes at most 4 model calls (judge and summarizer, one retry each), with `max_tokens = 2048` each and the run view capped at about 20k tokens. At the configured prices that's at most $0.66 input + $0.81 output for the agent plus $0.40 for evaluation, so **≤ $1.87 per run**. Nova is priced at Sonnet 4.6's rate as an upper bound. Observed on 2026-10-30: $0.04 to $0.30 per run.
 
 ## Rollout
 
@@ -95,7 +95,7 @@ Evaluation makes at most 4 model calls (judge and summarizer, one retry each), w
      ```bash
      uv run foundry run --config config/bedrock-alt.toml --prompt adb-001
      ```
-     Expect: exit 0, and `run.json.model.id` is `us.anthropic.claude-haiku-5-5`.
+     Expect: exit 0, and `run.json.model.id` is `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
 
   7. **L5, prompt injection against the real judge:**
      ```bash
