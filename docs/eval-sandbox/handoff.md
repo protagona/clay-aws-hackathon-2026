@@ -158,6 +158,7 @@ The same `uv run pytest` passes 115/115 in a fresh local clone. Once billing is 
 - **`mcp` 2.2.0 bump:** not possible, because strands-agents 1.62.0 pins `mcp<2.2`. Accepted as F-008 and F-009.
 - **Nova 2 Lite price:** Sonnet's rate is used as an upper bound.
 - **UI score format:** `W1.00 O.67`. See the Verification notes.
+- **Cached input tokens** (found 2026-10-30 while measuring per-role usage): Kimi K3 on Bedrock caches prompts automatically and reports cached tokens in `cacheReadInputTokens`, outside `inputTokens`. `tokens_in` (and so the `max_input_tokens` guardrail and cost) now includes cached tokens, and `tokens_in_cached` records the cached part. Kimi runs recorded before the fix under-count input. Cached tokens are priced at the full input rate, so recorded cost is an overestimate for caching models.
 
 ## Follow-ups
 

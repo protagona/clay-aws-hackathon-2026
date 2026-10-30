@@ -54,4 +54,6 @@ class BedrockProvider:
         content = resp.get("output", {}).get("message", {}).get("content", [])
         text = "".join(b.get("text", "") for b in content)
         usage = resp.get("usage", {})
-        return Completion(text, usage.get("inputTokens", 0), usage.get("outputTokens", 0), self.model_id)
+        from foundry.harness.hooks import total_input_tokens
+
+        return Completion(text, total_input_tokens(usage) or 0, usage.get("outputTokens", 0), self.model_id)

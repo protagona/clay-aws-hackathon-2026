@@ -178,3 +178,14 @@ def test_run_json_running_during_run(tmp_path):  # AC4
     t.join()
     running = [d for d in seen if d["status"] == "running"]
     assert running and running[0]["limits"]["max_seconds"] == 300 and "ended_at" not in running[0]
+
+
+def test_cached_input_tokens_count_toward_tokens_in_and_limit(tmp_path):
+    """Kimi K3 reports cached prompt tokens outside inputTokens; they must still count (and hit the cap)."""
+    turns = [{"tool": "echo", "input": {"text": str(i)}, "usage": {"in": 10, "out": 5, "cache_read": 300_000}}
+             for i in range(5)]
+    run_dir, status = _run(tmp_path, turns, limits="max_input_tokens = 600000")
+    llm = [x for x in steps(run_dir) if x["type"] == "llm_call"]
+    assert llm[0]["tokens_in"] == 300_010 and llm[0]["tokens_in_cached"] == 300_000
+    assert any(x["type"] == "note" and "max_input_tokens" in x["text"] for x in steps(run_dir))
+    assert status == "failed"

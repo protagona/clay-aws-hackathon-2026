@@ -107,6 +107,7 @@ These were added by the eval sandbox build ([spec](eval-sandbox/spec.md), [desig
 
 ### trace.jsonl
 
+- `tokens_in_cached` on an `llm_call`: the part of `tokens_in` served from the model's prompt cache. `tokens_in` always includes cached tokens.
 - `invalid: true` on a `tool_call`: the tool didn't exist, or its arguments failed the tool's input schema. On an unknown tool, `server` is `null`.
 - `retry_of` points to the **most recent** earlier errored call with the same server, name and arguments.
 

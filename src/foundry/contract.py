@@ -88,6 +88,7 @@ class Step(_Open):
     # llm_call
     tokens_in: int | None = None
     tokens_out: int | None = None
+    tokens_in_cached: int | None = None  # the part of tokens_in served from the model's prompt cache
     cost_usd: float | None = None
     text: str | None = None
     # tool_call

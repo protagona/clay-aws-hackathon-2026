@@ -79,8 +79,10 @@ class ScriptedModel(Model):
             yield {"contentBlockDelta": {"delta": {"text": turn.get("text", "")}}}
             yield {"contentBlockStop": {}}
             yield {"messageStop": {"stopReason": "end_turn"}}
+        cache_read = usage.get("cache_read", 0)
         yield {"metadata": {"usage": {"inputTokens": tokens_in, "outputTokens": tokens_out,
-                                      "totalTokens": tokens_in + tokens_out},
+                                      "cacheReadInputTokens": cache_read,
+                                      "totalTokens": tokens_in + cache_read + tokens_out},
                             "metrics": {"latencyMs": 0}}}
 
 

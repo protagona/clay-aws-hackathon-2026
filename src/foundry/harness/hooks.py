@@ -97,7 +97,7 @@ class TraceHooks(HookProvider):
             return
         message = event.stop_response.message
         usage = (message.get("metadata") or {}).get("usage") or {}
-        tokens_in, tokens_out = usage.get("inputTokens"), usage.get("outputTokens")
+        tokens_in, tokens_out, cached = total_input_tokens(usage), usage.get("outputTokens"), cached_tokens(usage)
         if tokens_in:
             self.input_tokens += tokens_in
             self.last_tokens_in = tokens_in
@@ -105,9 +105,10 @@ class TraceHooks(HookProvider):
         tool_uses = [b["toolUse"]["name"] for b in message.get("content", []) if "toolUse" in b]
         if not text and tool_uses:
             text = "(calls " + ", ".join(tool_uses) + ")"
+        extra = {"tokens_in_cached": cached} if cached else {}
         self.tracers.record(type="llm_call", name="model", started_at=started_at, duration_ms=duration_ms,
                             tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=self.cost(tokens_in, tokens_out),
-                            text=text[:PREVIEW_CHARS])
+                            text=text[:PREVIEW_CHARS], **extra)
 
     def cost(self, tokens_in: int | None, tokens_out: int | None) -> float | None:
         price = self.prices.get(self.model_id)
@@ -175,6 +176,18 @@ class TraceHooks(HookProvider):
             # Rebuild the result rather than patching it: MCP results also carry structuredContent.
             event.result = {"toolUseId": result.get("toolUseId", use["toolUseId"]), "status": result.get("status", "success"),
                             "content": [{"text": text[:cap] + f"\n[truncated {len(text) - cap} chars]"}]}
+
+
+def total_input_tokens(usage: dict) -> int | None:
+    """All input tokens, cached or not. Some models (e.g. Kimi K3 on Bedrock) cache automatically, and then
+    inputTokens counts only the uncached part, with the rest in cacheRead/WriteInputTokens (observed 2026-10-30)."""
+    if usage.get("inputTokens") is None:
+        return None
+    return usage["inputTokens"] + cached_tokens(usage)
+
+
+def cached_tokens(usage: dict) -> int:
+    return (usage.get("cacheReadInputTokens") or 0) + (usage.get("cacheWriteInputTokens") or 0)
 
 
 def _json_status_error(text: str) -> bool:

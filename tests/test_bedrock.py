@@ -71,3 +71,14 @@ def test_kimi_config_omits_temperature():
     agent = build_provider(cfg.model, prompt_id="adb-001", max_tokens=cfg.limits.max_tokens,
                            timeout_s=cfg.limits.model_timeout_s, retries=cfg.limits.model_retries)
     assert "temperature" not in agent.strands_model().get_config()
+
+
+def test_complete_counts_cached_input_tokens():
+    p, stub = _provider()
+    stub.add_response("converse", {
+        "output": {"message": {"role": "assistant", "content": [{"text": "x"}]}}, "stopReason": "end_turn",
+        "usage": {"inputTokens": 7, "outputTokens": 50, "totalTokens": 4140, "cacheReadInputTokens": 4083,
+                  "cacheWriteInputTokens": 0},
+        "metrics": {"latencyMs": 10}})
+    with stub:
+        assert p.complete(REQ).tokens_in == 4090
