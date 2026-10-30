@@ -1,7 +1,7 @@
 # Agentic Eval Sandbox: Design
 
 **Spec:** ./spec.md   **Last updated:** 2026-10-29
-**Status:** Draft
+**Status:** Current
 
 ## Overview
 
@@ -608,37 +608,41 @@ This is greenfield, so there's no migration. Rollback means reverting commits on
 
 ## Traceability
 
+Every test named here exists and passes (115 tests, also passing in a fresh clone, 2026-10-30).
+
 | AC | Component(s) | Test(s) |
 |---|---|---|
-| AC1, AC2 | cli, config | `test_cli.py::test_unknown_prompt`, `::test_bad_config`, `::test_exit_codes` (subprocess) |
-| AC3 | contract | `test_contract.py::test_fixtures_valid`, `::test_violations_reported_with_line` |
-| AC4 | runstore, runner | `test_runner.py::test_lifecycle_running_then_final` |
-| AC5 | runner, mcp, hooks, jsonl | `test_cli.py::test_run_offline_real_roda` (subprocess, `network`) |
-| AC6 | hooks | `test_runner.py::test_tool_error_and_retry` (fault server) |
-| AC7 | hooks, config prices | `test_hooks.py::test_tokens_cost`, `::test_unknown_price_null` |
-| AC8 | hooks | `test_runner.py::test_max_model_calls` |
-| AC9 | runner watchdog | `test_runner.py::test_timeout_records_inflight_tool` (fault server sleep) |
-| AC9b | hooks, runner | `test_runner.py::test_model_exception` (scripted raises) |
-| AC9c | mcp, runner | `test_runner.py::test_mcp_start_failure` |
-| AC9d | hooks | `test_runner.py::test_unknown_tool_invalid`, `::test_schema_invalid` |
-| AC10, AC7b | summarize, report | `test_evaluate.py::test_report_sections`, `::test_narrative_failure` |
-| AC10b | view, judge | `test_evaluate.py::test_injection_only_inside_data_block` |
-| AC10c | report | `test_report.py::test_hostile_fixture_escaped` |
-| AC10d, AC10e | evaluate, cli | `test_cli.py::test_evaluate_refuses_running`, `::test_force`, `::test_evaluate_bad_config` |
-| AC11 | workflow | `test_workflow.py::test_fixture_exact_scores`, `::test_ordering` |
-| AC12 | judge | `test_evaluate.py::test_judge_criteria`, `::test_none_output_skips_judge` |
-| AC13 | judge | `test_evaluate.py::test_judge_malformed_twice`, `::test_judge_raises` |
-| AC14 | report | `test_report.py::test_provenance` |
-| AC15 | config, runner | `test_cli.py::test_model_swap_no_code_change` (`network`) |
-| AC16, AC16b | otel | `test_otel.py::test_spans_exported_to_local_endpoint`, `::test_jsonl_only_exports_nothing`, `::test_unreachable_endpoint_warns`. The tests copy `config/offline-otel.toml` to a temp directory, rewrite `[tracing.otel] endpoint` to the recording server's ephemeral port, and run the real `foundry run --config <copy>`. |
-| AC17, AC18 | evaluate | `test_cli.py::test_replay_no_agent` (subprocess), `test_evaluate.py::test_reevaluate_immutables` |
-| AC19 | evaluate | `test_evaluate.py::test_rubric_snapshot`, `::test_rubric_override` |
-| AC20 | storage | `test_storage.py` (botocore Stubber) |
-| AC21 | all | `test_secrets.py::test_sentinel_absent` |
-| AC22 | infra | `test_infra.py::test_template_properties` |
-| AC23 | repo | `test_repo.py::test_license` |
-| AC24–AC29 | ui | `test_ui.py` (FastAPI TestClient against `create_app()` with the real config dir) |
-| AC30 | all | the whole suite, plus `-m "not network"` |
+| AC1 | cli, config, tasks | `test_cli.py::test_unknown_prompt_exits_2_without_run_dir`, `::test_missing_config_exits_2`, `::test_invalid_config_names_key`, `::test_bad_prompt_id_line_is_config_error` |
+| AC2 | cli | `test_cli.py::test_exit_1_for_failed_run`, `::test_exit_0_for_succeeded_run_with_fault_server`, `::test_unwritable_runs_dir_exits_2_with_message`, `test_evaluate.py::test_replay_cli_does_not_run_agent` |
+| AC3 | contract | `test_contract.py` (all) |
+| AC4 | runstore, runner | `test_runner.py::test_run_json_running_during_run`, `::test_happy_path_against_fault_echo`, `test_evaluate.py::test_reevaluate_keeps_run_files` |
+| AC5 | runner, mcp, hooks, jsonl | `test_cli.py::test_run_offline_real_roda` (network) |
+| AC6 | hooks | `test_runner.py::test_tool_error_and_retry`, `test_cli.py::test_roda_json_status_error_detected` (network), `test_runner.py::test_json_status_error_detection` |
+| AC7 | hooks | `test_runner.py::test_tokens_and_cost` |
+| AC8 | hooks | `test_runner.py::test_max_model_calls`, `::test_max_input_tokens` |
+| AC9 | runner | `test_runner.py::test_timeout_records_inflight_tool` |
+| AC9b | hooks, runner, bedrock | `test_runner.py::test_model_failure`, `test_bedrock.py::test_throttling_becomes_provider_error` |
+| AC9c | mcp, runner | `test_runner.py::test_mcp_server_fails_to_start`, `::test_mcp_command_not_found` |
+| AC9d | hooks | `test_runner.py::test_unknown_tool_is_invalid`, `::test_schema_invalid_args` |
+| AC10, AC7b | summarize, report | `test_evaluate.py::test_report_sections`, `::test_struggles_list_everything`, `::test_narrative_failure` |
+| AC10b | view, judge | `test_evaluate.py::test_injection_only_inside_data_block`, `::test_view_caps` |
+| AC10c | report | `test_report.py::test_hostile_fixture_escaped`, `::test_esc_neutralizes_markdown_and_html` |
+| AC10d | evaluate, lock | `test_evaluate.py::test_refuses_running_and_force`, `::test_invalid_run_dir_refused`, `::test_concurrent_evaluation_refused`, `::test_stale_lock_replaced`, `::test_interrupted_evaluation_recovers` |
+| AC10e | config, evaluate | `test_evaluate.py::test_eval_config_errors`, `::test_eval_only_config_accepted_and_recorded` |
+| AC11 | workflow | `test_workflow.py` (all) |
+| AC12 | judge | `test_evaluate.py::test_judge_criteria_and_identity`, `::test_none_output_skips_judge` |
+| AC13 | judge | `test_evaluate.py::test_judge_malformed_twice`, `::test_judge_raises_then_recovers_and_raises_twice` |
+| AC14 | report | `test_report.py::test_provenance`, `test_evaluate.py::test_eval_only_config_accepted_and_recorded` |
+| AC15 | config, runner | `test_cli.py::test_model_swap_no_code_change` (network), `test_bedrock.py::test_bedrock_configs_differ_only_in_model_id` |
+| AC16, AC16b | otel | `test_otel.py` (all) |
+| AC17, AC18 | evaluate | `test_evaluate.py::test_replay_cli_does_not_run_agent`, `::test_replay_never_touches_runner`, `::test_reevaluate_keeps_run_files` |
+| AC19 | evaluate | `test_evaluate.py::test_rubric_snapshot_and_override`, `::test_invalid_rubric_rejected_before_any_model_call` |
+| AC20 | storage | `test_storage.py` (all) |
+| AC21 | all | `test_secrets.py::test_sentinel_absent_everywhere`, `test_ui.py::test_ui_pages_never_show_credentials` |
+| AC22 | infra | `test_infra.py` (all) and `npx cdk synth` |
+| AC23 | repo | `test_repo.py` |
+| AC24–AC29 | ui | `test_ui.py` (all) |
+| AC30 | all | full suite and `-m "not network"`, in the working tree and in a fresh clone |
 | AC31 | README | zero-context walkthrough in Verify |
 
 ## Risks and spikes

@@ -1,7 +1,7 @@
 # Agentic Eval Sandbox: Spec
 
 **Track:** Full   **Product stage:** Introduction
-**Status:** Agreed (user sign-off 2026-10-29)   **Last updated:** 2026-10-29
+**Status:** Built (2026-10-30; live checks L1–L5 pending AWS credentials)   **Last updated:** 2026-10-29
 
 This spec distills [requirements.md](../requirements.md), [trace-contract.md](../trace-contract.md) and the organizer docs ([Vision](../Clay-Foundry-Vision-Hackathon.md), [Technical](../Clay-Foundry-Technical-Hackathon.md)). This file is the build contract. Where it departs from those documents, the departure is listed under *Assumptions and open questions*.
 
