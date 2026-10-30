@@ -22,6 +22,27 @@ The sweep therefore **calls every model** with the exact features the harness us
 | `converse` | non-streaming Converse | judge, summarizer |
 | `temperature` | accepts `inferenceConfig.temperature` | configs that set it |
 
+## Live agent runs (adb-001, Nova 2 Lite judge, 2026-10-30)
+
+These are real `foundry run` and `foundry evaluate` runs: the same prompt, the same live limits (12 model calls, 200k input tokens), and the real RODA MCP server.
+
+| Agent model | Status | Model calls | Tool calls (errors) | Plan words | Workflow | Output | Overall |
+|---|---|---|---|---|---|---|---|
+| `us.anthropic.claude-sonnet-4-6` | succeeded | 5 | 9 (0) | 923 | 1.00 | 1.00 | 1.00 |
+| `us.anthropic.claude-haiku-4-5-20251001-v1:0` | succeeded | 3 | 7 (0) | 798 | 1.00 | 1.00 | 1.00 |
+| `us.moonshotai.kimi-k3` | succeeded | 4 | 9 (0) | 507 | 1.00 | 1.00 | 1.00 |
+| `mistral.mistral-large-3-675b-instruct` | succeeded | 2 | 4 (0) | 717 | 1.00 | 1.00 | 1.00 |
+| `zai.glm-5` | succeeded | 4 | 10 (0) | 655 | 1.00 | 1.00 | 1.00 |
+| `deepseek.v3.2` | succeeded | 10 | 9 (0) | 636 | 0.90 | 1.00 | 0.95 |
+| `us.amazon.nova-pro-v1:0` | succeeded | 5 | 6 (0) | 297 | 1.00 | 0.67 | 0.83 |
+| `openai.gpt-oss-120b-1:0` | **failed**: hit `max_model_calls (12)` | 12 | 12 (0) | none | 0.45 | 0.00 | 0.23 |
+| `qwen.qwen3-235b-a22b-2507-v1:0` | **failed**: hit `max_model_calls (12)` | 12 | 15 (0) | none | 0.45 | 0.00 | 0.23 |
+
+**Reading this:**
+- **The workflow score separates the models.** gpt-oss-120b and Qwen3 235B never stopped exploring and never wrote a plan, and DeepSeek V3.2 used 10 of 12 calls.
+- **The output score barely separates them.** The judge gave 4/4 on every criterion to six different plans and 3/4 across the board to Nova Pro's shorter one. It isn't calibrated (follow-up D-6), so treat output scores as coarse.
+- **This is one prompt, one run per model.** Results vary between runs. A real comparison needs all five prompts and repeats.
+
 ## Usable as the agent (all probes passed in both runs)
 
 | Provider | Model ID to put in config | `temperature` |
@@ -37,7 +58,7 @@ The sweep therefore **calls every model** with the exact features the harness us
 | Qwen | `qwen.qwen3-235b-a22b-2507-v1:0`, `qwen.qwen3-next-80b-a3b`, `qwen.qwen3-32b-v1:0`, `qwen.qwen3-coder-480b-a35b-v1:0`, `qwen.qwen3-coder-30b-a3b-v1:0`, `qwen.qwen3-vl-235b-a22b` | ok |
 | Z.AI | `zai.glm-5`, `zai.glm-4.7`, `zai.glm-4.7-flash` | ok |
 
-Passing these probes means a model *can* drive the harness. It says nothing about how good its plans are; that's what `foundry evaluate` is for. Only the three models marked live-tested have completed a real ADB run so far.
+Passing these probes means a model *can* drive the harness. It says nothing about how good its plans are; that's what `foundry evaluate` is for. See *Live agent runs* above for the nine models that have completed a real ADB run.
 
 ## Unreliable as the agent (passed once, failed once)
 
