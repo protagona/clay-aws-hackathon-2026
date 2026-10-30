@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Foundry Eval Sandbox{% endblock %}</title>
+<style>
+:root { --bg:#f7f7f5; --fg:#1c1c1a; --muted:#6b6b66; --card:#ffffff; --line:#e2e2dc; --accent:#2f5d8a;
+        --ok:#2e7d4f; --bad:#b3412f; --warn:#9a6a00; --banner:#fdecea; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#161615; --fg:#ececea; --muted:#a3a39c; --card:#1f1f1d; --line:#33332f; --accent:#86b1dd;
+          --ok:#6cc08f; --bad:#e58a78; --warn:#e0b85c; --banner:#3a1f1a; }
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 20px 16px 48px; }
+a { color: var(--accent); }
+header.top { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; justify-content:space-between; margin-bottom:20px; }
+h1 { font-size: 20px; margin: 0; }
+form.start { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+label { font-size: 13px; color: var(--muted); }
+select, button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+button { background: var(--accent); border-color: var(--accent); color: #fff; cursor: pointer; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+button.link { background: none; border: none; color: var(--accent); padding: 0; text-decoration: underline; }
+.banner { background: var(--banner); border: 1px solid var(--bad); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;
+          display:flex; gap:12px; justify-content:space-between; align-items:center; flex-wrap:wrap; }
+.grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; text-decoration:none; color: inherit; display:block; }
+a.card:hover, a.card:focus-visible { border-color: var(--accent); outline: none; }
+.card .prompt { font-weight: 600; }
+.card .model, .card .when, .card .footer { color: var(--muted); font-size: 13px; }
+.card .headline { font-size: 30px; font-weight: 600; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
+.card .headline.word { font-size: 18px; color: var(--muted); }
+.card .sub { font-size: 13px; font-variant-numeric: tabular-nums; }
+.status-succeeded { color: var(--ok); } .status-failed, .status-timeout { color: var(--bad); } .status-running { color: var(--warn); }
+.empty { color: var(--muted); padding: 24px 0; }
+.empty code { background: var(--card); border: 1px solid var(--line); padding: 2px 6px; border-radius: 4px; }
+.runhead { border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 16px; }
+.runhead .scores { font-size: 18px; font-variant-numeric: tabular-nums; margin-top: 6px; }
+.note { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--warn); padding: 8px 12px; border-radius: 6px; margin: 12px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; display:block; overflow-x:auto; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.report h1 { font-size: 20px; } .report h2 { font-size: 17px; margin-top: 24px; }
+.wrap { overflow-wrap: anywhere; }
+</style>
+</head>
+<body><main>{% block body %}{% endblock %}</main></body>
+</html>

@@ -93,7 +93,20 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_ui(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from foundry.config import project_root
+    from foundry.ui.app import create_app
+
+    app = create_app(args.runs_dir, project_root(), port=args.port)
+    print(f"Foundry UI on http://127.0.0.1:{args.port}", flush=True)
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    return 0
+
+
 COMMANDS = {
+    "ui": _cmd_ui,
     "run": _cmd_run,
     "evaluate": _cmd_evaluate,
     "validate": _cmd_validate,
