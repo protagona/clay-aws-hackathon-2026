@@ -62,3 +62,12 @@ def test_bedrock_configs_differ_only_in_model_id():
     b = open("config/bedrock-alt.toml").read().splitlines()
     diff = [(x, y) for x, y in zip(a, b, strict=True) if x != y]
     assert diff == [('id = "us.anthropic.claude-sonnet-4-6"', 'id = "us.anthropic.claude-haiku-4-5-20251001-v1:0"')]
+
+
+def test_kimi_config_omits_temperature():
+    """Kimi K3 rejects inferenceConfig.temperature (live, 2026-10-30); its config must not set one."""
+    cfg = load_config("config/bedrock-kimi.toml")
+    assert cfg.model.id == "us.moonshotai.kimi-k3" and cfg.model.temperature is None
+    agent = build_provider(cfg.model, prompt_id="adb-001", max_tokens=cfg.limits.max_tokens,
+                           timeout_s=cfg.limits.model_timeout_s, retries=cfg.limits.model_retries)
+    assert "temperature" not in agent.strands_model().get_config()

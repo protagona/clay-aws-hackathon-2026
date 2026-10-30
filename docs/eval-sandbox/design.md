@@ -520,6 +520,22 @@ Mitigations:
   - `aws service-quotas list-service-quotas --service-code bedrock --region us-west-2` and `aws bedrock-runtime converse`, run 2026-10-30
   - Anthropic pricing page, accessed 2026-10-29: Sonnet 4.6 $3/$15 per million tokens, Haiku 4.5 $1/$5; plus the 10% regional/geo premium on Bedrock
 
+### ADR-9: Kimi K3 as a third, non-Anthropic agent; model capability decided by probing, not quotas (2026-10-30)
+
+- **Context:**
+  - The user asked for Kimi K3 in the model mix and for a real inventory of usable models.
+  - Kimi K3 failed its first live run with `ValidationException: This model doesn't support the temperature field`.
+  - An earlier quota-based answer had listed models that turn out to be access-denied (OpenAI GPT-5.x/6.x) or that can't do streaming tool use, which is how Strands calls Bedrock (Meta Llama).
+- **Decision:**
+  - Add `config/bedrock-kimi.toml`, with agent `us.moonshotai.kimi-k3` and **no `temperature`** line. The Nova 2 Lite judge is unchanged.
+  - Decide model capability only from `scripts/bedrock_model_sweep.py`, which calls each model with the harness's exact features. Results are in [bedrock-models.md](bedrock-models.md).
+- **Why:** `temperature` is optional in `ModelCfg`, so omitting it needs no code change. Probing is the only source that reflects this account's real access.
+- **Reversibility:** easy.
+- **Sources:**
+  - live ConverseStream calls on 2026-10-30, where streaming, system prompt and tools succeeded and `temperature` was rejected
+  - two sweep runs on 2026-10-30
+  - Kimi K3 live run: succeeded, 9 RODA calls, overall 1.00 under the Nova judge
+
 ## Failure modes
 
 | Failure | Detection | Behavior | Recovery |

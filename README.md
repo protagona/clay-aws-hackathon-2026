@@ -90,7 +90,13 @@ On Bedrock, with credentials:
 - `config/bedrock.toml` runs the agent on Claude Sonnet 4.6, with a Nova 2 Lite judge.
 - `config/bedrock-alt.toml` runs the agent on Claude Haiku 4.5.
 
-These were the Claude models with usable quotas in the sandbox account on 2026-10-30; see design ADR-8.
+- `config/bedrock-kimi.toml` runs the agent on Moonshot Kimi K3. It has no `temperature`, because Kimi K3 rejects it.
+
+Which models can actually run the agent in this account? See [docs/eval-sandbox/bedrock-models.md](docs/eval-sandbox/bedrock-models.md), produced by calling every model. Re-check after quota or access changes with:
+
+```bash
+AWS_PROFILE=<profile> uv run python scripts/bedrock_model_sweep.py /tmp/models.json
+```
 
 ```bash
 uv run foundry run --config config/bedrock.toml     --prompt adb-001
