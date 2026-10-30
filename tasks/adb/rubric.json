@@ -1,0 +1,60 @@
+{
+  "rubric_id": "adb-rubric-v0",
+  "task_id": "adb",
+  "version": "0.1",
+  "description": "Stand-in rubric for ADB-style dataset-build plans, to be replaced by Clay's rubric (K-1). Scores the plan the agent produces, not its tool use.",
+  "criteria": [
+    {
+      "id": "data-fit",
+      "name": "Data fit",
+      "description": "The plan chooses open datasets that can actually answer the question (spatial/temporal resolution, coverage, spectral bands) and confirms them with the registry rather than assuming.",
+      "max": 4,
+      "weight": 1,
+      "levels": {
+        "1": "Datasets are missing, invented, or clearly unsuited to the question.",
+        "2": "Plausible datasets but fit is unexamined or partly wrong (e.g. wrong resolution or coverage).",
+        "3": "Suitable datasets with the main fit considerations stated.",
+        "4": "Well-suited, registry-confirmed datasets with resolution, coverage and timing justified against the question."
+      }
+    },
+    {
+      "id": "feasibility",
+      "name": "Access and feasibility",
+      "description": "Access details are concrete and correct: bucket or endpoint, region, format, license, and cost implications such as Requester-Pays.",
+      "max": 4,
+      "weight": 1,
+      "levels": {
+        "1": "No access details, or wrong ones.",
+        "2": "Some access details; license or cost ignored.",
+        "3": "Bucket, region, format and license stated; cost mentioned.",
+        "4": "Complete, correct access details including cost controls (e.g. pre-staging a sample in-region for Requester-Pays data)."
+      }
+    },
+    {
+      "id": "method",
+      "name": "Method",
+      "description": "Processing steps are concrete, ordered, and sufficient to produce the dataset.",
+      "max": 4,
+      "weight": 1,
+      "levels": {
+        "1": "No method, or a vague restatement of the goal.",
+        "2": "Some steps, but gaps that would block a build.",
+        "3": "A complete, ordered method with minor gaps.",
+        "4": "A complete, ordered, reproducible method including validation of the result."
+      }
+    },
+    {
+      "id": "limitations",
+      "name": "Limitations",
+      "description": "The plan states gaps, risks and uncertainties honestly.",
+      "max": 4,
+      "weight": 1,
+      "levels": {
+        "1": "No limitations stated.",
+        "2": "Generic limitations not tied to the chosen data.",
+        "3": "Specific limitations of the chosen data and method.",
+        "4": "Specific limitations with mitigations or next steps."
+      }
+    }
+  ]
+}

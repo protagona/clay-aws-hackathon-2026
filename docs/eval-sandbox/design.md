@@ -443,7 +443,7 @@ Mitigations:
 ### ADR-3: Offline mode fakes only the models. MCP is the real RODA.
 
 - **Context:** There are no AWS credentials. RODA needs none, which was verified by running it with AWS config set to `/dev/null`. The user asked to call the real RODA.
-- **Decision:** `config/offline.toml` uses the real RODA 0.1.7 through `uvx`. A test-only fault server (`tests/mcp_fault_server.py`, built on `mcp.server.fastmcp`) gives the timeout, error and failed-start cases. Tests that need RODA are marked `network`.
+- **Decision:** `config/offline.toml` uses the real RODA 0.1.7 through `uvx`. A test-only fault server (`tests/mcp_fault_server.py`, built on `mcp.server.mcpserver.MCPServer`, which is what `FastMCP` became in mcp 2.x; see the `mcp/server/fastmcp.py` stub in mcp 2.1.1) gives the timeout, error and failed-start cases. Tests that need RODA are marked `network`.
 - **Why:** Offline runs then show real tool traffic and real RODA quirks, such as errors reported inside a successful result.
 - **Trade-off accepted:** the happy-path tests depend on network access and on the registry staying up. Tests assert structure, never RODA content.
 - **Reversibility:** easy.
@@ -508,7 +508,7 @@ Mitigations:
 | Failure | Detection | Behavior | Recovery |
 |---|---|---|---|
 | MCP server doesn't start or handshake | `MCPClientInitializationError` within `mcp_start_timeout_s` | `note` step, run `failed`, exit 1 | Fix the command or network and rerun |
-| `uvx` not on PATH | `shutil.which` is None | Config error before the run directory is created, exit 2: `Command 'uvx' not found on PATH. Install uv (see README).` | Install uv |
+| `uvx` not on PATH | `shutil.which` is None | Treated as a failed MCP start (AC9c): `note` step `MCP server 'roda' failed to start: command 'uvx' not found on PATH. Install uv (see README).`, run `failed`, exit 1 | Install uv |
 | Tool error (MCP `isError` or RODA JSON status) | Hook | Errored step; the model sees the error | The agent may retry, which links `retry_of` |
 | Unknown tool or bad arguments | Hook (`selected_tool` None or schema failure) | Errored step marked `invalid`; the model gets an error result | — |
 | Model throttled or erroring | botocore retries, then `AfterModelCallEvent.exception` | Errored `llm_call`, run `failed`, exit 1 | Rerun later |
@@ -644,7 +644,7 @@ This is greenfield, so there's no migration. Rollback means reverting commits on
 ## Risks and spikes
 
 - **Riskiest assumption: Strands hooks are enough for the trace.** Settled by the spike (ADR-1).
-- **Open: watchdog cancel during an in-flight MCP call produces an `AfterToolCallEvent` we can mark as cancelled.** Strands documents cancellation during MCP tool execution, but the event's exact shape on cancel hasn't been observed yet. It's checked in Build slice 3 with the fault server's sleep tool. Fallback: the runner records the in-flight tool from `BeforeToolCallEvent` state when no After event arrives.
+- **Resolved in slice 3 (observed 2026-10-30):** `agent.cancel()` during an in-flight MCP call fires `AfterToolCallEvent` with `exception` set to "Tool execution cancelled locally; remote execution may have continued", not with `cancel_message`. TraceHooks records any errored or cancelled tool call that finishes after the watchdog fired as `cancelled: run timed out`. MCP results also carry `structuredContent`, so the 8,000-character cap rebuilds the result instead of patching `content`. *Original note:* watchdog cancel during an in-flight MCP call produces an `AfterToolCallEvent` we can mark as cancelled. Strands documents cancellation during MCP tool execution, but the event's exact shape on cancel hasn't been observed yet. It's checked in Build slice 3 with the fault server's sleep tool. Fallback: the runner records the in-flight tool from `BeforeToolCallEvent` state when no After event arrives.
 - **Unverified: Bedrock model access in the target account.** It's checked in L1. Fallback: switch model ids in config.
 - **Network-dependent tests:** RODA or PyPI outages make `network` tests fail. CI can run `-m "not network"`.
 
@@ -710,7 +710,8 @@ Additive contract fields go into `docs/trace-contract.md` in the slice that firs
    - Commit.
 3. **Harness, the riskiest slice (AC1, AC2, AC4–AC9d, AC15).**
    - `config.py`, covering every section in the design's TOML example: validation, `ConfigError` messages, the requirement that `jsonl` is in `tracers`, `s3_uri` holding only a bucket, and scoring weights summing to 1.
-   - `models/scripted.py`: `ScriptedModel(strands.models.Model)` replays turns as the stream events used in the spike, applies the token formula, raises `ScriptExhausted` past the end, and its `complete()` replays text turns.
+   - `models/base.py` holds the `Provider` protocol and `CompletionRequest`/`Completion`. `models/registry.py` holds `build_provider`.
+   - `models/scripted.py`: `ScriptedModel(strands.models.Model)` replays the turns of the script format in *Data and contracts* → "Scripted model script". It emits the Converse-style stream events that the pre-Build spike (ADR-1) confirmed Strands accepts: `messageStart`, `contentBlockStart`/`contentBlockDelta` (toolUse input as a JSON string, or text), `contentBlockStop`, `messageStop` with `stopReason` `tool_use` or `end_turn`, then `metadata.usage`. applies the token formula, raises `ScriptExhausted` past the end, and its `complete()` replays text turns.
    - `models/offline.py` and `models/registry.py`.
    - `tasks/adb/`: `prompts.jsonl` (5 prompts), `rubric.json`, `system.txt`, and scripts `scripted-a/adb-00{1..5}.json` and `scripted-b/…` using real RODA tool names.
    - `harness/mcp.py`: resolves the absolute command with `shutil.which`, building the environment from an allowlist.
@@ -730,7 +731,7 @@ Additive contract fields go into `docs/trace-contract.md` in the slice that firs
         - AC4: `run.json` is `running` with `limits` during a run (read from a hook in an in-process test), and `run.json` is single-line. The `scores.json` single-line check is in slice 4.
         - AC7: tokens and cost, and a model with no price giving null cost
         - the 8,000-character tool-result cap
-        - an MCP `command` not found on PATH exits 2 with no run directory. This is a config error, per the *Failure modes* row "`uvx` not on PATH", and it's distinct from AC9c, which covers a resolved command that then fails to start.
+        - an MCP `command` not found on PATH is handled like AC9c: the run ends `failed`, exits 1, and has a `note` step naming the server and the missing command.
      5. Test placement for AC30: only AC5 and AC15 (subprocess runs against `config/offline*.toml`) and one RODA error-detection test carry the `network` marker. AC6, AC8, AC9, AC9b, AC9c and AC9d run against `tests/mcp_fault_server.py` only, using test-local configs that name no RODA server. Slice 3 ends by running `uv run pytest -m "not network"` with network access disabled (`HTTPS_PROXY=http://127.0.0.1:9`, `UV_OFFLINE=1`) to prove the split.
    - If a confirmed behavior differs from the design, update the design before continuing.
    - Commit. Further commits within the slice are fine.

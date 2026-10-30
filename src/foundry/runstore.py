@@ -64,8 +64,12 @@ class RunDir:
         _atomic_write(self.path / "run.json", (dump_line(run) + "\n").encode())
 
     def append_step(self, step: Step) -> None:
+        data = step.model_dump(exclude_none=True)
+        if step.type == "llm_call":  # the contract records unknown token counts/cost as explicit nulls
+            for key in ("tokens_in", "tokens_out", "cost_usd"):
+                data.setdefault(key, None)
         with open(self.path / "trace.jsonl", "a", encoding="utf-8") as f:
-            f.write(dump_line(step) + "\n")
+            f.write(dump_line(data) + "\n")
             f.flush()
 
     def touch_trace(self) -> None:

@@ -1,0 +1,25 @@
+[
+  {
+    "tool": "search_datasets",
+    "input": {
+      "query": "sentinel-2",
+      "limit": 3
+    }
+  },
+  {
+    "tool": "search_datasets",
+    "input": {
+      "query": "landsat",
+      "limit": 3
+    }
+  },
+  {
+    "tool": "get_dataset_details",
+    "input": {
+      "slug": "glad-landsat-ard"
+    }
+  },
+  {
+    "text": "Plan: compare Sentinel-2 L2A (10 m, 5-day revisit) and GLAD Landsat ARD (30 m, long archive); recommend Sentinel-2 for recent monitoring with Landsat for history. Steps: cloud-mask with SCL, build quarterly medians, compute forest-loss indicators. Limitations: persistent tropical cloud cover; license and egress costs vary."
+  }
+]

@@ -1,0 +1,48 @@
+# Offline mode: no AWS credentials needed. The agent model is scripted and the judge and summarizer
+# are deterministic stand-ins; the MCP server is the real RODA server (needs network access).
+
+[task]
+id = "adb"
+
+[model]                      # the agent's model
+provider = "scripted"
+id = "scripted-a"
+script = "tasks/adb/scripts/scripted-a/{prompt_id}.json"
+
+[judge]
+provider = "offline"
+id = "offline-judge"
+
+[summarizer]
+provider = "offline"
+id = "offline-summarizer"
+
+[limits]
+max_model_calls = 20
+max_input_tokens = 600000
+max_seconds = 300
+max_tokens = 1024
+model_timeout_s = 120
+model_retries = 2
+mcp_start_timeout_s = 60
+
+[mcp.servers.roda]
+command = "uvx"
+args = ["awslabs.roda-mcp-server@0.1.7"]
+package = "awslabs.roda-mcp-server"
+version = "0.1.7"
+error_detection = "json_status"   # RODA reports errors as {"status": "error"} inside a successful MCP result
+
+[tracing]
+tracers = ["jsonl"]
+
+[storage]
+s3_uri = ""
+
+[scoring]
+workflow_weight = 0.5
+output_weight = 0.5
+
+[prices]                     # USD per million tokens (Bedrock geo/regional = first-party + 10%)
+"us.anthropic.claude-sonnet-5-5" = { input = 2.20, output = 11.00 }
+"us.anthropic.claude-haiku-5-5"  = { input = 0.11, output = 0.55 }

@@ -1,0 +1,18 @@
+[
+  {
+    "tool": "search_datasets",
+    "input": {
+      "query": "building height",
+      "limit": 3
+    }
+  },
+  {
+    "tool": "get_dataset_details",
+    "input": {
+      "slug": "ghs-built-h"
+    }
+  },
+  {
+    "text": "Plan: use GHSL building height (ghs-built-h) for Southeast Asian secondary cities; clip to city boundaries and summarise per grid cell. Limitations: 100 m resolution estimates, not per-building heights."
+  }
+]

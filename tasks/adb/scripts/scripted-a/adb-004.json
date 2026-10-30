@@ -1,0 +1,25 @@
+[
+  {
+    "tool": "search_datasets",
+    "input": {
+      "query": "Clay",
+      "limit": 3
+    }
+  },
+  {
+    "tool": "get_dataset_details",
+    "input": {
+      "slug": "clay-v1-5-naip-2"
+    }
+  },
+  {
+    "tool": "search_stac_endpoints",
+    "input": {
+      "query": "naip",
+      "limit": 3
+    }
+  },
+  {
+    "text": "Plan: chip NAIP imagery, reuse Clay v1.5 NAIP embeddings for retrieval, generate captions with a vision-language model, and validate captions by retrieval recall on held-out queries such as 'railroads'. Limitations: caption quality depends on the captioning model; NAIP is US-only."
+  }
+]

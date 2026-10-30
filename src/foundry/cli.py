@@ -46,7 +46,37 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return 1 if any(v.severity == "error" for v in violations) else 0
 
 
+def _cmd_run(args: argparse.Namespace) -> int:
+    from foundry.config import ConfigError, load_config
+    from foundry.harness.runner import run
+    from foundry.runstore import is_valid_run_id
+    from foundry.tasks import UnknownPrompt, resolve_prompt
+
+    try:
+        cfg = load_config(args.config)
+        prompt = resolve_prompt(cfg.task.id, args.prompt)
+    except (ConfigError, UnknownPrompt) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    if args.run_id is not None and not is_valid_run_id(args.run_id):
+        print(f"Invalid --run-id {args.run_id!r}: must match ^[A-Za-z0-9._-]+$", file=sys.stderr)
+        return 2
+    try:
+        run_dir, status = run(cfg, prompt, args.runs_dir, run_id=args.run_id, config_path=args.config)
+    except (FileNotFoundError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    except FileExistsError:
+        print(f"Run directory already exists for --run-id {args.run_id}", file=sys.stderr)
+        return 2
+    print(run_dir)
+    if status != "succeeded":
+        print(f"Run {status}: see {run_dir / 'trace.jsonl'}", file=sys.stderr)
+    return 0 if status == "succeeded" else 1
+
+
 COMMANDS = {
+    "run": _cmd_run,
     "validate": _cmd_validate,
 }
 

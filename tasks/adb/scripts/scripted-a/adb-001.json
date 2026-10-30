@@ -1,0 +1,18 @@
+[
+  {
+    "tool": "search_datasets",
+    "input": {
+      "query": "NAIP",
+      "limit": 3
+    }
+  },
+  {
+    "tool": "get_dataset_details",
+    "input": {
+      "slug": "naip"
+    }
+  },
+  {
+    "text": "Plan: build a Central Valley cropland-change layer from NAIP on AWS (slug naip). Access: naip-analytic (4-band MRF) / naip-visualization (RGB COG) in us-west-2; Requester-Pays, so pre-stage a small sample in-region. Steps: 1) select 2020 and 2022 tiles for the Central Valley; 2) compute NDVI from the 4-band imagery; 3) classify cropland vs non-cropland per year with a simple threshold plus a few labelled samples; 4) difference the years and validate against a held-out sample. Limitations: NAIP is leaf-on summer imagery collected every 2-3 years; Requester-Pays transfer costs; classification thresholds vary by crop."
+  }
+]

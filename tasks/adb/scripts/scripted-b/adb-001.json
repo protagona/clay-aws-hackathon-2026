@@ -1,0 +1,19 @@
+[
+  {
+    "tool": "list_datasets",
+    "input": {
+      "tag": "aerial imagery",
+      "limit": 5
+    }
+  },
+  {
+    "tool": "search_datasets",
+    "input": {
+      "query": "NAIP",
+      "limit": 2
+    }
+  },
+  {
+    "text": "Use NAIP (us-west-2, Requester-Pays). Compute NDVI for 2020 and 2022, classify cropland, difference. Limitation: 2-3 year revisit."
+  }
+]
