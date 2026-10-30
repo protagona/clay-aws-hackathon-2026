@@ -35,6 +35,20 @@ def _build_parser() -> argparse.ArgumentParser:
     ba.add_argument("--max-cost", type=float, help="stop launching runs once recorded cost (USD) reaches this")
     ba.add_argument("--out", required=True, help="batch directory (re-run the same command to resume)")
 
+    im = sub.add_parser("import", help="turn OpenTelemetry GenAI traces (OTLP/JSON) from any agent into run dirs")
+    im.add_argument("file", help="OTLP/JSON: one ExportTraceServiceRequest, or JSON Lines of them")
+    im.add_argument("--task", required=True, help="task id the runs belong to (selects the rubric for evaluate)")
+    im.add_argument("--prompt-id", default="imported")
+    im.add_argument("--runs-dir", default="runs")
+    im.add_argument("--config", help="config whose [prices] are used to compute cost_usd")
+
+    rc = sub.add_parser("receive", help="OTLP/HTTP receiver on 127.0.0.1: incoming agent traces become run dirs")
+    rc.add_argument("--task", required=True)
+    rc.add_argument("--prompt-id", default="imported")
+    rc.add_argument("--runs-dir", default="runs")
+    rc.add_argument("--port", type=int, default=4318)
+    rc.add_argument("--config", help="config whose [prices] are used to compute cost_usd")
+
     va = sub.add_parser("validate", help="check a run directory against the trace contract")
     va.add_argument("run_dir")
 
@@ -128,7 +142,35 @@ def _cmd_batch(args: argparse.Namespace) -> int:
     return batch_main(args)
 
 
+def _cmd_import(args: argparse.Namespace) -> int:
+    from foundry.config import ConfigError, load_eval_config
+    from foundry.importer import ImportError_, import_spans, spans_from_file
+    from foundry.runstore import is_valid_run_id
+
+    if not is_valid_run_id(args.prompt_id):
+        print(f"Invalid --prompt-id {args.prompt_id!r}: must match ^[A-Za-z0-9._-]+$", file=sys.stderr)
+        return 2
+    try:
+        prices = load_eval_config(args.config).prices if args.config else None
+        paths = import_spans(spans_from_file(Path(args.file)), Path(args.runs_dir), args.task, args.prompt_id,
+                             str(args.file), prices)
+    except (ImportError_, ConfigError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    for p in paths:
+        print(p)
+    return 0
+
+
+def _cmd_receive(args: argparse.Namespace) -> int:
+    from foundry.receiver import main as receive_main
+
+    return receive_main(args)
+
+
 COMMANDS = {
+    "import": _cmd_import,
+    "receive": _cmd_receive,
     "batch": _cmd_batch,
     "ui": _cmd_ui,
     "run": _cmd_run,

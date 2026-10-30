@@ -105,6 +105,8 @@ These were added by the eval sandbox build ([spec](eval-sandbox/spec.md), [desig
 - `config`: the path of the config file used.
 - `mcp_servers[].error_detection`: `mcp`, or `json_status` for servers such as RODA that report errors inside a successful MCP result.
 
+- `source` (imported runs only): `{"format": "otlp", "file": <path or "receiver">, "trace_id", "span_id", "agent"}`. These are runs from another agent's OpenTelemetry spans (`foundry import` / `foundry receive`); `tracer` is `otel-import`, and `mcp_servers` is empty.
+
 ### trace.jsonl
 
 - `tokens_in_cached` on an `llm_call`: the part of `tokens_in` served from the model's prompt cache. `tokens_in` always includes cached tokens.
