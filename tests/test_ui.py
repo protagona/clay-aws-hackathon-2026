@@ -321,3 +321,21 @@ def test_render_blocks_protocol_relative_links():  # F6
     html = render("[a](//evil.example/x) [b](/\\\\evil.example) [c](https://ok.example) [d](runs/x)")
     assert 'href="//evil' not in html and "%5Cevil" not in html
     assert 'href="https://ok.example"' in html and 'href="runs/x"' in html
+
+
+def test_auto_refresh_only_while_in_progress(tmp_path):  # increment 2, R4
+    runs = tmp_path / "runs"
+    d = _seed(runs, "clean", "recovered")
+    _, c = _client(runs)
+    refresh = '<meta http-equiv="refresh" content="3">'
+    assert refresh not in c.get("/").text and refresh not in c.get("/runs/fixture-clean").text
+    rj = json.loads((d["clean"] / "run.json").read_text())
+    rj["status"] = "running"
+    (d["clean"] / "run.json").write_text(json.dumps(rj))
+    assert refresh in c.get("/").text and refresh in c.get("/runs/fixture-clean").text
+    assert refresh not in c.get("/runs/fixture-recovered").text
+    token = lock.acquire(d["recovered"], owner="ui")  # an evaluation in progress
+    try:
+        assert refresh in c.get("/runs/fixture-recovered").text
+    finally:
+        lock.release(d["recovered"], token)

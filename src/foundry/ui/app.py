@@ -123,8 +123,10 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765)
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
-        return page(request, "index.html", cards=_cards(st), configs=_configs(st), prompts=_prompt_ids(st),
-                    banners=[j for j in st.jobs.values() if j.failed_visibly])
+        cards = _cards(st)
+        busy = any(c.get("headline") in ("running", "evaluating") for c in cards)  # R4: refresh while in progress
+        return page(request, "index.html", cards=cards, configs=_configs(st), prompts=_prompt_ids(st),
+                    banners=[j for j in st.jobs.values() if j.failed_visibly], refresh=busy)
 
     @app.get("/runs/{run_id}", response_class=HTMLResponse)
     def run_page(request: Request, run_id: str):
@@ -144,8 +146,10 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765)
                 steps = rd.read_steps(drop_truncated_last=True)
         except ValueError:
             pass
+        evaluating = lock.is_locked(path)
         return page(request, "run.html", run=run, scores=None if interrupted else scores, report_html=report_html,
-                    steps=steps, interrupted=interrupted, evaluating=lock.is_locked(path))
+                    steps=steps, interrupted=interrupted, evaluating=evaluating,
+                    refresh=evaluating or run.get("status") == "running")
 
     @app.post("/runs")
     def start_run(request: Request, prompt_id: str = Form(""), config: str = Form(""), csrf: str = Form("")):

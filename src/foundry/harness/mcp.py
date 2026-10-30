@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
 import threading
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -14,6 +16,12 @@ from mcp.client.stdio import stdio_client
 from strands.tools.mcp import MCPClient
 
 from foundry.config import McpServerCfg
+
+# strands-agents 1.62.0 bug: when an MCP server fails to start, MCPClient.stop() schedules `_set_close_event` on an
+# event loop that has already stopped, so Python warns that the coroutine was never awaited (mcp_client.py:684-690).
+# The failure itself is handled and recorded (AC9c); only this exact message is silenced.
+warnings.filterwarnings("ignore", message=r"coroutine 'MCPClient\.stop\.<locals>\._set_close_event' was never awaited",
+                        category=RuntimeWarning)
 
 ENV_ALLOWLIST = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "SYSTEMROOT")
 
@@ -64,7 +72,10 @@ def start_servers(servers: dict[str, McpServerCfg], startup_timeout: int, log_di
             command = shutil.which(cfg.command)
             if command is None:
                 raise McpStartError(name, f"command '{cfg.command}' not found on PATH. Install it (see README) or fix [mcp.servers.{name}] command.")
-            params = StdioServerParameters(command=command, args=cfg.args, env=server_env(cfg))
+            # Wrap the server in the reaper so it can't outlive a harness that is SIGKILLed.
+            params = StdioServerParameters(command=sys.executable,
+                                           args=["-m", "foundry.harness.reaper", "--", command, *cfg.args],
+                                           env=server_env(cfg))
             errlog = open(log_dir / f"mcp-{name}.log", "a", encoding="utf-8")  # noqa: SIM115 (lives as long as the server)
             started.logs.append(errlog)
             client = MCPClient(lambda p=params, e=errlog: stdio_client(p, errlog=e), startup_timeout=startup_timeout)
