@@ -1,0 +1,1 @@
+{"kind": "text", "text": "Plan: use satellite imagery of California to map cropland. Download the images, classify crops with machine learning, and compare the two years to see what changed. This will give a good dataset.", "artifacts": []}

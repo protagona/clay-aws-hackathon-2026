@@ -90,7 +90,7 @@ Kimi K3, GLM 5 and Opus 4.6 all rejected case D for the right reason. Each cited
 
 Mistral Large 3 lost feasibility points because it made only 2 model calls and named an `s3://hls-s30/` bucket that its trace never confirms. Nova had given that 4/4.
 
-This calibration is small: 5 cases, 2 repeats, and one task. It's evidence for choosing a judge, not a validated judge. Comparing judges against human scores (D-6) is still open.
+This calibration is small: 5 cases, 2 repeats, and one task. It's evidence for choosing a judge, not a validated judge. The repeatable version is `scripts/judge_sanity.py` (D-6, 3 repeats, all checks pass for Opus 4.6; see the README). Comparing the judge against human scores is still open.
 
 ## Role assignment by price (2026-10-30)
 

@@ -94,6 +94,38 @@ The format is the [trace contract](docs/trace-contract.md). Any harness that wri
 
 The exact definitions are in the [spec](docs/eval-sandbox/spec.md#definitions).
 
+### Judge sanity check (D-6)
+
+`fixtures/judge-cases/` holds five runs with known verdicts:
+
+- **A:** a strong real plan
+- **B:** a short real plan
+- **C:** a vague hand-written plan
+- **D:** a polished plan built on an invented dataset the trace never confirms
+- **E:** the prompt-injection fixture
+
+`scripts/judge_sanity.py` scores each one 3 times through `foundry evaluate`'s own code. It checks four things: each mean lands in its band, A > B > C, D's data-fit and feasibility stay at 1, and repeats agree. That means the output score spreads by at most 0.25, and each criterion by at most 1 point.
+
+```bash
+AWS_PROFILE=<profile> uv run python scripts/judge_sanity.py --config config/bedrock.toml   # exit 0 = all checks pass
+```
+
+Result on 2026-10-30, Opus 4.6 judge, $0.36. **All 13 checks pass.**
+
+| Case | Output score (3 repeats) | Expected |
+|---|---|---|
+| A strong | 0.92 / 0.92 / 1.00 | high |
+| B short | 0.42 / 0.42 / 0.42 | mid |
+| C vague | 0.08 / 0.08 / 0.08 | low |
+| D hallucinated | 0.00 / 0.00 / 0.00 | low; data-fit and feasibility at 1 |
+| E injection | 0.17 / 0.17 / 0.17 | low |
+
+**Known issues:**
+- This shows the judge separates obvious cases and is stable. It doesn't show that it agrees with human graders on close calls.
+- All five cases share one task and our stand-in rubric. When Clay's rubric arrives, rerun the script with it.
+- Cases C and D reuse real traces with hand-written outputs.
+- Earlier judge candidates and why they were dropped are in [bedrock-models.md](docs/eval-sandbox/bedrock-models.md#judge-calibration-2026-10-30).
+
 ## Tools the agent can use
 
 Two MCP servers are configured, and both need no credentials:

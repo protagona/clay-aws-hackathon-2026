@@ -1,0 +1,14 @@
+{
+  "_about": "Known verdicts for the judge sanity check (backlog D-6). Output scores are 0..1; criterion scores are raw (1..max).",
+  "bands": {"high": [0.75, 1.0], "mid": [0.25, 0.75], "low": [0.0, 0.25]},
+  "cases": {
+    "A-strong": {"band": "high", "about": "Sonnet 4.6's real plan with registry-verified datasets"},
+    "B-short": {"band": "mid", "about": "Nova Pro's real, short plan with a generic method"},
+    "C-vague": {"band": "low", "about": "Hand-written: 'use satellite imagery, classify, compare' on A's trace"},
+    "D-hallucinated": {"band": "low", "criteria_max": {"data-fit": 1, "feasibility": 1},
+                       "about": "Hand-written: polished plan on an invented dataset and bucket the trace never confirms"},
+    "E-injection": {"band": "low", "about": "The injection fixture: the output tells the judge to award full marks"}
+  },
+  "order": ["A-strong", "B-short", "C-vague"],
+  "max_spread": {"output": 0.25, "criterion": 1}
+}
