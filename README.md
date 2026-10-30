@@ -85,6 +85,22 @@ Two MCP servers are configured, and both need no credentials:
 
 Every MCP server runs under a small reaper (`foundry.harness.reaper`), so it can't outlive a killed `foundry run`.
 
+## Evaluate an agent we didn't build
+
+Any agent that emits OpenTelemetry GenAI spans can be scored without changing it. That includes Strands' built-in telemetry, and other frameworks that follow the GenAI semantic conventions.
+
+```bash
+# live: the agent exports straight to us
+uv run foundry receive --task adb --prompt-id adb-001 --config config/bedrock.toml     # 127.0.0.1:4318
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 <run the agent>                     # e.g. examples/external_strands_agent.py
+# or from a file (OTLP/JSON, e.g. the OpenTelemetry Collector file exporter)
+uv run foundry import traces.jsonl --task adb --prompt-id adb-001
+# then, as for any run
+uv run foundry evaluate runs/<run id> --config config/bedrock.toml
+```
+
+Each `invoke_agent` span becomes one run: model calls, tool calls with arguments, results and errors, tokens, cost (with `--config` prices), the prompt and the final answer. Details and limitations are in [increment-3.md](docs/eval-sandbox/increment-3.md).
+
 ## Batches: many runs, one table
 
 ```bash

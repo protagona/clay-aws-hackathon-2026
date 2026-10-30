@@ -194,6 +194,12 @@ These were the user's picks, mechanical and functional only. The scoring work wa
   - The UI auto-refreshes while something is running.
 - **`foundry batch`:** variants and derived model configs, a concurrency cap, a budget stop, resume and retry, and CSV and Markdown summaries. Live: 4/4 runs in 83 s for $0.79.
 
+## Increment 3 (2026-10-30): evaluating other agents
+
+`foundry import` (OTLP/JSON files) and `foundry receive` (an OTLP/HTTP receiver on 127.0.0.1) turn any agent's OpenTelemetry GenAI spans into run directories that `foundry evaluate` scores unchanged.
+
+Live: a standalone Strands agent on Bedrock with real RODA, not built on our harness (`examples/external_strands_agent.py`), was received, validated and scored (overall 1.00). See [increment-3.md](increment-3.md).
+
 ## Follow-ups
 
 - L4 (`cdk deploy` and S3 mirror) when wanted. Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.

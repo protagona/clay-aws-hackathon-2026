@@ -21,7 +21,7 @@ GRACE_S = 2.0
 
 class Receiver:
     def __init__(self, runs_dir: Path, task_id: str, prompt_id: str, prices: dict | None = None,
-                 port: int = 4318, grace_s: float = GRACE_S, log=print):
+                 port: int = 4318, grace_s: float = GRACE_S, log=lambda msg: print(msg, flush=True)):
         self.runs_dir, self.task_id, self.prompt_id, self.prices = Path(runs_dir), task_id, prompt_id, prices
         self.grace_s, self.log = grace_s, log
         self.lock = threading.Lock()
