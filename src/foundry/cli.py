@@ -24,6 +24,17 @@ def _build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--force", action="store_true")
     ev.add_argument("--lock-held", help=argparse.SUPPRESS)
 
+    ba = sub.add_parser("batch", help="run prompts x variants x repeats, then summarize")
+    ba.add_argument("--config", action="append", required=True, help="a variant config (repeatable)")
+    ba.add_argument("--models", help="comma-separated model ids: one variant each, derived from the single --config")
+    ba.add_argument("--prompts", required=True, help='comma-separated prompt ids, or "all"')
+    ba.add_argument("--repeats", type=int, default=1)
+    ba.add_argument("--concurrency", type=int, default=2)
+    ba.add_argument("--evaluate", action="store_true", help="also run foundry evaluate on each run")
+    ba.add_argument("--eval-config", help="config for evaluation (default: the first variant's config)")
+    ba.add_argument("--max-cost", type=float, help="stop launching runs once recorded cost (USD) reaches this")
+    ba.add_argument("--out", required=True, help="batch directory (re-run the same command to resume)")
+
     va = sub.add_parser("validate", help="check a run directory against the trace contract")
     va.add_argument("run_dir")
 
@@ -111,7 +122,14 @@ def _cmd_ui(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_batch(args: argparse.Namespace) -> int:
+    from foundry.batch import main as batch_main
+
+    return batch_main(args)
+
+
 COMMANDS = {
+    "batch": _cmd_batch,
     "ui": _cmd_ui,
     "run": _cmd_run,
     "evaluate": _cmd_evaluate,
