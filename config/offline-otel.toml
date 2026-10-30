@@ -37,7 +37,7 @@ error_detection = "json_status"   # RODA reports errors as {"status": "error"} i
 tracers = ["jsonl", "otel"]
 
 [tracing.otel]
-endpoint = "http://localhost:6006/v1/traces"   # e.g. Arize Phoenix: uvx arize-phoenix serve
+endpoint = "http://localhost:6006/v1/traces"   # e.g. Arize Phoenix: uvx --from arize-phoenix phoenix serve
 headers_env = ""             # name of an env var holding "k=v,k2=v2" headers (e.g. Langfuse auth); never stored
 export_timeout_s = 10
 service_name = "foundry"
