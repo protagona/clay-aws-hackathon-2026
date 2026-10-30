@@ -25,7 +25,7 @@ def test_unknown_prompt_exits_2_without_run_dir(tmp_path):  # AC1
     runs = tmp_path / "runs"
     proc = foundry("run", "--config", "config/offline.toml", "--prompt", "adb-999", "--runs-dir", str(runs))
     assert proc.returncode == 2
-    assert "Unknown prompt id 'adb-999' for task 'adb'. Available: adb-001, adb-002, adb-003, adb-004, adb-005" in proc.stderr
+    assert "Unknown prompt id 'adb-999' for task 'adb'. Available: adb-001, adb-002, adb-003, adb-004, adb-005, adb-006" in proc.stderr
     assert _run_dirs(runs) == []
 
 
@@ -89,6 +89,8 @@ def test_run_offline_real_roda(tmp_path):  # AC5
     assert any(s["type"] == "llm_call" for s in steps)
     roda = [s for s in steps if s["type"] == "tool_call"]
     assert roda and all(s["server"] == "roda" and s["status"] == "ok" for s in roda)
+    servers = [m["name"] for m in json.loads((run_dir / "run.json").read_text())["mcp_servers"]]
+    assert servers == ["roda", "stac"]
     for s in steps:
         assert {"step", "type", "name", "started_at", "duration_ms", "status"} <= s.keys()
     assert foundry("validate", str(run_dir)).returncode == 0

@@ -1,0 +1,20 @@
+[
+  {
+    "tool": "search_items",
+    "input": {
+      "collection": "sentinel-2-l2a",
+      "bbox": [
+        -120.0,
+        36.6,
+        -119.6,
+        36.9
+      ],
+      "datetime": "2022-06-01/2022-06-30",
+      "limit": 5,
+      "max_cloud_cover": 10
+    }
+  },
+  {
+    "text": "Use the low-cloud June 2022 Sentinel-2 L2A scenes listed by the STAC search; composite with a median after SCL cloud masking."
+  }
+]
