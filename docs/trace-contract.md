@@ -1,0 +1,93 @@
+# Trace contract (draft — ratify during kickoff, first ~90 min)
+
+This is the one agreement that lets everyone work in parallel. The harness **writes** these files; the summarizer, scorer, report, and UI **read** them. Once agreed, anyone can hand-write a sample trace and build against it without waiting for the live agent.
+
+Most fields map onto OpenTelemetry GenAI span attributes (for example, `tokens_in` becomes `gen_ai.usage.input_tokens`). `cost_usd`, `retry_of` and `result_preview` have no standard attribute and would go in as custom attributes. An OTel-based tracer can therefore emit the same data, which is the docs' suggested default.
+
+## Files per run
+
+```
+runs/<run_id>/
+  run.json        # what was asked, with what, and how it ended
+  trace.jsonl     # one step per line, in order
+  output.json     # what the agent produced
+  rubric.json     # snapshot of the rubric/reference used (copied in at scoring time)
+  scores.json     # written by the scorer
+  report.md       # written by the reporter (report.html optional)
+```
+
+`runs/` lives locally and mirrors to S3 (`s3://<bucket>/runs/<run_id>/`).
+
+## run.json
+
+```json
+{
+  "run_id": "2026-11-03T14-02-11Z_adb-001_a1b2",
+  "task_id": "adb-eval",
+  "task_version": "0.1",
+  "prompt_id": "adb-001",
+  "prompt": "Build a dataset of ... using open imagery for ...",
+  "model": { "provider": "bedrock", "id": "<model-id>", "params": { "temperature": 0 } },
+  "harness": { "name": "<framework>", "version": "<x.y>" },
+  "tracer": "jsonl",
+  "mcp_servers": [{ "name": "roda", "package": "awslabs.roda-mcp-server", "version": "<pinned>" }],
+  "inputs": [{ "kind": "s3", "uri": "s3://.../naip-sample.tif" }],
+  "rubric_id": "adb-rubric-v0",
+  "reference_ids": [],
+  "mode": "live",
+  "status": "succeeded",
+  "started_at": "2026-11-03T14:02:11Z",
+  "ended_at": "2026-11-03T14:04:52Z"
+}
+```
+
+- `mode`: `live` or `replay`.
+- `rubric_id` and `reference_ids` record what the run is judged against: a rubric for ADB, or example captions and retrieval sets for captions. Together with `inputs`, `model` and the MCP server versions, they are the run's provenance.
+- `status`: `succeeded`, `failed`, or `timeout`.
+
+## trace.jsonl (one object per line)
+
+```json
+{"step": 1, "parent": null, "type": "llm_call", "name": "plan", "started_at": "...", "duration_ms": 2100, "tokens_in": 1800, "tokens_out": 240, "cost_usd": 0.004, "status": "ok", "text": "I'll search RODA for NAIP..."}
+{"step": 2, "parent": 1, "type": "tool_call", "server": "roda", "name": "search_datasets", "args": {"query": "NAIP"}, "result_preview": "3 datasets ...", "started_at": "...", "duration_ms": 640, "status": "ok"}
+{"step": 3, "parent": 1, "type": "tool_call", "server": "roda", "name": "sample_dataset", "args": {"id": "naip"}, "started_at": "...", "duration_ms": 1200, "status": "error", "error": "AccessDenied: requester pays"}
+```
+
+- The RODA tool names above are **illustrative**. Use the real ones once B-2 lists them.
+- `type`: `llm_call`, `tool_call`, `agent_step` (for multi-agent: planner, executor, checker), or `note`.
+- `status`: `ok` or `error`.
+- Optional `retry_of: <step>` marks a **retry** explicitly. Don't infer retries from repeated tool names, because agents legitimately call the same tool many times.
+- `result_preview` is capped at about 1 KB. Large results go to a file referenced as `result_uri`.
+
+## output.json
+
+```json
+{ "kind": "dataset_plan", "text": "...", "artifacts": [{ "uri": "s3://...", "description": "..." }] }
+```
+
+## scores.json
+
+```json
+{
+  "rubric_id": "adb-rubric-v0",
+  "workflow": {
+    "steps": 14, "tool_calls": 9, "tool_errors": 2, "retries": 1, "recovered": true,
+    "invalid_tool_calls": 0, "duration_s": 161, "cost_usd": 0.07,
+    "sequence_ok": true, "score": 0.78, "rationale": "..."
+  },
+  "output": {
+    "criteria": [{ "id": "data-fit", "score": 3, "max": 4, "rationale": "..." }],
+    "score": 0.70, "judge": { "provider": "bedrock", "id": "<model-id>" }
+  },
+  "overall": 0.74
+}
+```
+
+## Rules
+
+1. **Additive only.** New optional fields are fine; renaming or removing a field needs the whole team.
+2. Every run directory is **self-contained**, so it can be zipped, replayed, and re-scored later (provenance). The scorer copies the exact rubric it used into `rubric.json`, so swapping in Clay's rubric later doesn't rewrite history.
+3. **Migration-aware:** No database is needed for the hackathon.
+   - `trace.jsonl` loads directly into Athena or Snowflake later.
+   - Write `run.json` and `scores.json` as single-line JSON so they load the same way. The examples here are pretty-printed for reading only.
+4. Keep 2–3 **hand-made fixture runs** in `fixtures/runs/`: one clean success, one with errors and recovery, one failure.
