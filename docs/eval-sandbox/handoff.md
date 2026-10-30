@@ -96,3 +96,67 @@ The probe ran against a self-started local UI and covered 30+ WSTG-mapped tests.
 - **Not probed:** DoS through special-file symlinks (symlinks are now refused anyway), real-browser DOM rendering, and the Bedrock configs from the UI.
 
 **docs/security/ updated:** `README.md`, `threat-model.md`, `attack-surface.md`, `findings.md` and `test-log.md`, all new.
+
+## CI
+
+`prototype` was pushed to `origin` on 2026-10-30, with no PR. The first GitHub Actions run (41019723079) **did not start**: *"recent account payments have failed or your spending limit needs to be increased"* (org billing). The workflow itself has therefore never executed on GitHub.
+
+The same `uv run pytest` passes 115/115 in a fresh local clone. Once billing is fixed, re-run it with `gh run rerun 41019723079`.
+
+## Gate history
+
+- **Define:** 3 subagent passes, with 11, 7 and 6 blockers. The pass-3 items (rubric resolution, `--force`, evaluate config, model-call counting, timeout step, prompts versus templates) were resolved and taken to the user, who **signed off** and changed offline mode to use the real RODA server.
+- **Design:** 3 subagent passes, with 14, 9 and 11 blockers. Each was fixed, including:
+  - thread model, Strands retry, cancel semantics, IAM actions, cost bound
+  - locks and atomic writes, a CLI flag mix-up
+  - prompt-id path safety, citations
+  - the UI card fields, which went to the user, who chose "add short id + task"
+
+  The user **signed off**, with CLI-only re-evaluation.
+- **UI design review:** three options shown; the user picked score cards (C) and approved the refinement.
+- **Plan:** 3 subagent passes. Most blockers were design sections the plan reviewer couldn't see (by design) and test-list gaps. Pass 3 left two small items that were resolved by aligning with the spec: a missing `uvx` becomes AC9c behavior, and the stream-format citation was added.
+- **Verify:**
+  - Delegates: one verify run, one security scan, one pentest probe.
+  - The verify run found the **uncommitted fixtures** (fresh clone failed 58 tests) and two error-message gaps.
+  - The probe found F-001 to F-007. All were fixed, with regression tests.
+  - The subagent gate review raised 1 blocker, F-011, which **the user accepted** for the sandbox. Its non-blocking findings were also fixed: the AC9 bound, traceback noise, AC20 wording.
+- **Launch:** 2 subagent passes.
+  - Pass 1: Nova price, budget alarm, limits.
+  - Pass 2: F-011, which was resolved by the user. Price verification is now a pre-step. The push was made at the user's request. Owners stay as placeholders, also at the user's request.
+  - Also fixed from pass 2: the retained bucket's policy, HarnessRole as the default live identity, and runbook precision.
+
+## Specialists consulted
+
+- **Quality:** QA Automation, Exploratory Tester, Performance, and Beta Tester (zero-context README walkthrough).
+- **Security:** AppSec, through scanners and denied-path tests; Offensive Security, through the probe and `docs/security/`.
+- **Platform:** Infrastructure, DevOps, SRE (timeouts, limits, runbook), FinOps (cost bound, budget alarm).
+- **AI/ML:** ML Engineer (judge validation, versioned prompt templates, fallbacks); AI Safety (data block, injection fixture; live L5 pending).
+- **Experience:** Product Designer (UI review), Frontend and Accessibility (labels, keyboard-reachable links and forms; no screen-reader audit), API/DX (CLI errors), Technical Writer (README).
+
+## Decisions and deviations
+
+- **mcp server API:** in mcp 2.x, `FastMCP` became `mcp.server.mcpserver.MCPServer`. The fault server uses that.
+- **Cancellation:** Strands surfaces a cancel as a tool *exception*, not `cancel_message`. MCP results carry `structuredContent`, so the 8,000-character cap rebuilds the result. Both are recorded in the design.
+- **Missing MCP command:** treated as AC9c (failed run, exit 1), not a config error.
+- **`mcp` 2.2.0 bump:** not possible, because strands-agents 1.62.0 pins `mcp<2.2`. Accepted as F-008 and F-009.
+- **Nova 2 Lite price:** Sonnet's rate is used as an upper bound.
+- **UI score format:** `W1.00 O.67`. See the Verification notes.
+
+## Follow-ups
+
+- Run the live checks L1–L5 (`launch.md`) once AWS credentials exist. Verify prices first.
+- Fix GitHub billing and re-run CI.
+- Bump `mcp` to 2.2 or later when Strands allows it (F-008/F-009, by 2026-11-30).
+- Pin GitHub Actions to commit SHAs (F-013). This needs approval for CI changes.
+- Scope `HarnessRole` Bedrock actions to model and inference-profile ARNs (F-012).
+- S3 access logging (F-010) before any non-sandbox use.
+- Calibrate the judge against human scores (backlog D-6). Add more adversarial prompt-injection fixtures.
+- Real-browser UI check: screenshots and a screen-reader pass.
+- Clay's real rubric and prompts once they arrive (K-1). Swapping them in is a data-only change.
+- Investigate the `RuntimeWarning: coroutine ... _set_close_event was never awaited` that Strands emits when an MCP server fails to start.
+
+## Risks to watch
+
+- The first live Bedrock run: model access, real prices, and real agent behavior are all untested.
+- The live judge's resistance to injection (L5).
+- Network dependence: RODA, the Registry of Open Data, and PyPI for uvx.
