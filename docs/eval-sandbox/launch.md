@@ -11,7 +11,7 @@ Per the user's instruction, everything ships on the `prototype` branch with **no
 | Toolchain | asdf + `asdf install` + `uv python install` (README "Local setup") | `uv --version`, `node --version` |
 | Dependencies | `uv sync` at the repo root; `cd infra && npm ci` | `uv run foundry --help` |
 | AWS credentials for **one sandbox account**, region us-west-2 | `aws sso login --profile <sandbox-profile>`, then `export AWS_PROFILE=<sandbox-profile> AWS_REGION=us-west-2` | `aws sts get-caller-identity` shows the sandbox account id |
-| Bedrock model access **and non-zero quotas** in us-west-2 for `us.anthropic.claude-sonnet-4-6`, `us.anthropic.claude-haiku-4-5-20251001-v1:0` and `us.amazon.nova-2-lite-v1:0` | Bedrock console → Model access. Check quotas with `aws service-quotas list-service-quotas --service-code bedrock --region us-west-2`: look for "Cross-region model inference tokens per minute for <model>" > 0. In the sandbox the 5.5 models were at 0. | For each of the three model ids, `aws bedrock-runtime converse --model-id <id> --messages '[{"role":"user","content":[{"text":"hi"}]}]' --region us-west-2` returns a reply. |
+| Bedrock model access **and non-zero quotas** in us-west-2 for `us.anthropic.claude-sonnet-4-6`, `us.anthropic.claude-haiku-4-5-20251001-v1:0`, `us.moonshotai.kimi-k3`, `zai.glm-5` and `us.amazon.nova-2-lite-v1:0` | Bedrock console → Model access. Check quotas with `aws service-quotas list-service-quotas --service-code bedrock --region us-west-2`: look for "Cross-region model inference tokens per minute for <model>" > 0. In the sandbox the 5.5 models were at 0. | For each of these model ids, `aws bedrock-runtime converse --model-id <id> --messages '[{"role":"user","content":[{"text":"hi"}]}]' --region us-west-2` returns a reply. |
 | **Prices checked (required before step 4)** | Read the on-demand prices for the three models in the Bedrock console or on the AWS pricing page for us-west-2 geo inference profiles. Put them in `[prices]` in `config/bedrock*.toml`. The current values come from Anthropic's published first-party prices (Sonnet 4.6: $3/$15 per million tokens; Haiku 4.5: $1/$5) plus the documented 10% regional premium, with Nova set to Sonnet 4.6's rate as an upper bound. | Recompute the bound below with the new prices. If it exceeds $2.00, lower `max_input_tokens` until it doesn't. |
 | CDK bootstrap (once per account and region) | `cd infra && npx cdk bootstrap aws://<account>/us-west-2` | The `CDKToolkit` stack exists in CloudFormation |
 | **Budget alarm (required before step 4).** Owner: the team lead. Notifies the team lead's email at 80% of $50 per month. | `aws budgets create-budget --account-id <account> --budget '{"BudgetName":"foundry-sandbox","BudgetLimit":{"Amount":"50","Unit":"USD"},"TimeUnit":"MONTHLY","BudgetType":"COST"}' --notifications-with-subscribers '[{"Notification":{"NotificationType":"ACTUAL","ComparisonOperator":"GREATER_THAN","Threshold":80,"ThresholdType":"PERCENTAGE"},"Subscribers":[{"SubscriptionType":"EMAIL","Address":"<team-lead-email>"}]}]'` | `aws budgets describe-budget --account-id <account> --budget-name foundry-sandbox` |
@@ -87,7 +87,7 @@ Evaluation makes at most 4 model calls (judge and summarizer, one retry each), w
      ```
      Expect:
      - exit 0
-     - `scores.json.output.judge.id` is `us.amazon.nova-2-lite-v1:0`, which differs from the agent
+     - `scores.json.output.judge.id` is `us.moonshotai.kimi-k3` (ADR-10), which differs from the agent
      - no "grading itself" warning
      - `report.md` has a real narrative and rationales
 

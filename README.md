@@ -87,10 +87,10 @@ uv run foundry run --config config/offline-alt.toml --prompt adb-001   # scripte
 
 On Bedrock, with credentials:
 
-- `config/bedrock.toml` runs the agent on Claude Sonnet 4.6, with a Nova 2 Lite judge.
+- `config/bedrock.toml` runs the agent on Claude Sonnet 4.6. The judge is Kimi K3, picked by a calibration in which Nova 2 Lite failed ([details](docs/eval-sandbox/bedrock-models.md#judge-calibration-2026-10-30)).
 - `config/bedrock-alt.toml` runs the agent on Claude Haiku 4.5.
 
-- `config/bedrock-kimi.toml` runs the agent on Moonshot Kimi K3. It has no `temperature`, because Kimi K3 rejects it.
+- `config/bedrock-kimi.toml` runs the agent on Moonshot Kimi K3, with GLM 5 as the judge so Kimi never grades itself. It has no `temperature`, because Kimi K3 rejects it.
 
 Which models can actually run the agent in this account? See [docs/eval-sandbox/bedrock-models.md](docs/eval-sandbox/bedrock-models.md), produced by calling every model. Re-check after quota or access changes with:
 

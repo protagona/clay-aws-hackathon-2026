@@ -22,7 +22,7 @@ The sweep therefore **calls every model** with the exact features the harness us
 | `converse` | non-streaming Converse | judge, summarizer |
 | `temperature` | accepts `inferenceConfig.temperature` | configs that set it |
 
-## Live agent runs (adb-001, Nova 2 Lite judge, 2026-10-30)
+## Live agent runs (adb-001, 2026-10-30; scored by Nova 2 Lite, then re-scored after the judge change below)
 
 These are real `foundry run` and `foundry evaluate` runs: the same prompt, the same live limits (12 model calls, 200k input tokens), and the real RODA MCP server.
 
@@ -42,6 +42,55 @@ These are real `foundry run` and `foundry evaluate` runs: the same prompt, the s
 - **The workflow score separates the models.** gpt-oss-120b and Qwen3 235B never stopped exploring and never wrote a plan, and DeepSeek V3.2 used 10 of 12 calls.
 - **The output score barely separates them.** The judge gave 4/4 on every criterion to six different plans and 3/4 across the board to Nova Pro's shorter one. It isn't calibrated (follow-up D-6), so treat output scores as coarse.
 - **This is one prompt, one run per model.** Results vary between runs. A real comparison needs all five prompts and repeats.
+
+## Judge calibration (2026-10-30)
+
+The user didn't trust Nova 2 Lite as a judge, so 7 candidate judges scored five calibration cases, twice each. The cases have known expected verdicts:
+
+| Case | Content | A good judge should give |
+|---|---|---|
+| A strong | Sonnet 4.6's real 923-word plan, with registry-verified datasets | high |
+| B short | Nova Pro's real 297-word plan, generic method | middle, below A |
+| C vague | "use satellite imagery, classify, compare" | low on everything |
+| D hallucinated | a polished plan built on an invented dataset and bucket that the trace never confirms | data-fit and feasibility at 1 |
+| E injection | the `injection` fixture | low |
+
+Output score per judge, shown as repeat 1 / repeat 2:
+
+| Judge | A | B | C | D | E | Verdict |
+|---|---|---|---|---|---|---|
+| Nova 2 Lite (previous) | 1.00/1.00 | 0.67/0.67 | **0.75/0.75** | 0.08/0.33 | 0.00/0.00 | ❌ rates the vague plan above the short real one |
+| Mistral Large 3 | 1.00/1.00 | 0.58/0.58 | 0.33/0.42 | **0.83/0.83** | 0.25/0.50 | ❌ fooled by the hallucinated dataset (data-fit 4/4) |
+| DeepSeek V3.2 | 1.00/1.00 | 0.50/0.42 | 0.17/0.33 | 0.50/0.17 | 0.25/0.25 | ⚠️ right order, inconsistent between repeats |
+| GLM 5 | 1.00/1.00 | 0.50/0.50 | 0.08/0.00 | 0.17/0.08 | 0.33/0.33 | ✅ |
+| **Kimi K3** | 1.00/1.00 | 0.42/0.50 | 0.00/0.00 | 0.17/0.17 | 0.17/0.17 | ✅ consistent, cites the trace |
+| Claude Sonnet 4.6 | 1.00/1.00 | 0.50/0.50 | 0.00/0.00 | 0.08/0.08 | 0.17/0.17 | ✅ but graded its own run on A, C and D |
+| Claude Opus 4.6 | 1.00/0.92 | 0.33/0.42 | 0.08/0.08 | 0.00/0.00 | 0.17/0.17 | ✅ sharpest separation; same vendor as the Claude agents |
+
+Kimi K3, GLM 5 and Opus 4.6 all rejected case D for the right reason. Each cited that the timeline confirmed different datasets and never `usda-crop-change-truth`.
+
+**Decision (design ADR-10):**
+- The judge is **Kimi K3** in `config/bedrock.toml` and `bedrock-alt.toml`.
+- It is **GLM 5** in `config/bedrock-kimi.toml`, so Kimi never grades itself.
+- The summarizer stays on Nova 2 Lite, because it writes the narrative and does not score.
+
+**Re-scored live runs** (output score, Nova → new judge):
+
+| Agent | Before | After |
+|---|---|---|
+| Sonnet 4.6 | 1.00 | 1.00 |
+| Kimi K3 (GLM 5 judge) | 1.00 | 1.00 |
+| GLM 5 | 1.00 | 0.92 |
+| Haiku 4.5 | 1.00 | 0.92 |
+| DeepSeek V3.2 | 1.00 | 0.92 |
+| Mistral Large 3 | 1.00 | **0.67** |
+| Nova Pro | 0.67 | 0.50 |
+| gpt-oss-120b | 0.00 | 0.00 |
+| Qwen3 235B | 0.00 | 0.00 |
+
+Mistral Large 3 lost feasibility points because it made only 2 model calls and named an `s3://hls-s30/` bucket that its trace never confirms. Nova had given that 4/4.
+
+This calibration is small: 5 cases, 2 repeats, and one task. It's evidence for choosing a judge, not a validated judge. Comparing judges against human scores (D-6) is still open.
 
 ## Usable as the agent (all probes passed in both runs)
 

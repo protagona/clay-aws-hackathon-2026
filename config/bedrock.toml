@@ -11,9 +11,9 @@ id = "us.anthropic.claude-sonnet-4-6"
 region = "us-west-2"
 temperature = 0.2
 
-[judge]                      # a different vendor from the agent, so the agent never grades itself
+[judge]                      # chosen by the judge calibration (docs/eval-sandbox/bedrock-models.md); not the agent's vendor
 provider = "bedrock"
-id = "us.amazon.nova-2-lite-v1:0"
+id = "us.moonshotai.kimi-k3"
 region = "us-west-2"
 max_tokens = 2048
 timeout_s = 120

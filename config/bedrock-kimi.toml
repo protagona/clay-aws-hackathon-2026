@@ -11,9 +11,9 @@ id = "us.moonshotai.kimi-k3"
 region = "us-west-2"
 # no temperature: Kimi K3 on Bedrock rejects it ("This model doesn't support the temperature field")
 
-[judge]                      # a different vendor from the agent, so the agent never grades itself
+[judge]                      # GLM 5, not Kimi: the agent here is Kimi K3 and must not grade itself
 provider = "bedrock"
-id = "us.amazon.nova-2-lite-v1:0"
+id = "zai.glm-5"
 region = "us-west-2"
 max_tokens = 2048
 timeout_s = 120

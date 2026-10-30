@@ -536,6 +536,24 @@ Mitigations:
   - two sweep runs on 2026-10-30
   - Kimi K3 live run: succeeded, 9 RODA calls, overall 1.00 under the Nova judge
 
+### ADR-10: Judge replaced: Nova 2 Lite → Kimi K3 (GLM 5 when the agent is Kimi), chosen by calibration (2026-10-30)
+
+- **Context:** the user distrusted Nova 2 Lite as a judge. On a 5-case calibration set it gave a vague one-paragraph plan 0.75 and ranked it above a real 297-word plan (0.67).
+- **Options:**
+  - Kimi K3, GLM 5 and Opus 4.6 all separated the cases correctly and caught the fabricated dataset by citing the trace.
+  - Mistral Large 3 was fooled by the fabrication.
+  - DeepSeek V3.2 was inconsistent between repeats.
+  - Sonnet 4.6 was good, but it graded its own runs.
+- **Decision:**
+  - The judge is `us.moonshotai.kimi-k3`: consistent across repeats, and a different vendor from the default Claude agents.
+  - With a Kimi agent (`config/bedrock-kimi.toml`) the judge is `zai.glm-5`.
+  - The summarizer is unchanged (Nova 2 Lite).
+- **Trade-offs:**
+  - Kimi K3 has no price in `[prices]`, so judge cost is recorded as null.
+  - Opus 4.6 was slightly sharper, but it is the same vendor as the Claude agents and the most expensive option ($5/$25 per million tokens).
+- **Reversibility:** easy (config).
+- **Sources:** the calibration runs of 2026-10-30, recorded in [bedrock-models.md](bedrock-models.md#judge-calibration-2026-10-30).
+
 ## Failure modes
 
 | Failure | Detection | Behavior | Recovery |
