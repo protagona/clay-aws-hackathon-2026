@@ -189,7 +189,7 @@ def test_evaluate_from_ui_holds_and_releases_lock(tmp_path):  # AC25, AC29
     assert _wait(lambda: job.exit_code is not None and not lock.is_locked(d["recovered"]))
     assert job.exit_code == 0, job.log.read_text()
     assert (d["recovered"] / "scores.json").exists()
-    assert "<h2>Workflow score: 0.90</h2>" in c.get("/runs/fixture-recovered").text
+    assert "<h2>Workflow score: 0.93</h2>" in c.get("/runs/fixture-recovered").text
 
 
 def test_evaluate_refused_for_running_run(tmp_path):
@@ -381,6 +381,7 @@ def test_batch_from_the_ui(tmp_path):
     assert job.exit_code == 0, job.log.read_text()[-2000:]
     page = c.get(f"/batches/{batch_id}").text
     assert "2/2 jobs" in page and page.count('>report</a>') == 2 and "succeeded" in page
+    assert re.search(r"<th>Mean</th><th>Min</th><th>Max</th><th><abbr[^>]*>Stdev</abbr></th>", page)  # D-7
     links = re.findall(r'href="/runs/([^"]+)"', page)
     assert links and all(name.startswith(f"{batch_id}_") for name in links)
     assert c.get(f"/runs/{links[0]}").status_code == 200
@@ -452,3 +453,72 @@ def test_browser_form_post_is_not_refused_as_cross_origin(tmp_path):
     assert r.status_code == 303
     assert c.post("/runs", data={"prompt_id": "adb-001", "config": "test", "csrf": _csrf(app)},
                   headers={"origin": "null"}).status_code == 403  # still refused if a page strips its origin
+
+
+# --- compare two runs (increment-4 C1, C2) ---
+
+def _evaluated(tmp_path, *names):
+    from foundry.evaluate.evaluate import evaluate
+
+    d = _seed(tmp_path / "runs", *names)
+    cfg = load(eval_config(tmp_path / "cfg"))
+    for n in names:
+        evaluate(d[n], cfg)
+    return d
+
+
+def test_compare_page_rows_and_timelines(tmp_path):  # C1
+    _evaluated(tmp_path, "clean", "recovered")
+    _, c = _client(tmp_path / "runs")
+    page = c.get("/compare?a=fixture-clean&b=fixture-recovered").text
+    rows = {m[0]: m[1:] for m in re.findall(
+        r"<tr><td[^>]*>([^<]+)</td>\s*<td>([^<]*)</td><td>([^<]*)</td><td>([^<]*)</td></tr>", page)}
+    assert rows["Overall"][:2] == ("0.83", "0.80") and rows["Overall"][2] == "−0.04"
+    assert rows["Workflow"] == ("1.00", "0.93", "−0.07") and rows["reliability"] == ("1.00", "0.50", "−0.50")
+    assert rows["sequence"] == ("1.00", "1.00", "0")
+    assert rows["Tool calls (errors)"][:2] == ("2 (0)", "4 (2)") and rows["Tool calls (errors)"][2] == "+2"
+    assert any(k in rows for k in ("data-fit", "method"))  # one row per rubric criterion, as n/max
+    assert re.search(r"<td>\d+/\d+</td>", page)
+    assert page.index("A timeline") < page.index("B timeline")
+    assert 'href="/runs/fixture-clean"' in page and 'href="/runs/fixture-recovered"' in page
+
+
+def test_compare_unevaluated_run_shows_dashes(tmp_path):  # C1
+    _seed(tmp_path / "runs", "clean", "failed")
+    _, c = _client(tmp_path / "runs")
+    page = c.get("/compare?a=fixture-clean&b=fixture-failed").text
+    assert "not evaluated yet" in page and "<td>—</td>" in page and "B timeline" in page
+
+
+@pytest.mark.parametrize("query", ["", "?a=fixture-clean", "?a=fixture-clean&b=nope", "?a=../x&b=fixture-clean",
+                                   "?a=fixture-clean&b=%2e%2e%2fetc"])
+def test_compare_bad_ids_404(tmp_path, query):  # C1
+    _seed(tmp_path / "runs", "clean")
+    _, c = _client(tmp_path / "runs")
+    assert c.get(f"/compare{query}").status_code == 404
+
+
+def test_run_page_compare_form(tmp_path):  # C2
+    _seed(tmp_path / "runs", "clean", "recovered", "failed")
+    _, c = _client(tmp_path / "runs")
+    page = c.get("/runs/fixture-clean").text
+    form = page[page.index('<form class="compare"'):]
+    form = form[:form.index("</form>")]
+    assert 'method="get" action="/compare"' in form and 'name="a" value="fixture-clean"' in form
+    options = re.findall(r'<option value="([^"]+)"', form)
+    assert sorted(options) == ["fixture-failed", "fixture-recovered"]  # every other run, not itself
+    _seed(tmp_path / "solo", "clean")
+    _, solo = _client(tmp_path / "solo")
+    assert 'class="compare"' not in solo.get("/runs/fixture-clean").text  # nothing to compare with
+
+
+def test_compare_hostile_scores_do_not_break_the_page(tmp_path):  # C1: files are untrusted
+    d = _evaluated(tmp_path, "clean", "recovered")
+    s = json.loads((d["recovered"] / "scores.json").read_text())
+    s["workflow"]["components"] = {"<script>x</script>": "NaN", "ok": True}
+    s["output"]["criteria"] = [{"id": "<b>crit</b>", "score": "4"}, "junk", {"id": "m", "score": 3, "max": 4}]
+    (d["recovered"] / "scores.json").write_text(json.dumps(s))
+    _, c = _client(tmp_path / "runs")
+    r = c.get("/compare?a=fixture-clean&b=fixture-recovered")
+    assert r.status_code == 200 and "<script>x</script>" not in r.text and "&lt;script&gt;" in r.text
+    assert "<td>3/4</td>" in r.text

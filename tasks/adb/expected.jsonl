@@ -1,0 +1,6 @@
+{"prompt_id": "adb-001", "stages": [["search_datasets", "list_datasets", "discover_by_organization", "find_related_datasets"], ["get_dataset_details", "preview_dataset", "sample_dataset"]]}
+{"prompt_id": "adb-002", "stages": [["search_datasets", "list_datasets", "discover_by_organization", "find_related_datasets"], ["get_dataset_details", "preview_dataset", "sample_dataset"]]}
+{"prompt_id": "adb-003", "stages": [["search_datasets", "list_datasets", "discover_by_organization", "find_related_datasets"], ["get_dataset_details", "preview_dataset", "sample_dataset"]]}
+{"prompt_id": "adb-004", "stages": [["search_datasets", "list_datasets", "discover_by_organization", "find_related_datasets"], ["get_dataset_details", "preview_dataset", "sample_dataset"]]}
+{"prompt_id": "adb-005", "stages": [["search_datasets", "list_datasets", "discover_by_organization", "find_related_datasets"], ["get_dataset_details", "preview_dataset", "sample_dataset"], ["get_dataset_details", "preview_dataset", "sample_dataset"]]}
+{"prompt_id": "adb-006", "stages": [["search_items"]]}

@@ -51,8 +51,8 @@ uv run foundry ui        # http://127.0.0.1:8765
 
 | Page | What you can do |
 |---|---|
-| **Runs** | Start a run (prompt × config); see every run as a score card; open the report; evaluate a run that hasn't been scored. |
-| **Batches** | Pick a base config, any number of agent models and prompts, repeats, parallel runs, a cost cap and whether to evaluate. Start the batch, then watch the per-model table and per-run rows fill in, each linking to its report. |
+| **Runs** | Start a run (prompt × config); see every run as a score card; open the report; evaluate a run that hasn't been scored; **compare** it with any other run (a score, cost and calls table with deltas, then both timelines). |
+| **Batches** | Pick a base config, any number of agent models and prompts, repeats, parallel runs, a cost cap and whether to evaluate. Start the batch, then watch the per-model table (mean, min, max and stdev of the overall score) and per-run rows fill in, each linking to its report. |
 | **Import** | Evaluate an agent we didn't build: start the OpenTelemetry receiver with one click and point the agent at the address shown, or upload an OTLP/JSON trace file. Each agent run becomes a normal card. |
 
 - Pages refresh themselves while something is running.
@@ -90,6 +90,19 @@ The format is the [trace contract](docs/trace-contract.md). Any harness that wri
 | efficiency (model calls versus the budget) | 0.15 |
 
 **Output score** comes from a judge model, which scores each rubric criterion from 1 to `max`. Each criterion is normalized and the results are averaged with the criterion weights. The judge only sees the run inside a delimited data block, and its instructions tell it to treat that block as data, never as instructions.
+
+**Sequence (workflow scorer v2):** `tasks/<task>/expected.jsonl` can list the tools a prompt should use, in order, as stages. Each stage is a list of acceptable tools, for example "discover a dataset, then confirm it". When a prompt has stages, the workflow score adds a `sequence` component, the share of stages matched in order by successful calls. The weights then become:
+
+| Component | Weight |
+|---|---|
+| completion | 0.35 |
+| reliability | 0.15 |
+| recovery | 0.15 |
+| validity | 0.10 |
+| efficiency | 0.10 |
+| sequence | 0.15 |
+
+Without stages, the v1 weights above apply unchanged. `tasks/adb/expected.jsonl` is our stand-in until Clay's rubric arrives.
 
 **Overall score** is `0.5 × workflow + 0.5 × output`, configurable in `[scoring]`. It is `null` ("incomplete") when the judge's reply can't be used after one retry.
 
@@ -140,6 +153,28 @@ Every MCP server runs under a small reaper (`foundry.harness.reaper`), so it can
 
 Any agent that emits OpenTelemetry GenAI spans can be scored without changing it. That includes Strands' built-in telemetry, and other frameworks that follow the GenAI semantic conventions.
 
+**One command**, with `foundry external`. It does four things:
+
+1. Starts a private receiver on 127.0.0.1.
+2. Runs your command, as an argument list with no shell, with these set:
+   - `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
+   - `FOUNDRY_PROMPT`, the prompt text
+3. Waits for the command to exit, then writes one run directory per agent run.
+4. With `--evaluate`, scores each run.
+
+```bash
+AWS_PROFILE=<profile> uv run foundry external --task adb --prompt adb-001 --config config/bedrock.toml --evaluate \
+    -- uv run python examples/external_strands_agent.py
+```
+
+**Behaviour:**
+- **Output:** stdout carries only run directories and score lines. The agent's own output goes to stderr.
+- **Exit codes:** 0 when the command succeeded and every run succeeded; 1 for a failed run or command; 2 for no runs received, usage errors, or an evaluation error.
+- **Timeout:** `--timeout` (default 600 s) kills the command.
+- **Trust:** the command runs as you, unsandboxed, like anything you type in a shell.
+
+**Step by step**, or from a file:
+
 ```bash
 # live: the agent exports straight to us
 uv run foundry receive --task adb --prompt-id adb-001 --config config/bedrock.toml     # 127.0.0.1:4318
@@ -164,7 +199,7 @@ uv run foundry batch --config config/bedrock.toml \
 - `--models` derives one config per model by changing only `[model] id`. The derived configs are saved in `<out>/configs/`.
 - `--max-cost` stops launching new runs once the recorded spend reaches it.
 - Re-running the same command resumes, and crashed runs are retried.
-- Results go to `<out>/summary.md` (per-variant aggregates) and `<out>/summary.csv`.
+- Results go to `<out>/summary.md` and `<out>/summary.csv`. `summary.md` gives per-variant aggregates: the mean, min, max and sample stdev of the overall score across repeats and prompts, which is how sensitive a model is (D-7).
 
 Example: the command above ran 4/4 runs in 83 s for $0.79.
 
@@ -242,6 +277,7 @@ Add files only; no Python changes are needed:
 - `tasks/<task_id>/prompts.jsonl`: one `{"prompt_id", "prompt"}` per line. Ids must match `[A-Za-z0-9._-]`.
 - `tasks/<task_id>/rubric.json`: criteria with `id`, `name`, `description`, `max` (2 or more), optional `weight`, and `levels` describing at least 1 and `max`. See `tasks/adb/rubric.json`, which is a stand-in until Clay's rubric arrives.
 - `tasks/<task_id>/system.txt`: the agent's system prompt.
+- `tasks/<task_id>/expected.jsonl` (optional): one `{"prompt_id", "stages": [[tool, ...], ...]}` per line, the expected tool order for the workflow score's `sequence` component. Use bare tool names, because imported runs don't record which server a tool came from.
 - `config/<name>.toml` with `[task] id = "<task_id>"`.
 
 ## Deploy (live checks)

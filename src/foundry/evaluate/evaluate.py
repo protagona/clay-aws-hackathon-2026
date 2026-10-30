@@ -15,7 +15,7 @@ from foundry.evaluate import judge as judge_mod
 from foundry.evaluate import lock, report, summarize, view, workflow
 from foundry.models.registry import build_provider
 from foundry.runstore import RunDir, dump_line, utc_now
-from foundry.tasks import RubricError, load_rubric, rubric_path
+from foundry.tasks import RubricError, load_expected, load_rubric, rubric_path
 
 
 class EvaluateError(Exception):
@@ -82,7 +82,11 @@ def _evaluate_locked(rd: RunDir, run, cfg: EvalConfig, rubric_file, force: bool)
         print(f"warning: judge model {cfg.judge.id!r} is the same as the agent model; it is grading itself",
               file=sys.stderr)
 
-    wf = workflow.score(effective, steps)
+    try:
+        expected = load_expected(run.task_id, run.prompt_id)
+    except RubricError as exc:
+        raise EvaluateError(str(exc)) from None
+    wf = workflow.score(effective, steps, expected)
     run_data = view.build(effective, steps, output)
     judge_provider = build_provider(cfg.judge)
     summ_provider = build_provider(cfg.summarizer)

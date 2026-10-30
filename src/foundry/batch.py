@@ -287,6 +287,14 @@ def _duration(run: dict) -> float | str:
         return ""
 
 
+def spread(values: list[float]) -> dict:
+    """Mean, min, max and sample stdev of a variant's scores (D-7); stdev is None below 2 values, all None when empty."""
+    if not values:
+        return {"mean": None, "min": None, "max": None, "stdev": None}
+    return {"mean": statistics.mean(values), "min": min(values), "max": max(values),
+            "stdev": statistics.stdev(values) if len(values) > 1 else None}
+
+
 def write_summary(jobs: list[Job], out: Path) -> None:
     rows = [summary_row(j) for j in jobs]
     tmp = out / "summary.csv.tmp"
@@ -298,8 +306,9 @@ def write_summary(jobs: list[Job], out: Path) -> None:
 
     lines = ["# Batch summary", "", f"Updated {time.strftime('%Y-%m-%d %H:%M:%S')}. "
              f"{sum(r['status'] not in ('pending',) for r in rows)} of {len(rows)} jobs finished.", "",
-             "## Per variant", "", "| Variant | Model | Succeeded | Mean overall | Mean cost/run | Mean model calls |",
-             "|---|---|---|---|---|---|"]
+             "## Per variant", "", "Overall score across the variant's scored runs (stdev: sample, needs 2 runs).", "",
+             "| Variant | Model | Succeeded | Mean | Min | Max | Stdev | Mean cost/run | Mean model calls |",
+             "|---|---|---|---|---|---|---|---|---|"]
     for name in dict.fromkeys(r["variant"] for r in rows):
         rs = [r for r in rows if r["variant"] == name]
         ran = [r for r in rs if r["run_dir"]]
@@ -308,8 +317,9 @@ def write_summary(jobs: list[Job], out: Path) -> None:
         costs = [r["cost_usd"] for r in ran if isinstance(r["cost_usd"], float)]
         calls = [r["model_calls"] for r in ran if r["model_calls"] != ""]
         mean = lambda v, f: f.format(statistics.mean(v)) if v else "n/a"  # noqa: E731
-        lines.append(f"| {name} | {rs[0]['model']} | {ok}/{len(rs)} | {mean(overall, '{:.2f}')} | "
-                     f"{mean(costs, '${:.3f}')} | {mean(calls, '{:.1f}')} |")
+        sp = {k: "—" if v is None else f"{v:.2f}" for k, v in spread(overall).items()}
+        lines.append(f"| {name} | {rs[0]['model']} | {ok}/{len(rs)} | {sp['mean']} | {sp['min']} | {sp['max']} | "
+                     f"{sp['stdev']} | {mean(costs, '${:.3f}')} | {mean(calls, '{:.1f}')} |")
     lines += ["", "## Jobs", "", "| " + " | ".join(SUMMARY_FIELDS[:-1]) + " |",
               "|" + "---|" * (len(SUMMARY_FIELDS) - 1)]
     for r in rows:

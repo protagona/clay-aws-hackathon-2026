@@ -259,7 +259,7 @@ def test_eval_only_config_accepted_and_recorded(tmp_path, fixture_run):  # AC10e
     rep = (run / "report.md").read_text()
     for item in ("Run id:", "Model: scripted scripted-a", "Harness:", "Tracer(s):", "MCP servers: roda 0.1.7",
                  "Inputs:", "Rubric: adb-rubric-v0 v0.1", "Judge: offline offline-judge", "Prompt templates:",
-                 "Workflow scorer: v1", "Evaluation id:"):
+                 "Workflow scorer: v2 (expected stages sha256 ", "Evaluation id:"):
         assert item in rep, item
 
 

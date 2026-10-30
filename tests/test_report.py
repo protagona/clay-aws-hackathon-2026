@@ -36,6 +36,6 @@ def test_provenance(tmp_path, fixture_run):  # AC14
     s = evaluate(run, load(eval_config(tmp_path / "cfg")))
     rep = (run / "report.md").read_text()
     assert f"Evaluation id: {s['evaluation_id']}" in rep
-    assert "## Workflow score: 0.90" in rep and "## Output score: 0.67" in rep
-    assert "**Overall:** 0.78" in rep
+    assert "## Workflow score: 0.93" in rep and "## Output score: 0.67" in rep  # v2: 0.925, sequence 2/2
+    assert "**Overall:** 0.80" in rep
     assert json.loads((run / "scores.json").read_text())["templates"] == {"judge": "judge-v1", "summarizer": "summarizer-v1"}

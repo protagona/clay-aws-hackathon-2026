@@ -53,6 +53,11 @@ def build(run: RunRecord, steps: list[Step], output: Output, scores: dict) -> st
                   f"{w['tool_calls']} · tool errors {w['tool_errors']} · retries {w['retries']} · invalid "
                   f"{w['invalid_tool_calls']} · recovered {({True: 'yes', False: 'no'}).get(w['recovered'], 'n/a')}"
                   f" · duration {w['duration_s']} s · cost {cost}"]
+    if w.get("sequence"):
+        seq = w["sequence"]
+        lines += ["", f"Expected stages ({seq['matched']} of {len(seq['stages'])} matched in order): "
+                  + " → ".join(f"{i + 1}. {esc('|'.join(s))}" + ("" if i < seq["matched"] else " (missed)")
+                               for i, s in enumerate(seq["stages"]))]
 
     lines += ["", f"## Output score: {_fmt(o['score'])}", ""]
     if o["score"] is None:
@@ -97,7 +102,8 @@ def build(run: RunRecord, steps: list[Step], output: Output, scores: dict) -> st
               f"- Judge: {esc(ev['judge']['provider'])} {esc(ev['judge']['id'])}",
               f"- Summarizer: {esc(ev['summarizer']['provider'])} {esc(ev['summarizer']['id'])}",
               f"- Prompt templates: {esc(scores['templates']['judge'])}, {esc(scores['templates']['summarizer'])}",
-              f"- Workflow scorer: {esc(scores['workflow_scorer'])}",
+              f"- Workflow scorer: {esc(scores['workflow_scorer'])}" + (
+                  f" (expected stages sha256 {esc(w['sequence']['expected_sha256'][:12])})" if w.get("sequence") else ""),
               f"- Evaluation config: {esc(scores['config'])}",
               f"- Evaluated at: {esc(scores['evaluated_at'])}",
               f"- Evaluation id: {esc(scores['evaluation_id'])}", ""]

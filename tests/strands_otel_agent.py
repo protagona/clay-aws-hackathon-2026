@@ -1,12 +1,14 @@
 """Run a real Strands agent with Strands' own OpenTelemetry instrumentation (test helper; one process per run,
 because StrandsTelemetry installs a global tracer provider).
 
-usage: python tests/strands_otel_agent.py <otlp-endpoint> [--json-out FILE]
+usage: python tests/strands_otel_agent.py <otlp-endpoint | env> [--json-out FILE]
 Exports to the endpoint; with --json-out, the endpoint is a local recorder and the spans are also written as
-OTLP/JSON. Set OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental for the newer attribute style.
+OTLP/JSON. With "env", the exporter reads OTEL_EXPORTER_OTLP_* and the prompt comes from FOUNDRY_PROMPT
+(what `foundry external` sets). Set OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental for the newer attribute style.
 """
 
 import json
+import os
 import sys
 import tempfile
 import time
@@ -35,13 +37,13 @@ def main(endpoint: str, json_out: str | None) -> None:
         endpoint = rec.endpoint
     script = Path(tempfile.mkdtemp()) / "script.json"
     script.write_text(json.dumps(TURNS))
-    tel = StrandsTelemetry().setup_otlp_exporter(endpoint=endpoint)
+    tel = StrandsTelemetry().setup_otlp_exporter(**({} if endpoint == "env" else {"endpoint": endpoint}))
     server = Path(__file__).with_name("mcp_fault_server.py")
     mcp = MCPClient(lambda: stdio_client(StdioServerParameters(command=sys.executable, args=[str(server)])))
     with mcp:
         agent = Agent(model=ScriptedModel("scripted-x", script), tools=mcp.list_tools_sync(),
                       system_prompt="You plan datasets.", callback_handler=None, name="dataset-planner")
-        agent("Plan a NAIP cropland dataset.")
+        agent(os.environ.get("FOUNDRY_PROMPT", "Plan a NAIP cropland dataset."))
     tel.tracer_provider.force_flush()
     if rec is not None:
         time.sleep(0.5)

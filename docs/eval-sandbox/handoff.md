@@ -230,6 +230,16 @@ At the user's request, everything is also available from the UI, alongside the C
 - **A-4 rehearsal:** in a fresh clone with no AWS variables: `uv sync`, an offline run, evaluate, validate, 170 tests and `cdk synth` all pass. The README now includes `cdk bootstrap`, which was missing. Done-when still needs a teammate deploying.
 - **Suite:** 172 passed, ruff clean.
 
+## Increment 4 (2026-10-30): sequence check, external harness, spread, compare
+
+See [increment-4.md](increment-4.md).
+
+- **E-3 / D-1, workflow scorer v2:** adds a `sequence` component when the prompt has expected tool stages (`tasks/adb/expected.jsonl`, our stand-in). Without stages, v1 is unchanged.
+- **`foundry external`:** runs any OpenTelemetry-instrumented agent command and records and evaluates its runs in one step. Verified live with an external Strands agent on Bedrock.
+- **D-7, spread:** mean, min, max and stdev per variant in `summary.md` and on the batch page.
+- **F-3, compare:** `/compare?a=&b=` and a "Compare with" picker on every run page. The layout was approved by the user.
+- **Suite:** 200 passed.
+
 ## Follow-ups
 
 - Deploy and verify: `cdk bootstrap`, `cdk deploy`, `scripts/stage_samples.sh`, then `scripts/verify_deploy.sh` (README, *Deploy*). Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.

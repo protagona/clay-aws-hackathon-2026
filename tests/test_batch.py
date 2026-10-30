@@ -46,6 +46,16 @@ def test_variants_prompts_repeats_and_summary(tmp_path):  # B1, B5
         f"{v}_{p}_r{k}" for v in ("alpha", "beta") for p in ("adb-001", "adb-002") for k in (1, 2))
     md = (out / "summary.md").read_text()
     assert "| alpha | scripted-test | 4/4 |" in md and "| beta | scripted-test | 4/4 |" in md
+    assert "| Mean | Min | Max | Stdev |" in md  # D-7: identical scripted runs -> zero spread
+    alpha = next(ln for ln in md.splitlines() if ln.startswith("| alpha |")).split(" | ")
+    assert alpha[3] == alpha[4] == alpha[5] and alpha[6] == "0.00"  # mean, min, max, stdev
+
+
+def test_spread():  # D-7
+    assert batch_mod.spread([]) == {"mean": None, "min": None, "max": None, "stdev": None}
+    assert batch_mod.spread([0.8]) == {"mean": 0.8, "min": 0.8, "max": 0.8, "stdev": None}  # stdev needs 2 runs
+    s = batch_mod.spread([0.92, 0.96, 1.0])
+    assert (s["min"], s["max"]) == (0.92, 1.0) and round(s["mean"], 2) == 0.96 and round(s["stdev"], 2) == 0.04
 
 
 def test_models_derive_configs_differing_only_in_model_id(tmp_path):  # B1

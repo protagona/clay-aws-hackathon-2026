@@ -25,6 +25,8 @@ class Receiver:
         self.runs_dir, self.task_id, self.prompt_id, self.prices = Path(runs_dir), task_id, prompt_id, prices
         self.grace_s, self.log = grace_s, log
         self.lock = threading.Lock()
+        self.idle = threading.Condition(self.lock)
+        self.pending = 0  # flushes scheduled but not finished
         self.spans: dict[str, list[Span]] = {}
         self.done: set[tuple[str, str]] = set()
         self.written: list[Path] = []
@@ -68,10 +70,24 @@ class Receiver:
             for s in spans:
                 self.spans.setdefault(s.trace_id, []).append(s)
             traces = {s.trace_id for s in spans if s.op == "invoke_agent"}
+            self.pending += len(traces)
         for trace_id in traces:
             threading.Timer(self.grace_s, self._flush, args=(trace_id,)).start()
 
     def _flush(self, trace_id: str) -> None:
+        try:
+            self._write(trace_id)
+        finally:
+            with self.idle:
+                self.pending -= 1
+                self.idle.notify_all()
+
+    def wait_idle(self, timeout: float) -> bool:
+        """Block until every scheduled run write has finished; False on timeout."""
+        with self.idle:
+            return self.idle.wait_for(lambda: self.pending == 0, timeout)
+
+    def _write(self, trace_id: str) -> None:
         with self.lock:
             spans = [Span(**{**s.__dict__, "children": []}) for s in self.spans.get(trace_id, [])]
             roots = [r for r in agent_roots(spans) if (r.trace_id, r.span_id) not in self.done]

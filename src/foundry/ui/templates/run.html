@@ -4,6 +4,14 @@
 <div class="runhead">
   <div><a href="/">&lt; Runs</a> &nbsp; <strong>{{ run.prompt_id }}</strong> · {{ run.model.id }} · <span class="status-{{ run.status }}">{{ run.status }}</span></div>
   <div class="wrap" style="color:var(--muted);font-size:13px">{{ run.run_id }}</div>
+  {% if others %}
+  <form class="compare" method="get" action="/compare">
+    <input type="hidden" name="a" value="{{ run.run_id }}">
+    <label for="compare-b">Compare with</label>
+    <select id="compare-b" name="b">{% for o in others %}<option value="{{ o.run_id }}">{{ o.prompt_id }} · {{ o.model }} · {{ o.headline }} · {{ o.when }}</option>{% endfor %}</select>
+    <button type="submit">Compare</button>
+  </form>
+  {% endif %}
   {% if scores %}
   <div class="scores">Overall {{ "%.2f"|format(scores.overall) if scores.overall is not none else "incomplete" }}
     | Workflow {{ "%.2f"|format(scores.workflow.score) }}

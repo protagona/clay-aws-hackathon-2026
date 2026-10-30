@@ -22,6 +22,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from foundry.batch import spread
 from foundry.config import ConfigError, load_config
 from foundry.contract import evaluation_interrupted
 from foundry.evaluate import lock
@@ -159,9 +160,19 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
         except ValueError:
             pass
         evaluating = lock.is_locked(path)
+        others = [c for c in sorted((c for c in _cards(st) if not c["unreadable"]), key=lambda c: c["started_at"],
+                                    reverse=True) if c["run_id"] != path.name][:COMPARE_CHOICES]
         return page(request, "run.html", run=run, scores=None if interrupted else scores, report_html=report_html,
-                    steps=steps, interrupted=interrupted, evaluating=evaluating,
+                    steps=steps, interrupted=interrupted, evaluating=evaluating, others=others,
                     refresh=evaluating or run.get("status") == "running")
+
+    @app.get("/compare", response_class=HTMLResponse)
+    def compare_page(request: Request, a: str = "", b: str = ""):
+        pa, pb = run_path(a), run_path(b)
+        if pa is None or pb is None:
+            return error(request, 404, "Run not found")
+        sa, sb = _compare_side(pa), _compare_side(pb)
+        return page(request, "compare.html", nav="runs", a=sa, b=sb, rows=_compare_rows(sa, sb))
 
     @app.post("/runs")
     def start_run(request: Request, prompt_id: str = Form(""), config: str = Form(""), csrf: str = Form("")):
@@ -448,9 +459,93 @@ def _variant_stats(rows: list[dict]) -> list[dict]:
         overall = [r["overall_f"] for r in ran if r["overall_f"] is not None]
         costs = [r["cost"] for r in ran if r["cost"] is not None]
         out.append({"variant": name, "model": rs[0].get("model"), "succeeded": sum(r["status"] == "succeeded" for r in ran),
-                    "total": len(rs), "overall": sum(overall) / len(overall) if overall else None,
+                    "total": len(rs), "overall": spread(overall),
                     "cost": sum(costs) / len(costs) if costs else None})
     return out
+
+
+COMPARE_CHOICES = 200  # runs offered in a run page's "Compare with" select
+
+
+def _compare_side(path: Path) -> dict:
+    """One run's numbers for the compare page (F-3), from its own files; scores are None until evaluated."""
+    run = {**_read_run(path), "run_id": path.name}
+    scores = _scores(path)
+    if scores is not None and evaluation_interrupted(path):
+        scores = None
+    steps = []
+    try:
+        if _regular(path / "trace.jsonl"):
+            steps = RunDir(path).read_steps(drop_truncated_last=True)
+    except ValueError:
+        pass
+    tools = [s for s in steps if s.type == "tool_call"]
+    costs = [s.cost_usd for s in steps if s.cost_usd is not None]
+    duration = None
+    try:
+        fmt = "%Y-%m-%dT%H:%M:%S.%f%z"
+        duration = (datetime.strptime(run["ended_at"].replace("Z", "+0000"), fmt)
+                    - datetime.strptime(run["started_at"].replace("Z", "+0000"), fmt)).total_seconds()
+    except (KeyError, AttributeError, TypeError, ValueError):
+        pass
+    return {"run": run, "scores": scores, "steps": steps, "cost": sum(costs) if costs else None,
+            "model_calls": sum(s.type == "llm_call" for s in steps), "tool_calls": len(tools),
+            "tool_errors": sum(s.status == "error" for s in tools), "duration": duration}
+
+
+def _signed(d: float, fmt: str) -> str:
+    return "0" if abs(d) < 1e-9 else ("+" if d > 0 else "\u2212") + fmt.format(abs(d))
+
+
+def _compare_rows(a: dict, b: dict) -> list[dict]:
+    """Rows of the compare table: label, A, B, and B - A, from untrusted files (every number is type-checked)."""
+    rows = []
+
+    def add(label, va, vb, fmt="{:.2f}", indent=False, show=None):
+        show = show or (lambda v: fmt.format(v))
+        delta = _signed(vb - va, fmt) if va is not None and vb is not None else ""
+        rows.append({"label": label, "a": "—" if va is None else show(va), "b": "—" if vb is None else show(vb),
+                     "delta": delta, "indent": indent})
+
+    def sc(side, *keys):
+        v = side["scores"]
+        for k in keys:
+            v = v.get(k) if isinstance(v, dict) else None
+        return _num(v)
+
+    def criteria(side) -> dict:
+        out = {}
+        crit = ((side["scores"] or {}).get("output") or {}).get("criteria")
+        for c in crit if isinstance(crit, list) else []:
+            if isinstance(c, dict) and isinstance(c.get("id"), str) and _num(c.get("score")) is not None:
+                out[c["id"]] = (_num(c["score"]), _num(c.get("max")))
+        return out
+
+    def components(side) -> dict:
+        comp = ((side["scores"] or {}).get("workflow") or {}).get("components")
+        return {k: _num(v) for k, v in comp.items() if isinstance(k, str)} if isinstance(comp, dict) else {}
+
+    add("Overall", sc(a, "overall"), sc(b, "overall"))
+    add("Workflow", sc(a, "workflow", "score"), sc(b, "workflow", "score"))
+    ca, cb = components(a), components(b)
+    for k in dict.fromkeys([*ca, *cb]):
+        add(k, ca.get(k), cb.get(k), indent=True)
+    add("Output", sc(a, "output", "score"), sc(b, "output", "score"))
+    ka, kb = criteria(a), criteria(b)
+    for k in dict.fromkeys([*ka, *kb]):
+        va, vb = ka.get(k), kb.get(k)
+
+        def frac(v):
+            return f"{v[0]:g}/{v[1]:g}" if v[1] is not None else f"{v[0]:g}"
+        rows.append({"label": k, "a": frac(va) if va else "—", "b": frac(vb) if vb else "—", "indent": True,
+                     "delta": _signed(vb[0] - va[0], "{:g}") if va and vb else ""})
+    add("Cost", a["cost"], b["cost"], "${:.3f}")
+    add("Model calls", a["model_calls"], b["model_calls"], "{:g}")
+    add("Tool calls (errors)", a["tool_calls"], b["tool_calls"], "{:g}")
+    rows[-1]["a"] = f"{a['tool_calls']} ({a['tool_errors']})"
+    rows[-1]["b"] = f"{b['tool_calls']} ({b['tool_errors']})"
+    add("Duration", a["duration"], b["duration"], "{:.0f} s")
+    return rows
 
 
 def _configs(st: UiState) -> list[str]:

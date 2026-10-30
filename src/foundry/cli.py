@@ -1,4 +1,4 @@
-"""Command-line entry point: foundry run | evaluate | validate | ui | batch | import | receive."""
+"""Command-line entry point: foundry run | evaluate | validate | ui | batch | import | receive | external."""
 
 from __future__ import annotations
 
@@ -52,6 +52,16 @@ def _build_parser() -> argparse.ArgumentParser:
     rc.add_argument("--runs-dir", default="runs")
     rc.add_argument("--port", type=int, default=4318)
     rc.add_argument("--config", help="config whose [prices] are used to compute cost_usd")
+
+    ex = sub.add_parser("external", help="run any OpenTelemetry-instrumented agent command and record its runs",
+                        usage="foundry external --task T --prompt P [options] -- <command> [args...]")
+    ex.add_argument("--task", required=True)
+    ex.add_argument("--prompt", required=True, help="prompt id; its text is passed to the command as FOUNDRY_PROMPT")
+    ex.add_argument("--config", default="config/offline.toml", help="evaluation config; its [prices] give cost_usd")
+    ex.add_argument("--runs-dir", default="runs")
+    ex.add_argument("--timeout", type=float, default=600, help="kill the command after this many seconds")
+    ex.add_argument("--evaluate", action="store_true", help="also evaluate each received run with --config")
+    ex.add_argument("cmd", nargs=argparse.REMAINDER, help="the agent command, after --")
 
     va = sub.add_parser("validate", help="check a run directory against the trace contract")
     va.add_argument("run_dir")
@@ -178,6 +188,12 @@ def _cmd_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_external(args: argparse.Namespace) -> int:
+    from foundry.external import main as external_main
+
+    return external_main(args)
+
+
 def _cmd_receive(args: argparse.Namespace) -> int:
     from foundry.receiver import main as receive_main
 
@@ -187,6 +203,7 @@ def _cmd_receive(args: argparse.Namespace) -> int:
 COMMANDS = {
     "import": _cmd_import,
     "receive": _cmd_receive,
+    "external": _cmd_external,
     "batch": _cmd_batch,
     "ui": _cmd_ui,
     "run": _cmd_run,

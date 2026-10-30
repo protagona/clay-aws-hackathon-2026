@@ -1,7 +1,8 @@
-"""Task packs under tasks/<task_id>/: prompts.jsonl, rubric.json, system.txt."""
+"""Task packs under tasks/<task_id>/: prompts.jsonl, rubric.json, system.txt, and optional expected.jsonl."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass
@@ -83,3 +84,40 @@ def load_rubric(path: Path) -> tuple[Rubric, bytes]:
         err = exc.errors()[0]
         field = ".".join(str(p) for p in err["loc"]) or "(file)"
         raise RubricError(f"Rubric {path}: {field}: {err['msg'].removeprefix('Value error, ')}") from None
+
+
+TOOL_RE = re.compile(r"^([A-Za-z0-9._-]{1,64}/)?[A-Za-z0-9._-]{1,128}$")
+
+
+@dataclass(frozen=True)
+class Expectation:
+    """Expected workflow for one prompt: ordered stages, each a list of acceptable tools ("name" or "server/name")."""
+    stages: list[list[str]]
+    sha256: str  # of the whole expected.jsonl, for provenance
+
+
+def load_expected(task_id: str, prompt_id: str) -> Expectation | None:
+    """The expectation for (task, prompt), or None when the task has no expected.jsonl or no line for the prompt."""
+    path = task_dir(task_id) / "expected.jsonl"
+    if not path.exists():
+        return None
+    raw = path.read_bytes()
+    found = None
+    for lineno, line in enumerate(raw.decode().splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            obj = json.loads(line)
+            pid, stages = obj["prompt_id"], obj["stages"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            raise RubricError(f"{path}:{lineno}: each line must be {{\"prompt_id\": ..., \"stages\": [[tool, ...], ...]}}") from None
+        if not isinstance(pid, str) or not PROMPT_ID_RE.match(pid):
+            raise RubricError(f"{path}:{lineno}: prompt_id {pid!r} must match ^[A-Za-z0-9._-]{{1,64}}$")
+        if (not isinstance(stages, list) or not stages
+                or not all(isinstance(s, list) and s and all(isinstance(t, str) and TOOL_RE.match(t) for t in s)
+                           for s in stages)):
+            raise RubricError(f"{path}:{lineno}: stages must be a non-empty list of non-empty lists of tool names "
+                              '("name" or "server/name")')
+        if pid == prompt_id:
+            found = stages
+    return Expectation(found, hashlib.sha256(raw).hexdigest()) if found is not None else None
