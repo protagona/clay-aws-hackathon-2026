@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -32,10 +33,31 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _cmd_validate(args: argparse.Namespace) -> int:
+    from foundry.contract import validate_run_dir
+
+    run_dir = Path(args.run_dir)
+    if not run_dir.is_dir():
+        print(f"Not a run directory: {run_dir}", file=sys.stderr)
+        return 2
+    violations = validate_run_dir(run_dir)
+    for v in violations:
+        print(v)
+    return 1 if any(v.severity == "error" for v in violations) else 0
+
+
+COMMANDS = {
+    "validate": _cmd_validate,
+}
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
-    print(f"foundry {args.command}: not implemented", file=sys.stderr)
-    return 2
+    handler = COMMANDS.get(args.command)
+    if handler is None:
+        print(f"foundry {args.command}: not implemented", file=sys.stderr)
+        return 2
+    return handler(args)
 
 
 if __name__ == "__main__":

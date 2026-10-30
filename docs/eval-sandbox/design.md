@@ -662,11 +662,20 @@ All work stacks on the `prototype` branch. Each slice ends with `uv run pytest` 
 
 The other dependencies are pinned at their latest release when `uv lock` runs in slice 1. Before every commit, `gitleaks` runs on the staged diff.
 
+**Normative inputs.** The plan is executed alongside this design document. These sections are the specification for the slices that consume them:
+
+- *Data and contracts*: the config TOML schema, the scripted script format and token formula, the `scores.json` fields, and the provider protocol
+- *One run* and *One evaluation*: thread model, finalize order, status rules, the lock file format, and atomic writes
+- *Security and privacy*: the dependency list and trust boundaries
+- *Experience*: the UI states and the approved wireframe
+
+Additive contract fields go into `docs/trace-contract.md` in the slice that first writes them. `gitleaks` 8.30.1, installed locally through Homebrew, scans each commit's staged diff. If a slice 3 spike shows a Strands behavior differs from the design, the design is updated first. A fallback to a hand-rolled Converse loop would change only `harness/` and `Provider.strands_model()`, while `Tracer`, `Step` and evaluation stay unchanged.
+
 **Shared interfaces.** These names are used across slices. Each is defined in the slice shown in brackets.
 
 - `foundry.contract`: `RunRecord`, `Step`, `Output`, `Scores`, `Rubric` (pydantic models). `validate_run_dir(path) -> list[Violation]`, where `Violation` has `file`, `line`, `field`, `message` and `severity: "error"|"warning"`. [2]
 - `foundry.runstore`: `new_run_id(prompt_id) -> str`, `RunDir(path)` with `write_run(RunRecord)`, `append_step(Step)`, `write_output(Output)`, `read_run()`, `read_steps()`, `read_output()`, and `atomic_write_many({name: bytes})`. [2]
-- `foundry.config`: `load_config(path) -> Config`, raising `ConfigError(file, key, message)`, and `project_root() -> Path`. [3]
+- `foundry.config`: `load_config(path) -> Config` for `run`, which validates every section. `load_eval_config(path) -> EvalConfig` for `evaluate`, which reads and validates only `[judge]`, `[summarizer]`, `[scoring]`, `[prices]` and `[storage]` (AC10e), so a config file used only for evaluation is valid. Both raise `ConfigError(file, key, message)`. Also `project_root() -> Path`. [3]
 - `foundry.models.base`: `Provider` protocol with `strands_model()` and `complete(CompletionRequest) -> Completion`. `build_provider(role_cfg) -> Provider`. [3; the bedrock provider comes in 6]
 - `foundry.tracing.base`: `Tracer` protocol with `start_run(RunRecord)`, `record_step(Step)`, `end_run(RunRecord)` and `close()`. `build_tracers(cfg, run_dir) -> list[Tracer]`. [3; otel comes in 5]
 - `foundry.harness.runner`: `run(cfg, prompt_id, runs_dir, run_id=None) -> (Path, status)`. [3]
@@ -708,16 +717,25 @@ The other dependencies are pinned at their latest release when `uv lock` runs in
    - `harness/hooks.py`, `tracing/base.py` and `tracing/jsonl.py`.
    - `harness/runner.py`, with the worker thread, watchdog, finalize order and status rules from *One run*.
    - `storage.mirror` as a stub.
-   - `config/offline.toml` and `config/offline-alt.toml`.
+   - `config/offline.toml` and `config/offline-alt.toml`. They differ only in `[model]`, whose `id` and `script` keys select `scripted-a` or `scripted-b`.
    - `tests/mcp_fault_server.py` (FastMCP), with tools `fail(msg)`, `sleep(seconds)` and `echo(text)`, and a `--crash-on-start` flag.
+   - Hooks also cap each tool result passed back to the agent at 8,000 characters by rewriting `AfterToolCallEvent.result` (spec non-goal mitigation).
    - Tests, in this order:
      1. Spike-confirm the uncertain behaviors: cancel during an in-flight MCP tool (AfterToolCallEvent shape); a cancelled model call producing no `llm_call` step; `cancel_tool` giving an error result.
      2. Then AC5 and AC15 through a `subprocess` call to `foundry run` (marked `network`).
-     3. Then AC6, AC8, AC9, AC9b, AC9c and AC9d with the fault server or scripted scripts.
+     3. Then AC6, AC8 (both limits), AC9, AC9b, AC9c and AC9d with the fault server or scripted scripts.
+     4. Then the CLI and config checks:
+        - AC1: unknown prompt id, bad `prompt_id` line, and a missing or invalid config, each exiting 2 with no run directory and the message checked
+        - AC2: exit codes 0, 1 and 2 through the subprocess
+        - AC4: `run.json` is `running` with `limits` during a run (read from a hook in an in-process test), and `run.json` is single-line. The `scores.json` single-line check is in slice 4.
+        - AC7: tokens and cost, and a model with no price giving null cost
+        - the 8,000-character tool-result cap
+        - an MCP `command` not found on PATH exits 2 with no run directory. This is a config error, per the *Failure modes* row "`uvx` not on PATH", and it's distinct from AC9c, which covers a resolved command that then fails to start.
+     5. Test placement for AC30: only AC5 and AC15 (subprocess runs against `config/offline*.toml`) and one RODA error-detection test carry the `network` marker. AC6, AC8, AC9, AC9b, AC9c and AC9d run against `tests/mcp_fault_server.py` only, using test-local configs that name no RODA server. Slice 3 ends by running `uv run pytest -m "not network"` with network access disabled (`HTTPS_PROXY=http://127.0.0.1:9`, `UV_OFFLINE=1`) to prove the split.
    - If a confirmed behavior differs from the design, update the design before continuing.
    - Commit. Further commits within the slice are fine.
 4. **Evaluation (AC10–AC14, AC10b–e, AC17–AC19, AC7b).**
-   - `evaluate/view.py`, `workflow.py`, `judge.py`, `summarize.py`, `report.py`, `evaluate.py`.
+   - `evaluate/view.py`, `workflow.py`, `judge.py`, `summarize.py` (which owns both the narrative and the deterministic `struggles(steps, run) -> list[str]`), `report.py`, `evaluate.py`.
    - `src/foundry/templates/judge-v1.txt` and `summarizer-v1.txt`.
    - The lock and atomic multi-file write.
    - `foundry evaluate` with `--config`, `--rubric`, `--force` and `--lock-held`.
@@ -731,6 +749,23 @@ The other dependencies are pinned at their latest release when `uv lock` runs in
      - rubric snapshot and override
      - refusing a `running` run, and `--force`
      - replay through a `subprocess` call to `foundry evaluate`
+     - AC7b: summarizer failure, and a narrative over 150 words twice
+     - AC10: the report has one timeline row per trace step for each fixture. Struggles lists every errored call, retry, invalid call and limit note in `recovered` and `failed`. The narrative is 150 words or fewer.
+     - the capped view: output truncated at 20,000 characters, and a 250-step synthetic trace giving the first 100 and last 100 steps plus the elision note
+     - AC13 and AC10d exact strings: `Incomplete: output not scored`, `Output not scored: <reason>`, the `--force` report sentence, and `"forced": true`
+     - AC2: `foundry evaluate` with an invalid `--rubric` exits 2 through a subprocess
+     - AC17: replay starts no agent and no MCP server (asserted by monkeypatching the runner and the MCP builder to raise), and `run.json` is byte-identical, including `mode`
+     - `scores.json` is single-line (AC4)
+     - AC10d: a run directory that fails validation exits 2
+     - AC10e: bad scoring weights or a missing `[judge]` exits 2 naming the key; config path, judge id and summarizer id are recorded in `scores.json`
+     - AC12: judge identity, plus evaluation tokens and cost
+     - AC14: every Provenance item is present
+     - an invalid rubric is rejected before any model call (the scripted judge records zero calls)
+     - a rubric_id mismatch warns and records both ids
+     - a judge equal to the agent model prints a warning
+     - two concurrent evaluations: the second exits 2 with the lock message
+     - interrupted-evaluation recovery: a manufactured hash mismatch, then re-evaluating fixes it
+   - `atomic_write_many` is the slice 2 `runstore` function, reused here.
    - Commit.
 5. **OTel, S3, secrets (AC16, AC16b, AC20, AC21).**
    - `tracing/otel.py`: private TracerProvider, a span per step, a bounded flush, and a warn-once exporter wrapper.
@@ -738,8 +773,11 @@ The other dependencies are pinned at their latest release when `uv lock` runs in
    - The real `storage.mirror`: a lazy boto3 client, dotfiles excluded, warn-once on failure.
    - Tests:
      - a local recording HTTP server on an ephemeral port, with a temp config copy
+     - a config with only `["jsonl"]` sends zero requests to the recording server (AC16)
      - an unreachable endpoint, timed
      - botocore Stubber for S3, plus the unset case creating no client
+     - an upload failure (Stubber error) gives exactly one stderr warning naming the bucket, the exit code is unchanged, and the local files remain
+     - upload timing: a recording stub sees no upload while the run is `running`, one batch at run end, and one after evaluation
      - the sentinel secrets test across the run dir, stdout/stderr, exported spans and UI pages (the UI part is added in slice 8)
    - Commit.
 6. **Bedrock provider (groundwork for L1–L3).**
@@ -751,7 +789,13 @@ The other dependencies are pinned at their latest release when `uv lock` runs in
    - Commit.
 7. **Infra (AC22).**
    - `infra/app.py`, `infra/stack.py`, `infra/cdk.json` (`"app": "uv run python app.py"`), and `infra/package.json` pinning `aws-cdk@2.1146.1`.
-   - `tests/test_infra.py`, using `Template.from_stack` assertions for region, bucket properties, the exact IAM actions, the `runs/*` scoping and the tags.
+   - `tests/test_infra.py`, using `Template.from_stack` assertions for:
+     - region `us-west-2`
+     - the bucket's BlockPublicAccess (all four true), encryption, versioning, and the SSL-only `aws:SecureTransport` deny in the bucket policy
+     - IAM actions exactly `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`
+     - S3 actions limited to the bucket and the `runs/*` prefix, with no other S3 resource
+     - tags
+     - no 12-digit account id literal anywhere in the synthesized template (the account comes from `CDK_DEFAULT_ACCOUNT`)
    - Run `cd infra && npx cdk synth` once and record the result.
    - Commit.
 8. **UI (AC24–AC29).**
@@ -764,7 +808,7 @@ The other dependencies are pinned at their latest release when `uv lock` runs in
    - Jinja2 templates following the approved wireframe: cards, then the report page.
    - `foundry ui`, which runs uvicorn on 127.0.0.1.
    - Tests use FastAPI TestClient against `create_app` with a temp runs dir seeded from fixtures. They cover:
-     - every UI state in the design
+     - every UI state in the design's *Experience* table, with the spec's AC24 to AC29 strings as the exact copy
      - the AC26 and AC27 denials
      - the AC28 and AC29 checks, and the 409s
      - the sentinel test extended to UI pages

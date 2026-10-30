@@ -1,4 +1,4 @@
-# Trace contract (draft — ratify during kickoff, first ~90 min)
+# Trace contract (v0.2)
 
 This is the one agreement that lets everyone work in parallel. The harness **writes** these files; the summarizer, scorer, report, and UI **read** them. Once agreed, anyone can hand-write a sample trace and build against it without waiting for the live agent.
 
@@ -82,6 +82,41 @@ runs/<run_id>/
   "overall": 0.74
 }
 ```
+
+## Required fields
+
+Evaluation relies only on these fields, so any harness that writes them can be evaluated with `foundry evaluate`. The validator (`foundry validate <run_dir>`) checks them.
+
+- **`run.json`:** `run_id`, `task_id`, `prompt_id`, `model.provider`, `model.id`, `status`, `started_at`. `mode` defaults to `live`.
+- **`trace.jsonl`, each line:** `step`, `type`, `name`, `started_at`, `duration_ms`, `status`. A step with `status: "error"` must also have a non-empty `error`. `step` numbers increase.
+- **`output.json`:** `kind`. `text` defaults to `""`.
+
+Every other field is optional. Readers must accept fields they don't recognize.
+
+## v0.2 additions (additive)
+
+These were added by the eval sandbox build ([spec](eval-sandbox/spec.md), [design](eval-sandbox/design.md)). Each is a one-way door once Clay depends on it.
+
+### run.json
+
+- `contract_version`: `"0.2"`. A file without it is v0.1.
+- `status` can also be `running`. It is written at run start and rewritten with the final status at the end.
+- `limits`: `{"max_model_calls", "max_input_tokens", "max_seconds"}`.
+- `config`: the path of the config file used.
+- `mcp_servers[].error_detection`: `mcp`, or `json_status` for servers such as RODA that report errors inside a successful MCP result.
+
+### trace.jsonl
+
+- `invalid: true` on a `tool_call`: the tool didn't exist, or its arguments failed the tool's input schema. On an unknown tool, `server` is `null`.
+- `retry_of` points to the **most recent** earlier errored call with the same server, name and arguments.
+
+### output.json
+
+- `kind: "none"` with `text: ""` means the agent produced no final answer.
+
+### scores.json
+
+Written by `foundry evaluate`. These fields are listed in the design's *Data and contracts* section and in the slice that writes them.
 
 ## Rules
 
