@@ -1,0 +1,47 @@
+[project]
+name = "clay-foundry-eval"
+version = "0.1.0"
+description = "Observe, summarize and score agentic geospatial workflows (Clay Earth Dataset Foundry hackathon)"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "strands-agents==1.62.0",
+    "mcp==2.1.1",
+    "boto3==1.43.122",
+    "fastapi==0.162.0",
+    "uvicorn==0.54.0",
+    "jinja2==3.1.6",
+    "python-multipart==0.0.32",
+    "markdown-it-py==4.2.0",
+    "pydantic==2.14.2",
+    "jsonschema==4.26.0",
+    "opentelemetry-sdk==1.45.2",
+    "opentelemetry-exporter-otlp-proto-http==1.45.2",
+    "opentelemetry-semantic-conventions==0.66b2",
+]
+
+[project.scripts]
+foundry = "foundry.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest==9.2.0",
+    "httpx==0.28.1",
+    "aws-cdk-lib==2.275.0",
+    "constructs==10.8.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/foundry"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "network: needs internet access (real RODA MCP server via uvx)",
+]

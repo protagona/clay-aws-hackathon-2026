@@ -1,0 +1,24 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .tool-versions
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version-file: .tool-versions
+      - run: uv sync
+      # Includes the `network` tests: they call the real RODA MCP server, which needs no AWS credentials.
+      - run: uv run pytest
