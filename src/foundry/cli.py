@@ -69,6 +69,9 @@ def _cmd_run(args: argparse.Namespace) -> int:
     except FileExistsError:
         print(f"Run directory already exists for --run-id {args.run_id}", file=sys.stderr)
         return 2
+    except PermissionError as exc:
+        print(f"Cannot write the run directory: {exc}. Check permissions on --runs-dir {args.runs_dir}.", file=sys.stderr)
+        return 2
     print(run_dir)
     if status != "succeeded":
         print(f"Run {status}: see {run_dir / 'trace.jsonl'}", file=sys.stderr)
@@ -84,6 +87,9 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
         scores = evaluate(args.run_dir, cfg, rubric_file=args.rubric, force=args.force, lock_token=args.lock_held)
     except (ConfigError, EvaluateError) as exc:
         print(exc, file=sys.stderr)
+        return 2
+    except PermissionError as exc:
+        print(f"Cannot write evaluation files: {exc}. Check permissions on {args.run_dir}.", file=sys.stderr)
         return 2
     overall = scores["overall"]
     w, o = scores["workflow"]["score"], scores["output"]["score"]

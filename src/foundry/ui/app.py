@@ -88,10 +88,15 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765)
             origin = request.headers.get("origin")
             if origin is not None and origin != f"http://{request.headers['host']}":
                 return PlainTextResponse("Cross-origin request refused", status_code=403)
-        response = await call_next(request)
-        response.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'"
+        try:
+            response = await call_next(request)
+        except Exception:
+            response = PlainTextResponse("Internal Server Error", status_code=500)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Frame-Options"] = "DENY"
         return response
 
     def check_csrf(token: str) -> Response | None:
@@ -106,10 +111,13 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765)
         return page(request, "error.html", status=status, message=message)
 
     def run_path(run_id: str) -> Path | None:
-        if not is_valid_run_id(run_id):
+        if not is_valid_run_id(run_id) or run_id.startswith("."):
             return None
-        path = (st.runs_dir / run_id).resolve()
-        if not path.is_relative_to(st.runs_dir) or not (path / "run.json").is_file():
+        raw = st.runs_dir / run_id
+        if raw.is_symlink():
+            return None
+        path = raw.resolve()
+        if not path.is_relative_to(st.runs_dir) or _read_run(path) is None:
             return None
         return path
 
@@ -124,15 +132,16 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765)
         if path is None:
             return error(request, 404, "Run not found")
         rd = RunDir(path)
-        run = json.loads((path / "run.json").read_text())
+        run = {**_read_run(path), "run_id": path.name}  # links and forms use the directory name, never run.json's
         scores = _scores(path)
         interrupted = scores is not None and evaluation_interrupted(path)
         report_html = None
-        if scores is not None and not interrupted and (path / "report.md").exists():
+        if scores is not None and not interrupted and _regular(path / "report.md"):
             report_html = render((path / "report.md").read_text())
         steps = []
         try:
-            steps = rd.read_steps(drop_truncated_last=True)
+            if _regular(path / "trace.jsonl"):
+                steps = rd.read_steps(drop_truncated_last=True)
         except ValueError:
             pass
         return page(request, "run.html", run=run, scores=None if interrupted else scores, report_html=report_html,
@@ -169,7 +178,7 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765)
         path = run_path(run_id)
         if path is None:
             return error(request, 404, "Run not found")
-        run = json.loads((path / "run.json").read_text())
+        run = _read_run(path)
         if run.get("status") == "running":
             return error(request, 409, f"Run {run_id} is still running. If it crashed, evaluate it from the CLI with --force.")
         try:
@@ -246,10 +255,41 @@ def _eval_config_for(st: UiState, run: dict) -> str:
     return "config/offline.toml"
 
 
-def _scores(path: Path) -> dict | None:
+def _regular(path: Path) -> bool:
+    return path.is_file() and not path.is_symlink()
+
+
+def _read_run(path: Path) -> dict | None:
+    """run.json as a dict with the fields the UI shows, or None if it's missing, a symlink, or malformed."""
+    f = path / "run.json"
+    if not _regular(f):
+        return None
     try:
-        return json.loads((path / "scores.json").read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
+        run = json.loads(f.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(run, dict) or not isinstance(run.get("model"), dict):
+        return None
+    if not all(isinstance(run.get(k), str) for k in ("prompt_id", "status")):
+        return None
+    return run
+
+
+def _num(value) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _scores(path: Path) -> dict | None:
+    """scores.json reduced to the numbers the UI shows; None if missing, a symlink, or malformed."""
+    f = path / "scores.json"
+    if not _regular(f):
+        return None
+    try:
+        raw = json.loads(f.read_text())
+        return {**raw, "overall": _num(raw.get("overall")),
+                "workflow": {**raw["workflow"], "score": _num(raw["workflow"].get("score"))},
+                "output": {**raw["output"], "score": _num(raw["output"].get("score"))}}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
 
 
@@ -269,30 +309,30 @@ def _cards(st: UiState) -> list[dict]:
     if not st.runs_dir.is_dir():
         return cards
     for d in st.runs_dir.iterdir():
-        if not d.is_dir() or d.name.startswith("."):
+        if d.is_symlink() or not d.is_dir() or d.name.startswith(".") or not is_valid_run_id(d.name):
             continue
-        try:
-            run = json.loads((d / "run.json").read_text())
-            run_id, prompt_id, model = run["run_id"], run["prompt_id"], run["model"]["id"]
-        except (OSError, ValueError, KeyError, TypeError):
+        run = _read_run(d)
+        if run is None:
             cards.append({"unreadable": True, "name": d.name, "started_at": ""})
             continue
         scores = _scores(d)
-        status = run.get("status", "?")
+        status = run["status"]
         if lock.is_locked(d):
             headline = "evaluating"
         elif status == "running":
             headline = "running"
         elif scores is None:
-            headline = "not evaluated"
-        elif evaluation_interrupted(d) or scores.get("overall") is None:
+            headline = "not evaluated" if not (d / "scores.json").exists() else "incomplete"
+        elif evaluation_interrupted(d) or scores["overall"] is None:
             headline = "incomplete"
         else:
             headline = f"{scores['overall']:.2f}"
         sub = ""
-        if scores is not None and headline not in ("incomplete", "evaluating"):
+        if scores is not None and headline not in ("incomplete", "evaluating") and scores["workflow"]["score"] is not None:
             sub = f"W{_short(scores['workflow']['score'])} O{_short(scores['output']['score'])}"
-        cards.append({"unreadable": False, "run_id": run_id, "prompt_id": prompt_id, "model": model,
-                      "headline": headline, "sub": sub, "status": status, "when": _when(run.get("started_at")),
-                      "footer": f"{run.get('task_id', '?')} · …{run_id[-4:]}", "started_at": run.get("started_at", "")})
+        started = run.get("started_at") if isinstance(run.get("started_at"), str) else ""
+        cards.append({"unreadable": False, "run_id": d.name, "prompt_id": run["prompt_id"],
+                      "model": str(run["model"].get("id", "?")), "headline": headline, "sub": sub, "status": status,
+                      "when": _when(started), "footer": f"{run.get('task_id', '?')} · …{d.name[-4:]}",
+                      "started_at": started})
     return sorted(cards, key=lambda c: c["started_at"], reverse=True)

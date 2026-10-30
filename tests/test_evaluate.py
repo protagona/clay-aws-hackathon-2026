@@ -1,12 +1,10 @@
 import json
-import os
 import re
 
 import pytest
 from conftest import ROOT, foundry
 from eval_helpers import ALL3, eval_config, judge_reply, load
 
-from foundry.evaluate import evaluate as ev_mod
 from foundry.evaluate import view
 from foundry.evaluate.evaluate import EvaluateError, evaluate
 

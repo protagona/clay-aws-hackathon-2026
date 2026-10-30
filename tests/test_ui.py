@@ -7,7 +7,7 @@ import time
 
 import pytest
 from conftest import FIXTURES, ROOT
-from eval_helpers import eval_config, judge_reply, load
+from eval_helpers import eval_config, load
 from fastapi.testclient import TestClient
 from harness_helpers import write_config
 
@@ -247,3 +247,77 @@ def test_ui_pages_never_show_credentials(tmp_path, monkeypatch):  # AC21 (UI par
     evaluate(run_dir, load(eval_config(tmp_path / "e")))
     pages = [c.get("/").text, c.get(f"/runs/{run_dir.name}").text, c.get(f"/jobs/{job.id}/log").text]
     assert not any(SENTINEL in p for p in pages)
+
+
+# --- regression tests for the Verify-stage pentest findings (F1-F6) ---------------------------------------
+
+def test_symlinked_files_and_dirs_are_never_followed(tmp_path):  # F1, F2
+    runs = tmp_path / "runs"
+    d = _seed(runs, "clean")
+    evaluate(d["clean"], load(eval_config(tmp_path / "e")))
+    outside = tmp_path / "outside"
+    shutil.copytree(FIXTURES / "clean", outside / "secretrun")
+    (outside / "secret.md").write_text("# TOP SECRET OUTSIDE FILE")
+    rj = json.loads((outside / "secretrun/run.json").read_text())
+    rj["prompt_id"] = "OUTSIDE-SECRET"
+    (outside / "secretrun/run.json").write_text(json.dumps(rj))
+
+    (d["clean"] / "report.md").unlink()
+    (d["clean"] / "report.md").symlink_to(outside / "secret.md")
+    (runs / "symdir").symlink_to(outside / "secretrun")
+    (runs / "symjson").mkdir()
+    (runs / "symjson" / "run.json").symlink_to(outside / "secretrun/run.json")
+    _, c = _client(runs)
+    assert "TOP SECRET" not in c.get("/runs/fixture-clean").text
+    assert c.get("/runs/symdir").status_code == 404
+    assert c.get("/runs/symjson").status_code == 404
+    index = c.get("/").text
+    assert "OUTSIDE-SECRET" not in index and 'href="/runs/symdir"' not in index
+
+
+def test_links_use_directory_name_not_run_json_run_id(tmp_path):  # F3
+    runs = tmp_path / "runs"
+    d = _seed(runs, "clean")
+    rj = json.loads((d["clean"] / "run.json").read_text())
+    rj["run_id"] = "../../jobs/0000000000000000/dismiss?"
+    (d["clean"] / "run.json").write_text(json.dumps(rj))
+    _, c = _client(runs)
+    assert 'href="/runs/fixture-clean"' in c.get("/").text
+    page = c.get("/runs/fixture-clean").text
+    assert 'action="/runs/fixture-clean/evaluate"' in page and "dismiss" not in page
+
+
+def test_malformed_files_do_not_break_the_index(tmp_path):  # F4
+    runs = tmp_path / "runs"
+    d = _seed(runs, "clean", "recovered")
+    (d["clean"] / "scores.json").write_text(json.dumps({"overall": "x", "workflow": {"score": "y"}}))
+    (runs / "bad-list").mkdir()
+    (runs / "bad-list" / "run.json").write_text("[1, 2]")
+    app, c = _client(runs)
+    r = c.get("/")
+    assert r.status_code == 200 and "incomplete" in r.text and "unreadable run.json" in r.text
+    assert c.get("/runs/bad-list").status_code == 404
+    assert c.post("/runs/bad-list/evaluate", data={"csrf": _csrf(app)}).status_code == 404
+
+
+def test_security_headers_and_framing(tmp_path):  # F5
+    _, c = _client(tmp_path / "runs")
+    for r in (c.get("/"), c.get("/runs/nope")):
+        assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+        assert r.headers["x-frame-options"] == "DENY" and r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_origin_checked_on_evaluate_post(tmp_path):  # AC29
+    runs = tmp_path / "runs"
+    _seed(runs, "clean")
+    app, c = _client(runs)
+    r = c.post("/runs/fixture-clean/evaluate", data={"csrf": _csrf(app)}, headers={"origin": "http://evil.example"})
+    assert r.status_code == 403
+
+
+def test_render_blocks_protocol_relative_links():  # F6
+    from foundry.ui.render import render
+
+    html = render("[a](//evil.example/x) [b](/\\\\evil.example) [c](https://ok.example) [d](runs/x)")
+    assert 'href="//evil' not in html and "%5Cevil" not in html
+    assert 'href="https://ok.example"' in html and 'href="runs/x"' in html

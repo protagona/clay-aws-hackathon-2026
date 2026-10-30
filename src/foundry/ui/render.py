@@ -6,7 +6,10 @@ from markdown_it import MarkdownIt
 
 
 def _safe_link(url: str) -> bool:
-    head = url.strip().split("/")[0]
+    url = url.strip()
+    if url.startswith("//") or "\\" in url or "%5c" in url.lower():  # protocol-relative or backslash tricks
+        return False
+    head = url.split("/")[0]
     return url.lower().startswith(("http://", "https://")) or ":" not in head
 
 

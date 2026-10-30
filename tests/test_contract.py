@@ -96,3 +96,13 @@ def test_rubric_rules():
         Rubric.model_validate(_rubric(criteria=[{**_rubric()["criteria"][0], "max": 1}]))
     with pytest.raises(ValueError):
         Rubric.model_validate(_rubric(criteria=[]))
+
+
+def test_symlinked_run_files_are_violations(fixture_run, tmp_path):
+    run = fixture_run("clean")
+    secret = tmp_path / "secret.jsonl"
+    secret.write_text((run / "trace.jsonl").read_text())
+    (run / "trace.jsonl").unlink()
+    (run / "trace.jsonl").symlink_to(secret)
+    found = validate_run_dir(run)
+    assert any(v.file == "trace.jsonl" and "symlink" in v.message for v in found)

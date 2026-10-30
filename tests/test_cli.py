@@ -129,3 +129,16 @@ def test_roda_json_status_error_detected(tmp_path):
     steps = [json.loads(line) for line in (run_dir / "trace.jsonl").read_text().splitlines()]
     errs = [s for s in steps if s["type"] == "tool_call" and s["status"] == "error"]
     assert errs and "Dataset not found" in errs[0]["error"]
+
+
+def test_unwritable_runs_dir_exits_2_with_message(tmp_path):
+    runs = tmp_path / "ro"
+    runs.mkdir()
+    runs.chmod(0o555)
+    try:
+        cfg = write_config(tmp_path, [{"text": "x"}])
+        proc = foundry("run", "--config", str(cfg), "--prompt", "adb-001", "--runs-dir", str(runs))
+        assert proc.returncode == 2 and "Cannot write the run directory" in proc.stderr
+        assert "Traceback" not in proc.stderr
+    finally:
+        runs.chmod(0o755)

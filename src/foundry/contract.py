@@ -192,6 +192,11 @@ def validate_run_dir(run_dir: str | Path) -> list[Violation]:
     """Check a run directory against the contract. Errors fail validation; warnings don't."""
     run_dir = Path(run_dir)
     violations: list[Violation] = []
+    for name in ("run.json", "trace.jsonl", "output.json", "scores.json", "rubric.json", "report.md"):
+        if (run_dir / name).is_symlink():  # never follow a planted link out of the run dir
+            violations.append(Violation(name, None, "(file)", "is a symlink; run files must be regular files"))
+    if violations:
+        return violations
 
     run_data, errs = _load_json_object(run_dir / "run.json")
     violations += errs

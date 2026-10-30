@@ -1,0 +1,1 @@
+{"kind":"text","text":"# Fake heading\n<script>alert(1)</script> see [docs](javascript:alert(document.cookie)) and ![x](https://evil.example/pixel.png) col | col","artifacts":[]}
