@@ -200,6 +200,17 @@ These were the user's picks, mechanical and functional only. The scoring work wa
 
 Live: a standalone Strands agent on Bedrock with real RODA, not built on our harness (`examples/external_strands_agent.py`), was received, validated and scored (overall 1.00). See [increment-3.md](increment-3.md).
 
+## UI for batches and imports (2026-10-30)
+
+At the user's request, everything is also available from the UI, alongside the CLI:
+
+- **Batches page:** the form takes a config, models (an allowlist built from the configs), prompts, repeats, parallel runs, a cost cap and evaluate. A live batch page shows per-model aggregates and run rows that link to reports, and refreshes itself while running. One batch runs at a time.
+- **Import page:** upload an OTLP file (≤ 50 MB), or start and stop the OpenTelemetry receiver on 127.0.0.1, with a count and links for the runs received.
+- **Shared runs dir:** batch runs land in the UI's runs dir with a `b-<timestamp>-<hex>_` prefix, so they show up as ordinary cards.
+- **Same protections as before:** every POST is behind Host, Origin and CSRF checks.
+- **Tests:** UI tests cover a real batch launched from the form, form validation, upload, and receiver start, receive and stop.
+- **Live through the real server:** a 2-model batch on adb-006 cost $0.38 against a $1 cap (Kimi K3 1.00, Sonnet 4.6 0.96). The UI was restarted mid-batch, and the batch kept running and rendered correctly afterwards.
+
 ## Follow-ups
 
 - L4 (`cdk deploy` and S3 mirror) when wanted. Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.

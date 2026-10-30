@@ -34,6 +34,8 @@ def _build_parser() -> argparse.ArgumentParser:
     ba.add_argument("--eval-config", help="config for evaluation (default: the first variant's config)")
     ba.add_argument("--max-cost", type=float, help="stop launching runs once recorded cost (USD) reaches this")
     ba.add_argument("--out", required=True, help="batch directory (re-run the same command to resume)")
+    ba.add_argument("--runs-dir", help="where run dirs go (default <out>/runs); the UI uses its own runs dir")
+    ba.add_argument("--run-prefix", help="prefix for run ids, so batches can share a runs dir")
 
     im = sub.add_parser("import", help="turn OpenTelemetry GenAI traces (OTLP/JSON) from any agent into run dirs")
     im.add_argument("file", help="OTLP/JSON: one ExportTraceServiceRequest, or JSON Lines of them")

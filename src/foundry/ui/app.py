@@ -13,11 +13,12 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -31,6 +32,7 @@ from foundry.ui.render import render
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
 CONFIG_STEM_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 JOB_ID_RE = re.compile(r"^[a-f0-9]{16}$")
+BATCH_ID_RE = re.compile(r"^b-\d{8}-\d{6}-[a-f0-9]{4}$")
 
 
 @dataclass
@@ -54,7 +56,9 @@ class Job:
         """Runs that exit 1 are ordinary failed runs with a card; only exit 2 (nothing created) needs a banner."""
         if self.exit_code is None or self.dismissed:
             return False
-        return self.exit_code == 2 if self.kind == "run" else self.exit_code != 0
+        if self.kind in ("run", "batch"):  # exit 1 = ordinary failed run / budget stop, shown on its own page
+            return self.exit_code == 2
+        return self.exit_code != 0
 
     def last_stderr_line(self) -> str:
         try:
@@ -72,10 +76,16 @@ class UiState:
     csrf: str = field(default_factory=lambda: secrets.token_urlsafe(32))
     jobs: dict[str, Job] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    receiver_port: int = 4318
+    receiver: object | None = None  # foundry.receiver.Receiver while running
+
+    @property
+    def batches_dir(self) -> Path:
+        return self.runs_dir / ".batches"
 
 
-def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765) -> FastAPI:
-    st = UiState(Path(runs_dir).resolve(), Path(project_root).resolve(), port)
+def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765, receiver_port: int = 4318) -> FastAPI:
+    st = UiState(Path(runs_dir).resolve(), Path(project_root).resolve(), port, receiver_port=receiver_port)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.ui = st
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
@@ -124,9 +134,9 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765)
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
         cards = _cards(st)
-        busy = any(c.get("headline") in ("running", "evaluating") for c in cards)  # R4: refresh while in progress
+        busy = any(c.get("headline") in ("running", "evaluating") for c in cards) or st.receiver is not None
         return page(request, "index.html", cards=cards, configs=_configs(st), prompts=_prompt_ids(st),
-                    banners=[j for j in st.jobs.values() if j.failed_visibly], refresh=busy)
+                    banners=[j for j in st.jobs.values() if j.failed_visibly], refresh=busy, nav="runs")
 
     @app.get("/runs/{run_id}", response_class=HTMLResponse)
     def run_page(request: Request, run_id: str):
@@ -195,6 +205,130 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765)
                    ["evaluate", str(path), "--config", config, "--lock-held", token], lock_token=token, lock_dir=path)
         return RedirectResponse(f"/runs/{run_id}", status_code=303)
 
+    # --- batches -----------------------------------------------------------------------------------
+
+    @app.get("/batches", response_class=HTMLResponse)
+    def batches(request: Request):
+        running = any(j.kind == "batch" and j.alive for j in st.jobs.values())
+        return page(request, "batches.html", nav="batches", batches=_batch_list(st), configs=_configs(st),
+                    models=_model_choices(st), prompts=_prompt_ids(st), running=running, refresh=running)
+
+    @app.post("/batches")
+    def start_batch(request: Request, config: str = Form(""), models: list[str] = Form(default=[]),
+                    prompts: list[str] = Form(default=[]), repeats: int = Form(1), concurrency: int = Form(2),
+                    evaluate: str = Form(""), max_cost: float = Form(2.0), csrf: str = Form("")):
+        if (denied := check_csrf(csrf)) is not None:
+            return denied
+        if config not in _configs(st):
+            return error(request, 400, f"Unknown config '{config}'. Available: {', '.join(_configs(st))}")
+        unknown = [m for m in models if m not in _model_choices(st)]
+        if unknown:
+            return error(request, 400, f"Unknown model(s): {', '.join(unknown)}")
+        prompt_ids = _prompt_ids(st)
+        if not prompts or any(p not in prompt_ids for p in prompts):
+            return error(request, 400, f"Pick one or more prompts from: {', '.join(prompt_ids)}")
+        if not (1 <= repeats <= 5 and 1 <= concurrency <= 4 and 0 < max_cost <= 50):
+            return error(request, 400, "Repeats must be 1-5, parallel runs 1-4, and the cost cap between $0 and $50.")
+        with st.lock:
+            active = next((j for j in st.jobs.values() if j.kind == "batch" and j.alive), None)
+            if active is not None:
+                return error(request, 409, f"A batch is already running: {active.run_id}")
+            batch_id = time.strftime("b-%Y%m%d-%H%M%S-") + secrets.token_hex(2)
+            args = ["batch", "--config", f"config/{config}.toml", "--prompts", ",".join(prompts),
+                    "--repeats", str(repeats), "--concurrency", str(concurrency), "--max-cost", f"{max_cost:.2f}",
+                    "--out", str(st.batches_dir / batch_id), "--runs-dir", str(st.runs_dir),
+                    "--run-prefix", f"{batch_id}_"]
+            if models:
+                args += ["--models", ",".join(models)]
+            if evaluate:
+                args.append("--evaluate")
+            _spawn(st, "batch", batch_id, f"Batch {batch_id}", args)
+        return RedirectResponse(f"/batches/{batch_id}", status_code=303)
+
+    @app.get("/batches/{batch_id}", response_class=HTMLResponse)
+    def batch_page(request: Request, batch_id: str):
+        path = st.batches_dir / batch_id
+        if not BATCH_ID_RE.match(batch_id) or not path.is_dir():
+            return error(request, 404, "Batch not found")
+        job = next((j for j in st.jobs.values() if j.kind == "batch" and j.run_id == batch_id), None)
+        meta = _read_json(path / "batch.json") or {}
+        rows = _batch_rows(st, path)
+        running = (job is not None and job.alive) or (job is None and meta.get("status") == "running"
+                                                       and not meta.get("exit_code"))
+        if job is not None and not job.alive and meta.get("status") != "finished":
+            meta["status"] = "failed to start" if job.exit_code == 2 else "stopped"
+        return page(request, "batch.html", nav="batches", batch_id=batch_id, meta=meta, rows=rows,
+                    variants=_variant_stats(rows), job=job, running=running, refresh=running,
+                    done=sum(r["status"] not in ("pending", "") for r in rows))
+
+    # --- import & receiver ---------------------------------------------------------------------------
+
+    @app.get("/import", response_class=HTMLResponse)
+    def import_page(request: Request):
+        rec = st.receiver
+        return page(request, "import.html", nav="import", tasks=_task_ids(st), configs=_configs(st),
+                    receiver=rec, received=[p.name for p in getattr(rec, "written", [])][-10:],
+                    refresh=rec is not None)
+
+    @app.post("/import")
+    async def do_import(request: Request, file: UploadFile = File(...), task: str = Form("adb"),
+                        prompt_id: str = Form("imported"), config: str = Form(""), csrf: str = Form("")):
+        from foundry.importer import MAX_FILE_BYTES, ImportError_, import_spans, spans_from_file
+
+        if (denied := check_csrf(csrf)) is not None:
+            return denied
+        if task not in _task_ids(st) or not is_valid_run_id(prompt_id) or (config and config not in _configs(st)):
+            return error(request, 400, "Pick a task, a prompt id of letters/digits/._- and a known config.")
+        upload_dir = st.runs_dir / ".uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        dest = upload_dir / f"{secrets.token_hex(8)}.json"
+        size = 0
+        with open(dest, "wb") as out:
+            while chunk := await file.read(1 << 20):
+                size += len(chunk)
+                if size > MAX_FILE_BYTES:
+                    out.close()
+                    dest.unlink(missing_ok=True)
+                    return error(request, 413, f"File is over the {MAX_FILE_BYTES // (1 << 20)} MB limit.")
+                out.write(chunk)
+        try:
+            prices = load_config(st.root / "config" / f"{config}.toml").prices if config else None
+            paths = import_spans(spans_from_file(dest), st.runs_dir, task, prompt_id,
+                                 f"upload:{Path(file.filename or 'trace').name}", prices)
+        except (ImportError_, ConfigError) as exc:
+            return error(request, 400, f"Could not import {file.filename}: {exc}")
+        return RedirectResponse(f"/runs/{paths[0].name}" if len(paths) == 1 else "/", status_code=303)
+
+    @app.post("/receiver/start")
+    def receiver_start(request: Request, task: str = Form("adb"), prompt_id: str = Form("imported"),
+                       config: str = Form(""), csrf: str = Form("")):
+        from foundry.receiver import Receiver
+
+        if (denied := check_csrf(csrf)) is not None:
+            return denied
+        if task not in _task_ids(st) or not is_valid_run_id(prompt_id) or (config and config not in _configs(st)):
+            return error(request, 400, "Pick a task, a prompt id of letters/digits/._- and a known config.")
+        with st.lock:
+            if st.receiver is None:
+                try:
+                    prices = load_config(st.root / "config" / f"{config}.toml").prices if config else None
+                    st.receiver = Receiver(st.runs_dir, task, prompt_id, prices, port=st.receiver_port,
+                                           log=lambda *_: None).start()
+                except OSError as exc:
+                    return error(request, 409, f"Cannot listen on 127.0.0.1:{st.receiver_port}: {exc.strerror}. "
+                                               "Is another receiver running?")
+        return RedirectResponse("/import", status_code=303)
+
+    @app.post("/receiver/stop")
+    def receiver_stop(csrf: str = Form("")):
+        if (denied := check_csrf(csrf)) is not None:
+            return denied
+        with st.lock:
+            if st.receiver is not None:
+                st.receiver.close()
+                st.receiver = None
+        return RedirectResponse("/import", status_code=303)
+
     @app.get("/jobs/{job_id}/log", response_class=PlainTextResponse)
     def job_log(job_id: str):
         job = st.jobs.get(job_id) if JOB_ID_RE.match(job_id) else None
@@ -234,6 +368,87 @@ def _spawn(st: UiState, kind: str, run_id: str, label: str, args: list[str], loc
 
     threading.Thread(target=monitor, name=f"foundry-job-{job_id}", daemon=True).start()
     return job
+
+
+def _read_json(path: Path) -> dict | None:
+    if not _regular(path):
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _model_choices(st: UiState) -> list[str]:
+    """Models offered for batches: every agent model and priced model in the configs (an allowlist)."""
+    out: set[str] = set()
+    for stem in _configs(st):
+        try:
+            cfg = load_config(st.root / "config" / f"{stem}.toml")
+        except ConfigError:
+            continue
+        if cfg.model.provider == "bedrock":
+            out.add(cfg.model.id)
+            out.update(cfg.prices)
+    return sorted(out)
+
+
+def _task_ids(st: UiState) -> list[str]:
+    return sorted(p.parent.name for p in (st.root / "tasks").glob("*/prompts.jsonl") if CONFIG_STEM_RE.match(p.parent.name))
+
+
+def _batch_list(st: UiState) -> list[dict]:
+    if not st.batches_dir.is_dir():
+        return []
+    out = []
+    for d in st.batches_dir.iterdir():
+        if not (d.is_dir() and BATCH_ID_RE.match(d.name)):
+            continue
+        meta = _read_json(d / "batch.json") or {}
+        rows = _batch_rows(st, d)
+        out.append({"id": d.name, "status": meta.get("status", "starting"), "jobs": meta.get("jobs", len(rows)),
+                    "done": sum(r["status"] not in ("pending", "") for r in rows),
+                    "spent": sum(r["cost"] for r in rows if isinstance(r["cost"], float)),
+                    "max_cost": meta.get("max_cost"), "models": meta.get("models") or meta.get("configs") or []})
+    return sorted(out, key=lambda b: b["id"], reverse=True)
+
+
+def _batch_rows(st: UiState, path: Path) -> list[dict]:
+    import csv
+
+    f = path / "summary.csv"
+    if not _regular(f):
+        return []
+    rows = []
+    with open(f, newline="") as fh:
+        for r in csv.DictReader(fh):
+            run_dir = Path(r.get("run_dir") or "")
+            link = run_dir.name if r.get("run_dir") and (st.runs_dir / run_dir.name).is_dir() \
+                and is_valid_run_id(run_dir.name) else None
+            rows.append({**r, "link": link, "cost": _num(_float(r.get("cost_usd"))),
+                         "overall_f": _num(_float(r.get("overall")))})
+    return rows
+
+
+def _float(v) -> float | None:
+    try:
+        return float(v) if v not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _variant_stats(rows: list[dict]) -> list[dict]:
+    out = []
+    for name in dict.fromkeys(r["variant"] for r in rows):
+        rs = [r for r in rows if r["variant"] == name]
+        ran = [r for r in rs if r.get("run_dir")]
+        overall = [r["overall_f"] for r in ran if r["overall_f"] is not None]
+        costs = [r["cost"] for r in ran if r["cost"] is not None]
+        out.append({"variant": name, "model": rs[0].get("model"), "succeeded": sum(r["status"] == "succeeded" for r in ran),
+                    "total": len(rs), "overall": sum(overall) / len(overall) if overall else None,
+                    "cost": sum(costs) / len(costs) if costs else None})
+    return out
 
 
 def _configs(st: UiState) -> list[str]:

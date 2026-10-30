@@ -2,6 +2,7 @@
 
 import json
 import re
+import urllib.request
 import shutil
 import time
 
@@ -339,3 +340,102 @@ def test_auto_refresh_only_while_in_progress(tmp_path):  # increment 2, R4
         assert refresh in c.get("/runs/fixture-recovered").text
     finally:
         lock.release(d["recovered"], token)
+
+
+# --- batches, import and receiver from the UI ----------------------------------------------------------------
+
+def _hand_otlp():
+    def attr(k, v):
+        return {"key": k, "value": {"intValue": str(v)} if isinstance(v, int) else {"stringValue": v}}
+    spans = [("aa01", "", "invoke_agent ext", 1, {"gen_ai.operation.name": "invoke_agent", "gen_ai.request.model": "ext-model"},
+              [{"name": "gen_ai.choice", "attributes": [attr("message", "the plan")]}]),
+             ("aa02", "aa01", "chat", 2, {"gen_ai.operation.name": "chat", "gen_ai.usage.input_tokens": 50,
+                                          "gen_ai.usage.output_tokens": 5}, []),
+             ("aa03", "aa01", "execute_tool search", 3, {"gen_ai.operation.name": "execute_tool",
+                                                         "gen_ai.tool.call.arguments": '{"q": "naip"}'}, [])]
+    return {"resourceSpans": [{"scopeSpans": [{"spans": [
+        {"traceId": "0af7651916cd43dd8448eb211c80319c", "spanId": i, "parentSpanId": p, "name": n,
+         "startTimeUnixNano": str(t * 10**9), "endTimeUnixNano": str(t * 10**9 + 10**8), "status": {},
+         "attributes": [attr(k, v) for k, v in a.items()], "events": e} for i, p, n, t, a, e in spans]}]}]}
+
+
+def test_nav_on_every_page(tmp_path):
+    _, c = _client(tmp_path / "runs")
+    for path in ("/", "/batches", "/import"):
+        html = c.get(path).text
+        assert 'href="/batches"' in html and 'href="/import"' in html and 'aria-current="page"' in html
+
+
+def test_batch_from_the_ui(tmp_path):
+    root = _project(tmp_path, [{"tool": "echo", "input": {"text": "x"}}, {"text": "done"}])
+    runs = tmp_path / "runs"
+    app, c = _client(runs, root)
+    form = {"config": "test", "prompts": ["adb-001", "adb-002"], "repeats": "1", "concurrency": "2",
+            "evaluate": "1", "max_cost": "1", "csrf": _csrf(app)}
+    r = c.post("/batches", data=form)
+    assert r.status_code == 303 and r.headers["location"].startswith("/batches/b-")
+    batch_id = r.headers["location"].rsplit("/", 1)[1]
+    assert c.post("/batches", data=form).status_code in (303, 409)  # one batch at a time (409 while running)
+    (job,) = [j for j in app.state.ui.jobs.values() if j.kind == "batch"]
+    assert _wait(lambda: job.exit_code is not None, 120), "batch did not finish"
+    assert job.exit_code == 0, job.log.read_text()[-2000:]
+    page = c.get(f"/batches/{batch_id}").text
+    assert "2/2 jobs" in page and page.count('>report</a>') == 2 and "succeeded" in page
+    links = re.findall(r'href="/runs/([^"]+)"', page)
+    assert links and all(name.startswith(f"{batch_id}_") for name in links)
+    assert c.get(f"/runs/{links[0]}").status_code == 200
+    index = c.get("/").text
+    assert all(f"/runs/{name}" in index for name in links)  # batch runs are ordinary cards too
+    assert batch_id in c.get("/batches").text
+
+
+def test_batch_form_validation(tmp_path):
+    root = _project(tmp_path, [{"text": "done"}])
+    app, c = _client(tmp_path / "runs", root)
+    base = {"config": "test", "prompts": ["adb-001"], "repeats": "1", "concurrency": "2", "max_cost": "1", "csrf": _csrf(app)}
+    assert c.post("/batches", data={**base, "csrf": "nope"}).status_code == 403
+    assert c.post("/batches", data={**base, "config": "../x"}).status_code == 400
+    assert c.post("/batches", data={**base, "prompts": []}).status_code == 400
+    assert c.post("/batches", data={**base, "prompts": ["adb-999"]}).status_code == 400
+    assert c.post("/batches", data={**base, "models": ["not-a-model"]}).status_code == 400
+    assert c.post("/batches", data={**base, "max_cost": "500"}).status_code == 400
+    assert c.post("/batches", data={**base, "concurrency": "40"}).status_code == 400
+    assert c.get("/batches/../../etc").status_code == 404 and c.get("/batches/b-1").status_code == 404
+
+
+def test_import_upload_from_the_ui(tmp_path):
+    runs = tmp_path / "runs"
+    app, c = _client(runs)
+    files = {"file": ("trace.json", json.dumps(_hand_otlp()), "application/json")}
+    r = c.post("/import", data={"task": "adb", "prompt_id": "ext-1", "config": "", "csrf": _csrf(app)}, files=files)
+    assert r.status_code == 303 and r.headers["location"].startswith("/runs/otel-ext-1-")
+    page = c.get(r.headers["location"]).text
+    assert "ext-model" in page and "search" in page
+    bad = {"file": ("x.json", "not json", "application/json")}
+    r = c.post("/import", data={"task": "adb", "prompt_id": "x", "csrf": _csrf(app)}, files=bad)
+    assert r.status_code == 400 and "Could not import" in r.text
+    r = c.post("/import", data={"task": "nope", "prompt_id": "x", "csrf": _csrf(app)}, files=files)
+    assert r.status_code == 400
+    assert c.post("/import", data={"task": "adb", "prompt_id": "x", "csrf": "bad"}, files=files).status_code == 403
+
+
+def test_receiver_start_receive_stop_from_the_ui(tmp_path):
+    runs = tmp_path / "runs"
+    app = create_app(runs, ROOT, port=PORT, receiver_port=0)
+    c = TestClient(app, base_url=BASE, follow_redirects=False)
+    assert "Start receiving" in c.get("/import").text
+    assert c.post("/receiver/start", data={"task": "adb", "prompt_id": "live-1", "csrf": _csrf(app)}).status_code == 303
+    rec = app.state.ui.receiver
+    try:
+        assert rec.server.server_address[0] == "127.0.0.1"
+        rec.grace_s = 0.2
+        page = c.get("/import").text
+        assert "Receiving" in page and f"127.0.0.1:{rec.port}" in page and 'http-equiv="refresh"' in page
+        req = urllib.request.Request(f"http://127.0.0.1:{rec.port}/v1/traces", data=json.dumps(_hand_otlp()).encode(),
+                                     headers={"Content-Type": "application/json"})
+        assert urllib.request.urlopen(req, timeout=5).status == 200
+        assert _wait(lambda: bool(rec.written), 10)
+        assert rec.written[0].name in c.get("/import").text and rec.written[0].name in c.get("/").text
+    finally:
+        assert c.post("/receiver/stop", data={"csrf": _csrf(app)}).status_code == 303
+    assert app.state.ui.receiver is None and "Start receiving" in c.get("/import").text

@@ -42,6 +42,24 @@ Open `runs/<run id>/report.md` or the UI to read the report:
 
 The prompts are `adb-001` to `adb-005` (see `tasks/adb/prompts.jsonl`). Run `foundry --help` for every command.
 
+## The UI: everything without the command line
+
+```bash
+uv run foundry ui        # http://127.0.0.1:8765
+```
+
+| Page | What you can do |
+|---|---|
+| **Runs** | Start a run (prompt × config); see every run as a score card; open the report; evaluate a run that hasn't been scored. |
+| **Batches** | Pick a base config, any number of agent models and prompts, repeats, parallel runs, a cost cap and whether to evaluate. Start the batch, then watch the per-model table and per-run rows fill in, each linking to its report. |
+| **Import** | Evaluate an agent we didn't build: start the OpenTelemetry receiver with one click and point the agent at the address shown, or upload an OTLP/JSON trace file. Each agent run becomes a normal card. |
+
+- Pages refresh themselves while something is running.
+- Batches keep going if the UI is restarted.
+- The UI listens on 127.0.0.1 only.
+
+The CLI below does the same things.
+
 ## What gets written
 
 Each run gets its own directory, `runs/<run_id>/`:

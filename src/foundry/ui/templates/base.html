@@ -44,7 +44,28 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; display:block; 
 th, td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
 .report h1 { font-size: 20px; } .report h2 { font-size: 17px; margin-top: 24px; }
 .wrap { overflow-wrap: anywhere; }
+nav.tabs { display:flex; gap:18px; border-bottom:1px solid var(--line); margin-bottom:18px; }
+nav.tabs a { padding:8px 2px; text-decoration:none; color:var(--muted); border-bottom:2px solid transparent; }
+nav.tabs a[aria-current="page"] { color:var(--fg); border-bottom-color:var(--accent); font-weight:600; }
+.panel { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:18px; }
+.panel h2 { font-size:16px; margin:0 0 10px; }
+.field { margin:0 0 12px; }
+.field > .label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
+.checks { display:flex; flex-wrap:wrap; gap:6px 14px; }
+.checks label { color:var(--fg); font-size:14px; }
+.inline { display:flex; flex-wrap:wrap; gap:14px; align-items:end; }
+input[type=number], input[type=text], input[type=file] { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }
+input[type=number] { width:90px; }
+.muted { color:var(--muted); font-size:13px; }
+.ok { color:var(--ok); } .bad { color:var(--bad); }
+code { background:var(--bg); border:1px solid var(--line); padding:1px 5px; border-radius:4px; }
 </style>
 </head>
-<body><main>{% block body %}{% endblock %}</main></body>
+<body><main>
+<nav class="tabs" aria-label="Sections">
+  <a href="/"{% if nav == "runs" %} aria-current="page"{% endif %}>Runs</a>
+  <a href="/batches"{% if nav == "batches" %} aria-current="page"{% endif %}>Batches</a>
+  <a href="/import"{% if nav == "import" %} aria-current="page"{% endif %}>Import</a>
+</nav>
+{% block body %}{% endblock %}</main></body>
 </html>

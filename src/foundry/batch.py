@@ -43,13 +43,14 @@ class Job:
     variant: Variant
     prompt: str
     repeat: int
+    prefix: str = ""
     status: str = "pending"  # pending | ran | error | skipped (budget)
     run_dir: Path | None = None
     attempts: list[Path] = field(default_factory=list)
 
     @property
     def run_id(self) -> str:
-        return f"{self.variant.name}_{self.prompt}_r{self.repeat}"
+        return f"{self.prefix}{self.variant.name}_{self.prompt}_r{self.repeat}"
 
 
 def slug(text: str) -> str:
@@ -72,7 +73,7 @@ def derive_model_configs(base: Path, models: list[str], out: Path) -> list[Varia
     return variants
 
 
-def plan(configs: list[str], models: list[str], prompts: str, repeats: int, out: Path) -> list[Job]:
+def plan(configs: list[str], models: list[str], prompts: str, repeats: int, out: Path, prefix: str = "") -> list[Job]:
     if not configs:
         raise BatchError("at least one --config is required")
     if repeats < 1:
@@ -96,7 +97,7 @@ def plan(configs: list[str], models: list[str], prompts: str, repeats: int, out:
             resolve_prompt(task_id, pid)
     except (ConfigError, UnknownPrompt) as exc:
         raise BatchError(str(exc)) from None
-    return [Job(v, p, r) for v in variants for p in ids for r in range(1, repeats + 1)]
+    return [Job(v, p, r, prefix) for v in variants for p in ids for r in range(1, repeats + 1)]
 
 
 def run_cost(run_dir: Path) -> float:
@@ -132,12 +133,12 @@ def _evaluated(run_dir: Path) -> bool:
 
 class Batch:
     def __init__(self, jobs: list[Job], out: Path, concurrency: int, evaluate: bool, eval_config: str,
-                 max_cost: float | None, log=print):
+                 max_cost: float | None, log=print, runs_dir: Path | None = None):
         if concurrency < 1:
             raise BatchError("--concurrency must be >= 1")
         self.jobs, self.out, self.concurrency = jobs, out, concurrency
         self.evaluate, self.eval_config, self.max_cost, self.log = evaluate, eval_config, max_cost, log
-        self.runs = out / "runs"
+        self.runs = Path(runs_dir) if runs_dir else out / "runs"  # the UI shares its runs dir with batches
         self.logs = out / "logs"
         self.lock = threading.RLock()  # _report runs both inside and outside the budget check's lock
         self.active = 0
@@ -165,8 +166,16 @@ class Batch:
 
     # --- execution -------------------------------------------------------------------------------------
 
+    def own_runs(self) -> list[Path]:
+        """This batch's run dirs (all attempts), matched exactly: the runs dir may be shared."""
+        if not self.runs.exists():
+            return []
+        ids = {j.run_id for j in self.jobs}
+        return [d for d in self.runs.iterdir() if d.is_dir()
+                and (d.name in ids or d.name.split("-retry")[0] in ids)]
+
     def spent(self) -> float:
-        return sum(run_cost(d) for d in self.runs.iterdir() if d.is_dir()) if self.runs.exists() else 0.0
+        return sum(run_cost(d) for d in self.own_runs())
 
     def _exec(self, args: list[str], log_name: str) -> int:
         with open(self.logs / log_name, "w") as log:
@@ -211,16 +220,29 @@ class Batch:
                      f"{row['status']}{score}{cost}")
             write_summary(self.jobs, self.out)
 
-    def run(self) -> int:
+    def run(self, meta: dict | None = None) -> int:
         self.runs.mkdir(parents=True, exist_ok=True)
         self.logs.mkdir(parents=True, exist_ok=True)
+        meta = {**(meta or {}), "jobs": len(self.jobs), "runs_dir": str(self.runs), "status": "running",
+                "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+        _write_json(self.out / "batch.json", meta)
         write_summary(self.jobs, self.out)
         with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
             list(pool.map(self._work, self.jobs))
         bad = [j for j in self.jobs if j.status in ("error", "skipped (budget)")]
+        code = 1 if bad else 0
+        _write_json(self.out / "batch.json", {**meta, "status": "finished", "exit_code": code,
+                                              "spent_usd": round(self.spent(), 6),
+                                              "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")})
         self.log(f"summary: {self.out / 'summary.md'}  (spent ${self.spent():.3f}"
                  + (f" of ${self.max_cost:.2f}" if self.max_cost is not None else "") + ")")
-        return 1 if bad else 0
+        return code
+
+
+def _write_json(path: Path, data: dict) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=1))
+    tmp.replace(path)
 
 
 def summary_row(job: Job) -> dict:
@@ -302,14 +324,20 @@ def main(args) -> int:
     out = Path(args.out)
     try:
         models = [m.strip() for m in (args.models or "").split(",") if m.strip()]
-        jobs = plan(args.config, models, args.prompts, args.repeats, out)
+        prefix = getattr(args, "run_prefix", None) or ""
+        if prefix and not re.fullmatch(r"[A-Za-z0-9._-]+", prefix):
+            raise BatchError("--run-prefix may only contain letters, digits, '.', '_' and '-'")
+        jobs = plan(args.config, models, args.prompts, args.repeats, out, prefix)
         eval_config = args.eval_config or str(jobs[0].variant.config)
         if args.evaluate:
             load_eval_config(eval_config)
-        batch = Batch(jobs, out, args.concurrency, args.evaluate, eval_config, args.max_cost)
+        batch = Batch(jobs, out, args.concurrency, args.evaluate, eval_config, args.max_cost,
+                      runs_dir=Path(args.runs_dir) if getattr(args, "runs_dir", None) else None)
     except (BatchError, ConfigError) as exc:
         print(exc, file=sys.stderr)
         return 2
     print(f"batch: {len(jobs)} jobs ({len({j.variant.name for j in jobs})} variants), concurrency "
           f"{args.concurrency}" + (f", budget ${args.max_cost:.2f}" if args.max_cost is not None else "") + f" -> {out}")
-    return batch.run()
+    meta = {"id": out.name, "configs": args.config, "models": models, "prompts": args.prompts, "repeats": args.repeats,
+            "concurrency": args.concurrency, "evaluate": args.evaluate, "max_cost": args.max_cost}
+    return batch.run(meta)

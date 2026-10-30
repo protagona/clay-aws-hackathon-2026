@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Batches · Foundry Eval Sandbox{% endblock %}
+{% block body %}
+<h1>Batches</h1>
+<p class="muted">Run several models on several prompts, side by side. Every run also appears on the Runs page.</p>
+
+<form class="panel" method="post" action="/batches">
+  <h2>New batch</h2>
+  <div class="field">
+    <label class="label" for="config">Base config</label>
+    <select id="config" name="config">{% for c in configs %}<option{% if c == "bedrock" %} selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+    <span class="muted">Judge, tools, limits and prices come from here.</span>
+  </div>
+  <fieldset class="field" style="border:0;padding:0;margin:0 0 12px">
+    <legend class="label">Agent models <span class="muted">(none picked = the config's own model)</span></legend>
+    <div class="checks">{% for m in models %}<label><input type="checkbox" name="models" value="{{ m }}"> {{ m }}</label>{% endfor %}</div>
+  </fieldset>
+  <fieldset class="field" style="border:0;padding:0;margin:0 0 12px">
+    <legend class="label">Prompts</legend>
+    <div class="checks">{% for p in prompts %}<label><input type="checkbox" name="prompts" value="{{ p }}"{% if loop.first %} checked{% endif %}> {{ p }}</label>{% endfor %}</div>
+  </fieldset>
+  <div class="inline field">
+    <label class="label">Repeats<br><input type="number" name="repeats" min="1" max="5" value="1"></label>
+    <label class="label">Parallel runs<br><input type="number" name="concurrency" min="1" max="4" value="2"></label>
+    <label class="label">Cost cap (USD)<br><input type="number" name="max_cost" min="0.01" max="50" step="0.01" value="2.00"></label>
+    <label><input type="checkbox" name="evaluate" value="1" checked> Evaluate each run</label>
+  </div>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit"{% if running %} disabled{% endif %}>Start batch</button>
+  {% if running %}<span class="muted">A batch is already running.</span>{% endif %}
+</form>
+
+{% if batches %}
+<table>
+  <thead><tr><th>Batch</th><th>Status</th><th>Progress</th><th>Spent</th><th>Models / configs</th></tr></thead>
+  <tbody>
+  {% for b in batches %}
+  <tr><td><a href="/batches/{{ b.id }}">{{ b.id }}</a></td><td>{{ b.status }}</td><td>{{ b.done }}/{{ b.jobs }}</td>
+      <td>${{ "%.3f"|format(b.spent) }}{% if b.max_cost %} of ${{ "%.2f"|format(b.max_cost) }}{% endif %}</td>
+      <td class="wrap">{{ b.models|join(", ") }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No batches yet. Pick models and prompts above and start one.</p>
+{% endif %}
+{% endblock %}
