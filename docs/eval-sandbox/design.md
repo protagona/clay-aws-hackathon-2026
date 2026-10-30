@@ -585,6 +585,15 @@ Mitigations:
 - **Worst case per run** (Kimi agent, Opus judge): $0.66 + $0.81 for the agent, ≤ $0.33 for the judge (2 calls), ≤ $0.02 for the summarizer. That's **≤ $1.83**.
 - **Reversibility:** easy (config).
 
+### ADR-12: Kimi K3 agent + Opus 4.6 judge is the default live config (2026-10-30)
+
+- **Decision:**
+  - `config/bedrock.toml` is now ADR-11's setup: Kimi K3 agent, Opus 4.6 judge, Nova 2 Lite summarizer. The user approved it ("I like it").
+  - `config/bedrock-alt.toml` is identical except the agent is Claude Sonnet 4.6. That keeps the model-swap demo a pure `[model]` change, and a test enforces it.
+  - `config/bedrock-kimi.toml` is removed, because it duplicated the new default.
+  - The Haiku 4.5 agent config is retired; Haiku is still listed as agent-capable in `bedrock-models.md`.
+- **Reversibility:** easy.
+
 ## Failure modes
 
 | Failure | Detection | Behavior | Recovery |

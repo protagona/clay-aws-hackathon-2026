@@ -5,15 +5,16 @@
 [task]
 id = "adb"
 
-[model]                      # the agent's model
-provider = "bedrock"
-id = "us.anthropic.claude-sonnet-4-6"
-region = "us-west-2"
-temperature = 0.2
-
-[judge]                      # chosen by the judge calibration (docs/eval-sandbox/bedrock-models.md); not the agent's vendor
+[model]                      # the agent's model: Kimi K3. Cheaper per token than Opus and caches automatically,
+                             # so it takes the token-heavy role (design ADR-11). No temperature: Kimi K3 rejects it.
 provider = "bedrock"
 id = "us.moonshotai.kimi-k3"
+region = "us-west-2"
+
+[judge]                      # Opus 4.6: pricier per token, so it takes the light role (~3k in / ~2k out per run);
+                             # the sharpest judge in the calibration, and not the agent's vendor
+provider = "bedrock"
+id = "us.anthropic.claude-opus-4-6-v1"
 region = "us-west-2"
 max_tokens = 2048
 timeout_s = 120

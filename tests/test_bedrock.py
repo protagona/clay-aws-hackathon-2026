@@ -49,28 +49,21 @@ def test_throttling_becomes_provider_error():
 def test_role_settings_and_strands_model():
     cfg = load_config("config/bedrock.toml")
     judge = build_provider(cfg.judge)
+    assert judge.model_id == "us.anthropic.claude-opus-4-6-v1"
     assert judge.boto_config.read_timeout == 120 and judge.boto_config.retries["max_attempts"] == 3
     agent = build_provider(cfg.model, prompt_id="adb-001", max_tokens=cfg.limits.max_tokens,
                            timeout_s=cfg.limits.model_timeout_s, retries=cfg.limits.model_retries)
-    model = agent.strands_model()
-    mc = model.get_config()
-    assert mc["model_id"] == "us.anthropic.claude-sonnet-4-6" and mc["max_tokens"] == 4096 and mc["temperature"] == 0.2
+    mc = agent.strands_model().get_config()
+    assert mc["model_id"] == "us.moonshotai.kimi-k3" and mc["max_tokens"] == 4096
+    assert "temperature" not in mc  # Kimi K3 rejects it (live, 2026-10-30)
 
 
-def test_bedrock_configs_differ_only_in_model_id():
-    a = open("config/bedrock.toml").read().splitlines()
-    b = open("config/bedrock-alt.toml").read().splitlines()
-    diff = [(x, y) for x, y in zip(a, b, strict=True) if x != y]
-    assert diff == [('id = "us.anthropic.claude-sonnet-4-6"', 'id = "us.anthropic.claude-haiku-4-5-20251001-v1:0"')]
+def test_bedrock_configs_differ_only_in_agent_model():  # the live model-swap demo (AC15 / L2)
+    a, b = load_config("config/bedrock.toml"), load_config("config/bedrock-alt.toml")
+    assert (a.model.id, b.model.id) == ("us.moonshotai.kimi-k3", "us.anthropic.claude-sonnet-4-6")
+    assert a.model_copy(update={"model": b.model, "path": b.path}) == b
 
 
-def test_kimi_config_omits_temperature():
-    """Kimi K3 rejects inferenceConfig.temperature (live, 2026-10-30); its config must not set one."""
-    cfg = load_config("config/bedrock-kimi.toml")
-    assert cfg.model.id == "us.moonshotai.kimi-k3" and cfg.model.temperature is None
-    agent = build_provider(cfg.model, prompt_id="adb-001", max_tokens=cfg.limits.max_tokens,
-                           timeout_s=cfg.limits.model_timeout_s, retries=cfg.limits.model_retries)
-    assert "temperature" not in agent.strands_model().get_config()
 
 
 def test_complete_counts_cached_input_tokens():

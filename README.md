@@ -87,10 +87,8 @@ uv run foundry run --config config/offline-alt.toml --prompt adb-001   # scripte
 
 On Bedrock, with credentials:
 
-- `config/bedrock.toml` runs the agent on Claude Sonnet 4.6. The judge is Kimi K3, picked by a calibration in which Nova 2 Lite failed ([details](docs/eval-sandbox/bedrock-models.md#judge-calibration-2026-10-30)).
-- `config/bedrock-alt.toml` runs the agent on Claude Haiku 4.5.
-
-- `config/bedrock-kimi.toml` puts the cheaper model on the heavy role: **Kimi K3 as the agent** and **Opus 4.6 as the judge**, at about $0.16 per run plus evaluation, measured (design ADR-11). It has no `temperature`, because Kimi K3 rejects it.
+- `config/bedrock.toml` (the default): **Kimi K3 as the agent, Opus 4.6 as the judge**. The cheaper model takes the token-heavy role. Measured at about $0.16 per run plus evaluation (design ADR-11).
+- `config/bedrock-alt.toml`: identical except the agent is **Claude Sonnet 4.6**. Use it for the model-swap demo.
 
 Which models can actually run the agent in this account? See [docs/eval-sandbox/bedrock-models.md](docs/eval-sandbox/bedrock-models.md), produced by calling every model. Re-check after quota or access changes with:
 

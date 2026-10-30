@@ -5,15 +5,15 @@
 [task]
 id = "adb"
 
-[model]                      # the agent's model
+[model]                      # the agent's model: Claude Sonnet 4.6. The only difference from config/bedrock.toml (model swap, M6)
 provider = "bedrock"
-id = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+id = "us.anthropic.claude-sonnet-4-6"
 region = "us-west-2"
-temperature = 0.2
 
-[judge]                      # chosen by the judge calibration (docs/eval-sandbox/bedrock-models.md); not the agent's vendor
+[judge]                      # Opus 4.6: pricier per token, so it takes the light role (~3k in / ~2k out per run);
+                             # the sharpest judge in the calibration, and not the agent's vendor
 provider = "bedrock"
-id = "us.moonshotai.kimi-k3"
+id = "us.anthropic.claude-opus-4-6-v1"
 region = "us-west-2"
 max_tokens = 2048
 timeout_s = 120

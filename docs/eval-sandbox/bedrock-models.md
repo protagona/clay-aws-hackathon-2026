@@ -71,7 +71,7 @@ Kimi K3, GLM 5 and Opus 4.6 all rejected case D for the right reason. Each cited
 
 **Decision (design ADR-10):**
 - The judge is **Kimi K3** in `config/bedrock.toml` and `bedrock-alt.toml`.
-- It is **GLM 5** in `config/bedrock-kimi.toml`, so Kimi never grades itself.
+- It was **GLM 5** in the former `config/bedrock-kimi.toml`, so Kimi never graded itself. That was superseded by ADR-11 and ADR-12: the default is now a Kimi K3 agent with an Opus 4.6 judge.
 - The summarizer stays on Nova 2 Lite, because it writes the narrative and does not score.
 
 **Re-scored live runs** (output score, Nova → new judge):
@@ -105,7 +105,7 @@ The agent is the token-heavy role, with a median of about 48k input tokens per r
 | GLM 5 | $1.00 | $3.20 | — |
 | Nova 2 Lite | $0.33 | $2.75 | $0.083 |
 
-`config/bedrock-kimi.toml` therefore runs **Kimi K3 as the agent (cheaper, caches automatically) and Opus 4.6 as the judge**. Measured on adb-001: $0.130 for the agent, $0.030 for the judge and $0.001 for the summarizer, so **$0.16** in total, scoring 0.96. Swapping the roles would cost about $0.38 on the same token counts. See design ADR-11.
+The default `config/bedrock.toml` therefore runs **Kimi K3 as the agent (cheaper, caches automatically) and Opus 4.6 as the judge** (ADR-11, made the default in ADR-12). `config/bedrock-alt.toml` swaps the agent to Sonnet 4.6. Measured on adb-001: $0.130 for the agent, $0.030 for the judge and $0.001 for the summarizer, so **$0.16** in total, scoring 0.96. Swapping the roles would cost about $0.38 on the same token counts. See design ADR-11.
 
 ## Usable as the agent (all probes passed in both runs)
 

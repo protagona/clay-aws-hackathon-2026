@@ -36,7 +36,7 @@ MCP server subprocesses never receive `AWS_*` variables (environment allowlist),
 - `max_tokens = 4096` per agent call (1,024 was too small for the final plan)
 - `max_seconds = 300`
 
-Evaluation makes at most 4 model calls (judge and summarizer, one retry each), with `max_tokens = 2048` each and the run view capped at about 20k tokens. At the configured prices that's at most $0.66 input + $0.81 output for the agent plus $0.40 for evaluation, so **≤ $1.87 per run**. Prices are the official ones; Nova 2 Lite is $0.33/$2.75. Observed on 2026-10-30: $0.04 to $0.30 per run. With `config/bedrock-kimi.toml` (Kimi agent, Opus judge) the worst case is ≤ $1.83, and a measured run was $0.16.
+Evaluation makes at most 4 model calls (judge and summarizer, one retry each), with `max_tokens = 2048` each and the run view capped at about 20k tokens. At the official prices, for both live configs (agent Kimi K3 or Sonnet 4.6, both $3.30/$16.50; judge Opus 4.6; summarizer Nova 2 Lite), that's at most $0.66 input + $0.81 output for the agent, ≤ $0.33 for the judge and ≤ $0.02 for the summarizer, so **≤ $1.83 per run**. A measured default run cost $0.16.
 
 ## Rollout
 
@@ -87,7 +87,7 @@ Evaluation makes at most 4 model calls (judge and summarizer, one retry each), w
      ```
      Expect:
      - exit 0
-     - `scores.json.output.judge.id` is `us.moonshotai.kimi-k3` (ADR-10), which differs from the agent
+     - `scores.json.output.judge.id` is `us.anthropic.claude-opus-4-6-v1` (ADR-11), which differs from the agent
      - no "grading itself" warning
      - `report.md` has a real narrative and rationales
 
@@ -95,7 +95,7 @@ Evaluation makes at most 4 model calls (judge and summarizer, one retry each), w
      ```bash
      uv run foundry run --config config/bedrock-alt.toml --prompt adb-001
      ```
-     Expect: exit 0, and `run.json.model.id` is `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
+     Expect: exit 0, and `run.json.model.id` is `us.anthropic.claude-sonnet-4-6`. Since 2026-10-30 (ADR-12), `bedrock.toml` is the Kimi K3 agent and `bedrock-alt.toml` is the Sonnet 4.6 agent, with the same Opus 4.6 judge.
 
   7. **L5, prompt injection against the real judge:**
      ```bash
