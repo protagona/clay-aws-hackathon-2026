@@ -27,6 +27,7 @@ uv sync                                                         # install depend
 uv run foundry run --config config/offline.toml --prompt adb-001
 # prints the run directory, e.g. runs/2026-10-30T06-40-26Z_adb-001_7bd8
 uv run foundry evaluate runs/<that run id>                      # writes scores.json + report.md
+uv run foundry run --config config/offline.toml --prompt adb-001 --evaluate   # or both in one command
 uv run foundry ui                                               # http://127.0.0.1:8765
 ```
 
@@ -40,7 +41,7 @@ Open `runs/<run id>/report.md` or the UI to read the report:
 - agent output
 - provenance
 
-The prompts are `adb-001` to `adb-005` (see `tasks/adb/prompts.jsonl`). Run `foundry --help` for every command.
+The prompts are `adb-001` to `adb-006` (see `tasks/adb/prompts.jsonl`). Run `foundry --help` for every command.
 
 ## The UI: everything without the command line
 
@@ -248,15 +249,32 @@ Add files only; no Python changes are needed:
 `infra/` holds a CDK app for one sandbox account in **us-west-2**:
 
 - a private, encrypted, versioned runs bucket
-- a role allowed exactly `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`, plus `runs/*` in that bucket
+- a role allowed exactly:
+  - `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`
+  - read and write on `runs/*` in that bucket
+  - read-only on `samples/*`
+
+The account comes from your credentials, so anyone can deploy into their own sandbox. The region is fixed at us-west-2.
 
 ```bash
-cd infra && npm ci            # pins the CDK CLI (2.1146.1)
-npx cdk synth                 # no credentials or Docker needed
-npx cdk deploy                # with credentials for the target account (e.g. AWS_PROFILE=...)
+cd infra && npm ci                                    # pins the CDK CLI (2.1146.1)
+npx cdk synth                                         # no credentials or Docker needed
+export AWS_PROFILE=<profile>                          # credentials for the target account
+npx cdk bootstrap aws://<account id>/us-west-2        # once per account and region
+npx cdk deploy                                        # prints RunsBucketName and HarnessRoleArn
+cd ..
+scripts/stage_samples.sh      # A-2: copies a small NAIP tile and a Vantor tile to s3://<bucket>/samples/ (~85 MB)
+scripts/verify_deploy.sh      # as the deployed role: one live run --evaluate, mirrored to S3, then checked
 ```
 
-Then set `[storage] s3_uri = "s3://<RunsBucketName output>"` to mirror every run and evaluation to `s3://<bucket>/runs/<run_id>/`.
+To mirror your own runs, set `[storage] s3_uri = "s3://<RunsBucketName output>"`. Every run and evaluation then goes to `s3://<bucket>/runs/<run_id>/`. `verify_deploy.sh` does this on a temporary copy of the config.
+
+**Pre-staged samples** (A-2): the agent reads data at the source through MCP. These copies are only a fallback, for when Requester Pays costs or latency matter.
+
+| Path | Source | License |
+|---|---|---|
+| `samples/naip/m_3611919_nw_11_060_20220702.tif` | `s3://naip-visualization/ca/2022/60cm/rgb/36119/…`: NAIP 2022, 60 cm RGB, Fresno County, CA (54 MB) | public domain |
+| `samples/vantor/B120001101250A10.tif` | `s3://vantor-opendata/events/Nepal-Flooding-Aug-2026/…`: Vantor open data (30 MB) | CC BY-NC 4.0 |
 
 Before the first live run, enable model access in the Bedrock console (us-west-2) for the models in `config/bedrock.toml`. The live checks are L1 to L5 in the [spec](docs/eval-sandbox/spec.md#live-checks).
 

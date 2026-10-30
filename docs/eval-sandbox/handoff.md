@@ -211,15 +211,24 @@ At the user's request, everything is also available from the UI, alongside the C
 - **Tests:** UI tests cover a real batch launched from the form, form validation, upload, and receiver start, receive and stop.
 - **Live through the real server:** a 2-model batch on adb-006 cost $0.38 against a $1 cap (Kimi K3 1.00, Sonnet 4.6 0.96). The UI was restarted mid-batch, and the batch kept running and rendered correctly afterwards.
 
+## Must items closed before the event (2026-10-30)
+
+- **D-6, judge sanity:** `scripts/judge_sanity.py` scores the five known-verdict cases in `fixtures/judge-cases/` three times each. Live with the Opus 4.6 judge, all 13 checks pass for $0.36: bands, A > B > C, the hallucinated plan capped at 1, and repeats consistent. Results are in the README. Comparing against human graders is still open.
+- **D-8, one command:** `foundry run --evaluate` runs the agent, then summarizes, scores and writes the report. Failed runs are scored too, and the exit code stays the run's. Live on adb-002 (Kimi K3): 0.96, $0.12 for the run and $0.03 for the evaluation. Saving to S3 waits on L4.
+- **A-2, samples:** `scripts/stage_samples.sh` copies a 54 MB NAIP 2022 RGB tile (Fresno) and a 30 MB Vantor open-data tile to `samples/`, with sources and licenses in `samples/README.txt`. The role can read `samples/*`, read-only (infra test updated). Not yet run, because it needs the bucket.
+- **A-1, C-3, L4, deploy check:** `scripts/verify_deploy.sh` assumes the deployed `HarnessRole` and does a live `run --evaluate` with `s3_uri` set. It then checks that the run, trace, scores, report and rubric are under `runs/<id>/`, and that the role can't write outside `runs/`. **Not run yet:** auto mode refused `cdk bootstrap` and `cdk deploy`, so these need the user's approval or the user's own shell.
+- **A-4 rehearsal:** in a fresh clone with no AWS variables: `uv sync`, an offline run, evaluate, validate, 170 tests and `cdk synth` all pass. The README now includes `cdk bootstrap`, which was missing. Done-when still needs a teammate deploying.
+- **Suite:** 172 passed, ruff clean.
+
 ## Follow-ups
 
-- L4 (`cdk deploy` and S3 mirror) when wanted. Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.
+- Deploy and verify: `cdk bootstrap`, `cdk deploy`, `scripts/stage_samples.sh`, then `scripts/verify_deploy.sh` (README, *Deploy*). Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.
 - Fix GitHub billing and re-run CI.
 - Bump `mcp` to 2.2 or later when Strands allows it (F-008/F-009, by 2026-11-30).
 - Pin GitHub Actions to commit SHAs (F-013). This needs approval for CI changes.
 - Scope `HarnessRole` Bedrock actions to model and inference-profile ARNs (F-012).
 - S3 access logging (F-010) before any non-sandbox use.
-- Calibrate the judge against human scores (backlog D-6). Add more adversarial prompt-injection fixtures.
+- Compare the judge against human scores (D-6's sanity check passes; human agreement is untested). Add more adversarial prompt-injection fixtures.
 - Real-browser UI check: screenshots and a screen-reader pass.
 - Clay's real rubric and prompts once they arrive (K-1). Swapping them in is a data-only change.
 - Investigate the `RuntimeWarning: coroutine ... _set_close_event was never awaited` that Strands emits when an MCP server fails to start.

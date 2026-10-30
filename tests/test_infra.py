@@ -46,14 +46,16 @@ def test_role_policy_is_exact():
     stmts = _statements(t)
     actions = sorted(a for s in stmts for a in ([s["Action"]] if isinstance(s["Action"], str) else s["Action"]))
     assert actions == ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream",
-                       "s3:GetObject", "s3:ListBucket", "s3:PutObject"]
+                       "s3:GetObject", "s3:GetObject", "s3:ListBucket", "s3:PutObject"]
     s3_stmts = [s for s in stmts if any(a.startswith("s3:") for a in
                                         ([s["Action"]] if isinstance(s["Action"], str) else s["Action"]))]
     for s in s3_stmts:
         text = json.dumps(s["Resource"])
         assert "RunsBucket" in text  # only the runs bucket
         if "s3:ListBucket" in json.dumps(s["Action"]):
-            assert s["Condition"] == {"StringLike": {"s3:prefix": ["runs/*"]}}
+            assert s["Condition"] == {"StringLike": {"s3:prefix": ["runs/*", "samples/*"]}}
+        elif "/samples/*" in text:
+            assert s["Action"] == "s3:GetObject"  # samples are read-only for the harness
         else:
             assert "/runs/*" in text
 

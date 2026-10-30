@@ -78,6 +78,25 @@ def test_exit_0_for_succeeded_run_with_fault_server(tmp_path):  # AC2 (no networ
     assert proc.stdout.strip().endswith("my-run-1")
 
 
+def test_run_evaluate_one_command(tmp_path):  # D-8: run, trace, report in one command
+    cfg = write_config(tmp_path, [{"tool": "echo", "input": {"text": "x"}}, {"text": "done"}])
+    proc = foundry("run", "--config", str(cfg), "--prompt", "adb-001", "--runs-dir", str(tmp_path / "runs"),
+                   "--run-id", "r1", "--evaluate")
+    assert proc.returncode == 0, proc.stderr
+    run_dir, report, scores = proc.stdout.strip().splitlines()
+    assert run_dir.endswith("r1") and report == str(Path(run_dir) / "report.md") and scores.startswith("overall ")
+    assert (Path(run_dir) / "scores.json").exists() and (Path(run_dir) / "report.md").exists()
+
+
+def test_run_evaluate_scores_failed_run_and_keeps_exit_1(tmp_path):
+    cfg = write_config(tmp_path, [{"text": "x"}], server_args=["--crash-on-start"])
+    proc = foundry("run", "--config", str(cfg), "--prompt", "adb-001", "--runs-dir", str(tmp_path / "runs"),
+                   "--evaluate")
+    assert proc.returncode == 1
+    (run_dir,) = _run_dirs(tmp_path / "runs")
+    assert json.loads((run_dir / "scores.json").read_text())["workflow"]["components"]["completion"] == 0
+
+
 @pytest.mark.network
 def test_run_offline_real_roda(tmp_path):  # AC5
     runs = tmp_path / "runs"

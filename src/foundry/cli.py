@@ -1,4 +1,4 @@
-"""Command-line entry point: foundry run | evaluate | validate | ui."""
+"""Command-line entry point: foundry run | evaluate | validate | ui | batch | import | receive."""
 
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--prompt", required=True)
     run.add_argument("--runs-dir", default="runs")
     run.add_argument("--run-id")
+    run.add_argument("--evaluate", action="store_true",
+                     help="then summarize and score the run with the same config (one command: run, trace, report)")
 
     ev = sub.add_parser("evaluate", help="summarize and score a recorded run")
     ev.add_argument("run_dir")
@@ -99,10 +101,26 @@ def _cmd_run(args: argparse.Namespace) -> int:
     except PermissionError as exc:
         print(f"Cannot write the run directory: {exc}. Check permissions on --runs-dir {args.runs_dir}.", file=sys.stderr)
         return 2
-    print(run_dir)
+    print(run_dir, flush=True)
     if status != "succeeded":
         print(f"Run {status}: see {run_dir / 'trace.jsonl'}", file=sys.stderr)
+    if args.evaluate:  # failed runs are scored too: the trace says where the agent struggled
+        from foundry.evaluate.evaluate import EvaluateError, evaluate
+
+        try:
+            _print_scores(run_dir, evaluate(run_dir, cfg))
+        except (EvaluateError, PermissionError) as exc:
+            print(f"Evaluation failed: {exc}", file=sys.stderr)
+            return 2
     return 0 if status == "succeeded" else 1
+
+
+def _print_scores(run_dir: str | Path, scores: dict) -> None:
+    overall = scores["overall"]
+    w, o = scores["workflow"]["score"], scores["output"]["score"]
+    fmt = lambda x: "n/a" if x is None else f"{x:.2f}"  # noqa: E731
+    print(f"{Path(run_dir) / 'report.md'}")
+    print(f"overall {fmt(overall) if overall is not None else 'incomplete'} | workflow {fmt(w)} | output {fmt(o)}")
 
 
 def _cmd_evaluate(args: argparse.Namespace) -> int:
@@ -118,11 +136,7 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     except PermissionError as exc:
         print(f"Cannot write evaluation files: {exc}. Check permissions on {args.run_dir}.", file=sys.stderr)
         return 2
-    overall = scores["overall"]
-    w, o = scores["workflow"]["score"], scores["output"]["score"]
-    fmt = lambda x: "n/a" if x is None else f"{x:.2f}"  # noqa: E731
-    print(f"{Path(args.run_dir) / 'report.md'}")
-    print(f"overall {fmt(overall) if overall is not None else 'incomplete'} | workflow {fmt(w)} | output {fmt(o)}")
+    _print_scores(args.run_dir, scores)
     return 0
 
 

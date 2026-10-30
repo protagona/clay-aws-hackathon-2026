@@ -29,14 +29,16 @@ class FoundryStack(Stack):
         role = iam.Role(
             self, "HarnessRole",
             assumed_by=iam.AccountRootPrincipal(),
-            description="Runs the Foundry eval sandbox: Bedrock inference and the runs/ prefix of the runs bucket",
+            description="Runs the Foundry eval sandbox: Bedrock inference, runs/ (read-write) and samples/ (read-only)",
         )
         role.add_to_policy(iam.PolicyStatement(actions=BEDROCK_ACTIONS, resources=["*"]))
         role.add_to_policy(iam.PolicyStatement(
             actions=["s3:GetObject", "s3:PutObject"], resources=[bucket.arn_for_objects("runs/*")]))
+        # Read-only, pre-staged imagery samples (A-2; scripts/stage_samples.sh): a fallback to reading at the source.
+        role.add_to_policy(iam.PolicyStatement(actions=["s3:GetObject"], resources=[bucket.arn_for_objects("samples/*")]))
         role.add_to_policy(iam.PolicyStatement(
             actions=["s3:ListBucket"], resources=[bucket.bucket_arn],
-            conditions={"StringLike": {"s3:prefix": ["runs/*"]}}))
+            conditions={"StringLike": {"s3:prefix": ["runs/*", "samples/*"]}}))
 
         Tags.of(self).add("project", "clay-foundry")
         Tags.of(self).add("owner", "team-46")
