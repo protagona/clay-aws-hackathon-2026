@@ -189,3 +189,13 @@ def test_cached_input_tokens_count_toward_tokens_in_and_limit(tmp_path):
     assert llm[0]["tokens_in"] == 300_010 and llm[0]["tokens_in_cached"] == 300_000
     assert any(x["type"] == "note" and "max_input_tokens" in x["text"] for x in steps(run_dir))
     assert status == "failed"
+
+
+def test_cached_tokens_priced_at_cache_rate(tmp_path):
+    turns = [{"tool": "echo", "input": {"text": "x"}, "usage": {"in": 1000, "out": 100, "cache_read": 9000}},
+             {"text": "done", "usage": {"in": 10, "out": 10}}]
+    priced = '\n[prices]\n"scripted-test" = { input = 3.30, output = 16.50, cache_read = 0.33 }\n'
+    run_dir, _ = _run(tmp_path, turns, extra=priced)
+    first = [x for x in steps(run_dir) if x["type"] == "llm_call"][0]
+    # 1,000 uncached x $3.30 + 9,000 cached x $0.33 + 100 out x $16.50, per 1M tokens
+    assert first["tokens_in"] == 10_000 and first["cost_usd"] == round((1000 * 3.30 + 9000 * 0.33 + 100 * 16.50) / 1e6, 6)

@@ -107,14 +107,14 @@ class TraceHooks(HookProvider):
             text = "(calls " + ", ".join(tool_uses) + ")"
         extra = {"tokens_in_cached": cached} if cached else {}
         self.tracers.record(type="llm_call", name="model", started_at=started_at, duration_ms=duration_ms,
-                            tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=self.cost(tokens_in, tokens_out),
+                            tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=self.cost(tokens_in, tokens_out, cached),
                             text=text[:PREVIEW_CHARS], **extra)
 
-    def cost(self, tokens_in: int | None, tokens_out: int | None) -> float | None:
+    def cost(self, tokens_in: int | None, tokens_out: int | None, cached: int = 0) -> float | None:
         price = self.prices.get(self.model_id)
         if price is None or tokens_in is None or tokens_out is None:
             return None
-        return round((tokens_in * price.input + tokens_out * price.output) / 1_000_000, 6)
+        return round(price.cost(tokens_in, tokens_out, cached), 6)
 
     # --- tool calls --------------------------------------------------------------------------------
 

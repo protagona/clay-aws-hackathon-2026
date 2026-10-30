@@ -92,6 +92,21 @@ Mistral Large 3 lost feasibility points because it made only 2 model calls and n
 
 This calibration is small: 5 cases, 2 repeats, and one task. It's evidence for choosing a judge, not a validated judge. Comparing judges against human scores (D-6) is still open.
 
+## Role assignment by price (2026-10-30)
+
+The agent is the token-heavy role, with a median of about 48k input tokens per run. The judge is light, at about 3k input and 0.5–2k output. Official prices per 1M tokens (AWS Price List API, us-west-2, `us.` geo, standard tier):
+
+| Model | Input | Output | Cache read |
+|---|---|---|---|
+| Kimi K3 | $3.30 | $16.50 | $0.33 |
+| Claude Opus 4.6 | $5.50 | $27.50 | $0.55 |
+| Claude Sonnet 4.6 | $3.30 | $16.50 | $0.33 |
+| Claude Haiku 4.5 | $1.10 | $5.50 | $0.11 |
+| GLM 5 | $1.00 | $3.20 | — |
+| Nova 2 Lite | $0.33 | $2.75 | $0.083 |
+
+`config/bedrock-kimi.toml` therefore runs **Kimi K3 as the agent (cheaper, caches automatically) and Opus 4.6 as the judge**. Measured on adb-001: $0.130 for the agent, $0.030 for the judge and $0.001 for the summarizer, so **$0.16** in total, scoring 0.96. Swapping the roles would cost about $0.38 on the same token counts. See design ADR-11.
+
 ## Usable as the agent (all probes passed in both runs)
 
 | Provider | Model ID to put in config | `temperature` |

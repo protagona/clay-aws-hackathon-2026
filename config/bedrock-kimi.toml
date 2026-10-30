@@ -9,11 +9,13 @@ id = "adb"
 provider = "bedrock"
 id = "us.moonshotai.kimi-k3"
 region = "us-west-2"
-# no temperature: Kimi K3 on Bedrock rejects it ("This model doesn't support the temperature field")
+# Kimi K3: cheaper per token than Opus (and caches automatically), so it takes the heavy role.
+# No temperature: Kimi K3 on Bedrock rejects it ("This model doesn't support the temperature field")
 
-[judge]                      # GLM 5, not Kimi: the agent here is Kimi K3 and must not grade itself
+[judge]                      # Opus 4.6: pricier per token, so it takes the light role (~3k in / ~2k out per run);
+                             # the sharpest judge in the calibration, and not the agent's vendor
 provider = "bedrock"
-id = "zai.glm-5"
+id = "us.anthropic.claude-opus-4-6-v1"
 region = "us-west-2"
 max_tokens = 2048
 timeout_s = 120
@@ -53,10 +55,12 @@ s3_uri = ""                  # set to "s3://<RunsBucket>" after cdk deploy to mi
 workflow_weight = 0.5
 output_weight = 0.5
 
-[prices]                     # USD per million tokens: Anthropic first-party prices + 10% Bedrock geo/regional premium
-                             # (platform.claude.com/docs/en/about-claude/pricing, 2026-10-29). Verify in the console.
-"us.anthropic.claude-sonnet-4-6"              = { input = 3.30, output = 16.50 }
-"us.anthropic.claude-haiku-4-5-20251001-v1:0" = { input = 1.10, output = 5.50 }
-# Nova 2 Lite's price couldn't be read from the Bedrock pricing page; Sonnet 4.6's price is used as a
-# conservative UPPER BOUND so evaluation cost is never null. Replace with the console price.
-"us.amazon.nova-2-lite-v1:0"                  = { input = 3.30, output = 16.50 }
+[prices]                     # USD per 1M tokens, us-west-2 on-demand, us. geo profile, standard tier.
+                             # Source: AWS Price List API (pricing get-products, AmazonBedrock and
+                             # AmazonBedrockFoundationModels), queried 2026-10-30.
+"us.anthropic.claude-sonnet-4-6"              = { input = 3.30, output = 16.50, cache_read = 0.33 }
+"us.anthropic.claude-haiku-4-5-20251001-v1:0" = { input = 1.10, output = 5.50, cache_read = 0.11 }
+"us.anthropic.claude-opus-4-6-v1"             = { input = 5.50, output = 27.50, cache_read = 0.55 }
+"us.moonshotai.kimi-k3"                       = { input = 3.30, output = 16.50, cache_read = 0.33 }
+"us.amazon.nova-2-lite-v1:0"                  = { input = 0.33, output = 2.75, cache_read = 0.083 }
+"zai.glm-5"                                   = { input = 1.00, output = 3.20 }

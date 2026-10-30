@@ -554,6 +554,37 @@ Mitigations:
 - **Reversibility:** easy (config).
 - **Sources:** the calibration runs of 2026-10-30, recorded in [bedrock-models.md](bedrock-models.md#judge-calibration-2026-10-30).
 
+### ADR-11: Assign roles by price: the cheaper model takes the token-heavy role (2026-10-30)
+
+- **Context:**
+  - Measured per run, the agent uses about 48k input and 1.9k output tokens (median of 7 successful runs; up to 93k input). The judge uses about 3.3k input and 0.5–2k output.
+  - The agent is therefore the heavy role, about 15× the judge's input.
+  - The user asked to put the cheaper of Kimi K3 and Opus 4.6 on the heavy role and the more expensive one on the other.
+- **Prices:** AWS Price List API, us-west-2, `us.` geo profile, standard tier, queried 2026-10-30:
+
+  | Model | Input | Output | Cache read |
+  |---|---|---|---|
+  | Kimi K3 | $3.30 | $16.50 | $0.33 |
+  | Opus 4.6 | $5.50 | $27.50 | $0.55 |
+
+  Kimi K3 is 40% cheaper on every token type, and it caches prompts automatically.
+- **Decision:** `config/bedrock-kimi.toml` uses **Kimi K3 as the agent and Opus 4.6 as the judge**. Opus was also the sharpest judge in the calibration (ADR-10), and it isn't the agent's vendor. The Nova 2 Lite summarizer is unchanged.
+- **Measured** (adb-001, 2026-10-30):
+
+  | Role | Model | Calls | Input | Output | Cost |
+  |---|---|---|---|---|---|
+  | Agent | Kimi K3 | 4 | 39,697 (24,290 cached) | 4,284 | $0.130 |
+  | Judge | Opus 4.6 | 1 | 3,043 | 483 | $0.030 |
+  | Summarizer | Nova 2 Lite | 1 | 1,955 | 104 | $0.001 |
+  | **Total** | | | | | **$0.16** (overall score 0.96) |
+
+  The reverse assignment, Opus as agent and Kimi as judge, priced on the same token counts: about $0.34 for the agent (Claude doesn't cache unless asked) plus about $0.04 for Kimi as judge, which writes about 1.9k output tokens. That's about **$0.38, 2.4× more**.
+- **Also changed:**
+  - Every live config now carries the official prices, which corrects Nova 2 Lite: the configured $3.30/$16.50 "upper bound" was about 10× its real $0.33/$2.75.
+  - Prices take an optional `cache_read` rate, so cached input is priced at the cache rate.
+- **Worst case per run** (Kimi agent, Opus judge): $0.66 + $0.81 for the agent, ≤ $0.33 for the judge (2 calls), ≤ $0.02 for the summarizer. That's **≤ $1.83**.
+- **Reversibility:** easy (config).
+
 ## Failure modes
 
 | Failure | Detection | Behavior | Recovery |

@@ -130,6 +130,11 @@ class ScoringCfg(_Strict):
 class Price(_Strict):
     input: float = Field(ge=0)
     output: float = Field(ge=0)
+    cache_read: float | None = Field(default=None, ge=0)  # cached input tokens; None = priced as input
+
+    def cost(self, tokens_in: int, tokens_out: int, cached: int = 0) -> float:
+        cache_rate = self.input if self.cache_read is None else self.cache_read
+        return ((tokens_in - cached) * self.input + cached * cache_rate + tokens_out * self.output) / 1_000_000
 
 
 class EvalConfig(_Strict):

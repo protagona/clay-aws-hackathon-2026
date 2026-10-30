@@ -99,7 +99,7 @@ def _evaluate_locked(rd: RunDir, run, cfg: EvalConfig, rubric_file, force: bool)
     calls = [(c, cfg.judge.id) for c in jr.calls] + [(c, cfg.summarizer.id) for c in nr.calls]
     tokens_in = sum(c.tokens_in for c, _ in calls)
     tokens_out = sum(c.tokens_out for c, _ in calls)
-    costs = [_cost(cfg, mid, c.tokens_in, c.tokens_out) for c, mid in calls]
+    costs = [_cost(cfg, mid, c.tokens_in, c.tokens_out, c.tokens_in_cached) for c, mid in calls]
     known = [c for c in costs if c is not None]
 
     scores = {
@@ -137,11 +137,11 @@ def _evaluate_locked(rd: RunDir, run, cfg: EvalConfig, rubric_file, force: bool)
     return scores, {"rubric.json": rubric_bytes, "report.md": report_bytes, "scores.json": scores_bytes}
 
 
-def _cost(cfg: EvalConfig, model_id: str, tokens_in: int, tokens_out: int) -> float | None:
+def _cost(cfg: EvalConfig, model_id: str, tokens_in: int, tokens_out: int, cached: int = 0) -> float | None:
     price = cfg.prices.get(model_id)
     if price is None:
         return None
-    return (tokens_in * price.input + tokens_out * price.output) / 1_000_000
+    return price.cost(tokens_in, tokens_out, cached)
 
 
 def load_scores(run_dir: Path) -> dict | None:

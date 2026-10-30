@@ -26,6 +26,7 @@ class Completion:
     tokens_in: int
     tokens_out: int
     model_id: str
+    tokens_in_cached: int = 0
 
 
 class ProviderError(Exception):

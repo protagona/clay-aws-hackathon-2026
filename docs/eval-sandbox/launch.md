@@ -12,7 +12,7 @@ Per the user's instruction, everything ships on the `prototype` branch with **no
 | Dependencies | `uv sync` at the repo root; `cd infra && npm ci` | `uv run foundry --help` |
 | AWS credentials for **one sandbox account**, region us-west-2 | `aws sso login --profile <sandbox-profile>`, then `export AWS_PROFILE=<sandbox-profile> AWS_REGION=us-west-2` | `aws sts get-caller-identity` shows the sandbox account id |
 | Bedrock model access **and non-zero quotas** in us-west-2 for `us.anthropic.claude-sonnet-4-6`, `us.anthropic.claude-haiku-4-5-20251001-v1:0`, `us.moonshotai.kimi-k3`, `zai.glm-5` and `us.amazon.nova-2-lite-v1:0` | Bedrock console → Model access. Check quotas with `aws service-quotas list-service-quotas --service-code bedrock --region us-west-2`: look for "Cross-region model inference tokens per minute for <model>" > 0. In the sandbox the 5.5 models were at 0. | For each of these model ids, `aws bedrock-runtime converse --model-id <id> --messages '[{"role":"user","content":[{"text":"hi"}]}]' --region us-west-2` returns a reply. |
-| **Prices checked (required before step 4)** | Read the on-demand prices for the three models in the Bedrock console or on the AWS pricing page for us-west-2 geo inference profiles. Put them in `[prices]` in `config/bedrock*.toml`. The current values come from Anthropic's published first-party prices (Sonnet 4.6: $3/$15 per million tokens; Haiku 4.5: $1/$5) plus the documented 10% regional premium, with Nova set to Sonnet 4.6's rate as an upper bound. | Recompute the bound below with the new prices. If it exceeds $2.00, lower `max_input_tokens` until it doesn't. |
+| **Prices** (done on 2026-10-30) | `[prices]` in `config/bedrock*.toml` holds the official on-demand prices from the AWS Price List API (`aws pricing get-products --region us-east-1 --service-code AmazonBedrockFoundationModels` for Claude, and `AmazonBedrock` for Kimi, Nova and GLM, filtered to `regionCode=us-west-2`). Re-query if a price looks stale. | Recompute the bound below if prices change. |
 | CDK bootstrap (once per account and region) | `cd infra && npx cdk bootstrap aws://<account>/us-west-2` | The `CDKToolkit` stack exists in CloudFormation |
 | **Budget alarm (required before step 4).** Owner: the team lead. Notifies the team lead's email at 80% of $50 per month. | `aws budgets create-budget --account-id <account> --budget '{"BudgetName":"foundry-sandbox","BudgetLimit":{"Amount":"50","Unit":"USD"},"TimeUnit":"MONTHLY","BudgetType":"COST"}' --notifications-with-subscribers '[{"Notification":{"NotificationType":"ACTUAL","ComparisonOperator":"GREATER_THAN","Threshold":80,"ThresholdType":"PERCENTAGE"},"Subscribers":[{"SubscriptionType":"EMAIL","Address":"<team-lead-email>"}]}]'` | `aws budgets describe-budget --account-id <account> --budget-name foundry-sandbox` |
 
@@ -36,7 +36,7 @@ MCP server subprocesses never receive `AWS_*` variables (environment allowlist),
 - `max_tokens = 4096` per agent call (1,024 was too small for the final plan)
 - `max_seconds = 300`
 
-Evaluation makes at most 4 model calls (judge and summarizer, one retry each), with `max_tokens = 2048` each and the run view capped at about 20k tokens. At the configured prices that's at most $0.66 input + $0.81 output for the agent plus $0.40 for evaluation, so **≤ $1.87 per run**. Nova is priced at Sonnet 4.6's rate as an upper bound. Observed on 2026-10-30: $0.04 to $0.30 per run.
+Evaluation makes at most 4 model calls (judge and summarizer, one retry each), with `max_tokens = 2048` each and the run view capped at about 20k tokens. At the configured prices that's at most $0.66 input + $0.81 output for the agent plus $0.40 for evaluation, so **≤ $1.87 per run**. Prices are the official ones; Nova 2 Lite is $0.33/$2.75. Observed on 2026-10-30: $0.04 to $0.30 per run. With `config/bedrock-kimi.toml` (Kimi agent, Opus judge) the worst case is ≤ $1.83, and a measured run was $0.16.
 
 ## Rollout
 
@@ -142,7 +142,7 @@ This is a local, single-user tool. There are no servers to page on. These signal
   - Where: `run.json.status`, the UI cards, and the exit codes (0, 1, 2)
   - Act when: a run fails or times out. Read `trace.jsonl`, the report's *Struggles*, and `mcp-<server>.log`.
 - **Cost per run**
-  - Where: `scores.json.workflow.cost_usd` and `scores.json.evaluation.cost_usd`. These are computed from the `[prices]` table; Nova's price there is an upper bound. The authoritative figure is AWS Cost Explorer: filter by service *Amazon Bedrock*, daily granularity, which lags by up to about 24 hours.
+  - Where: `scores.json.workflow.cost_usd` and `scores.json.evaluation.cost_usd`. These are computed from the `[prices]` table: official prices, with cached input at the cache rate. The authoritative figure is AWS Cost Explorer: filter by service *Amazon Bedrock*, daily granularity, which lags by up to about 24 hours.
   - Act when: a run's recorded cost exceeds **$2.00**, or Cost Explorer shows more than expected for the number of runs. Stop live runs and check `max_*` in `[limits]`.
 - **Limits hit**
   - Where: `note` steps reading `max_model_calls`, `max_input_tokens` or `max_seconds … reached`, shown in Struggles
@@ -171,7 +171,7 @@ This is a local, single-user tool. There are no servers to page on. These signal
 
 - **Offline mode doesn't evaluate a real agent.** The scripted model replays fixed decisions, so offline runs prove the pipeline, not agent quality. Real behavior needs L1–L3.
 - **The rubric is a stand-in.** `adb-rubric-v0` is ours, not Clay's (K-1). The judge hasn't been calibrated against human scores (follow-up D-6).
-- **Bedrock prices aren't verified against the console** (design ADR-7). **Nova's price is an upper bound** (Sonnet's rate), so recorded evaluation costs are overestimates until the real price is entered.
+- **Prices are from the AWS Price List API** (2026-10-30). Cached input is priced at the cache rate only when a `cache_read` price is set.
 - **Strands pins `mcp<2.2`**, so `mcp` stays at 2.1.1 with accepted Medium CVEs (`docs/security/findings.md` F-008, F-009; review by 2026-11-30).
 - **A `foundry run` killed with SIGKILL leaves its MCP subprocess running** until it exits on its own, and leaves `run.json` at `running`. Use `foundry evaluate --force` for such runs.
 - **The UI doesn't auto-refresh.** Reload to see progress.
