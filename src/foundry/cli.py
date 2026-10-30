@@ -75,8 +75,27 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0 if status == "succeeded" else 1
 
 
+def _cmd_evaluate(args: argparse.Namespace) -> int:
+    from foundry.config import ConfigError, load_eval_config
+    from foundry.evaluate.evaluate import EvaluateError, evaluate
+
+    try:
+        cfg = load_eval_config(args.config)
+        scores = evaluate(args.run_dir, cfg, rubric_file=args.rubric, force=args.force, lock_token=args.lock_held)
+    except (ConfigError, EvaluateError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    overall = scores["overall"]
+    w, o = scores["workflow"]["score"], scores["output"]["score"]
+    fmt = lambda x: "n/a" if x is None else f"{x:.2f}"  # noqa: E731
+    print(f"{Path(args.run_dir) / 'report.md'}")
+    print(f"overall {fmt(overall) if overall is not None else 'incomplete'} | workflow {fmt(w)} | output {fmt(o)}")
+    return 0
+
+
 COMMANDS = {
     "run": _cmd_run,
+    "evaluate": _cmd_evaluate,
     "validate": _cmd_validate,
 }
 

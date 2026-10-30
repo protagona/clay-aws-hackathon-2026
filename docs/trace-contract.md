@@ -116,7 +116,41 @@ These were added by the eval sandbox build ([spec](eval-sandbox/spec.md), [desig
 
 ### scores.json
 
-Written by `foundry evaluate`. These fields are listed in the design's *Data and contracts* section and in the slice that writes them.
+Written by `foundry evaluate`, always together with `rubric.json` and `report.md`. The fields below extend the original draft.
+
+**Identity and integrity**
+- `contract_version`
+- `evaluation_id`
+- `evaluated_at`
+- `rubric_sha256`, `report_sha256`: a mismatch means the evaluation was interrupted, so re-run it
+
+**Inputs**
+- `config`
+- `rubric_id` (from `run.json`), `rubric_id_loaded`, `rubric_version`, `rubric_id_mismatch`
+- `templates`: `{"judge", "summarizer"}`
+- `workflow_scorer`: `"v1"`
+- `weights`: `{"workflow", "output"}`
+
+**Workflow**
+- `steps`, `tool_calls`, `tool_errors`, `retries`
+- `recovered`: `true`, `false`, or `null` when there were no errors
+- `invalid_tool_calls`, `model_calls`, `max_model_calls`
+- `duration_s`, `cost_usd`
+- `components`, `weights`, `score`, `rationale`
+
+**Output**
+- `criteria[]`: `{id, score, max, rationale}`
+- `score`: `null` if not scored
+- `error`, `judge`, `rubric_version`
+
+**Overall and summary**
+- `overall`: `null` when the output wasn't scored
+- `narrative`, `narrative_error`
+- `struggles[]`
+
+**Evaluation cost and crash handling**
+- `evaluation`: `{tokens_in, tokens_out, cost_usd, judge, summarizer}`
+- `forced`, `truncated_trace_lines`
 
 ## Rules
 
