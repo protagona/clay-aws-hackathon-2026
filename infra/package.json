@@ -1,0 +1,8 @@
+{
+  "name": "clay-foundry-infra",
+  "private": true,
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "aws-cdk": "2.1146.1"
+  }
+}
