@@ -183,6 +183,17 @@ The same `uv run pytest` passes 115/115 in a fresh local clone. Once billing is 
   | Tracer swap | 27 s (21 spans in Phoenix) |
   | Offline replay | instant |
 
+## Increment 2 (2026-10-30)
+
+These were the user's picks, mechanical and functional only. The scoring work waits for Clay's rubric. See [increment-2.md](increment-2.md).
+
+- **Second MCP server.** An in-repo STAC server (Earth Search, no credentials) sits next to RODA. In a live batch, every run used both servers.
+- **Robustness:**
+  - A reaper kills MCP servers when the harness is SIGKILLed; live, they were gone within 1 s.
+  - The Strands start-failure warning is silenced (an upstream bug).
+  - The UI auto-refreshes while something is running.
+- **`foundry batch`:** variants and derived model configs, a concurrency cap, a budget stop, resume and retry, and CSV and Markdown summaries. Live: 4/4 runs in 83 s for $0.79.
+
 ## Follow-ups
 
 - L4 (`cdk deploy` and S3 mirror) when wanted. Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.

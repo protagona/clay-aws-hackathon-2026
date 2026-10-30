@@ -76,6 +76,31 @@ The format is the [trace contract](docs/trace-contract.md). Any harness that wri
 
 The exact definitions are in the [spec](docs/eval-sandbox/spec.md#definitions).
 
+## Tools the agent can use
+
+Two MCP servers are configured, and both need no credentials:
+
+- **RODA** (`awslabs.roda-mcp-server`, pinned): discovers datasets in the Registry of Open Data on AWS.
+- **STAC** (`src/foundry/mcp_servers/stac.py`, part of this repo): finds actual scenes for an area and date range through `search_items`, `get_item` and `list_collections`. It uses Earth Search by default; set `STAC_API_URL` to use another STAC API. Responses are compacted to a few KB, so they don't flood the agent's context.
+
+Every MCP server runs under a small reaper (`foundry.harness.reaper`), so it can't outlive a killed `foundry run`.
+
+## Batches: many runs, one table
+
+```bash
+uv run foundry batch --config config/bedrock.toml \
+    --models us.moonshotai.kimi-k3,us.anthropic.claude-sonnet-4-6 \
+    --prompts adb-001,adb-006 --repeats 1 --concurrency 2 --evaluate --max-cost 2 --out batches/demo
+```
+
+- Each job is a real `foundry run`, plus `foundry evaluate` with `--evaluate`. At most `--concurrency` jobs run at once.
+- `--models` derives one config per model by changing only `[model] id`. The derived configs are saved in `<out>/configs/`.
+- `--max-cost` stops launching new runs once the recorded spend reaches it.
+- Re-running the same command resumes, and crashed runs are retried.
+- Results go to `<out>/summary.md` (per-variant aggregates) and `<out>/summary.csv`.
+
+Example: the command above ran 4/4 runs in 83 s for $0.79.
+
 ## Swap the model (no code change)
 
 The model is chosen by the `[model]` section of the config:
