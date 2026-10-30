@@ -112,7 +112,7 @@ Evaluation makes at most 4 model calls (judge and summarizer, one retry each), w
 
 - F-001 to F-007: all fixed.
 - F-008, F-009, F-010, F-012: accepted. Owner is the user; review by 2026-11-30, or before deploying outside the sandbox.
-- F-011 (SSE-S3 instead of a KMS key, scanner-rated High): open, needs the user's ruling.
+- F-011 (SSE-S3 instead of a KMS key, scanner-rated High): accepted by the user on 2026-10-30 for the sandbox; review before any non-sandbox deploy.
 - F-013 (actions pinned by tag): open follow-up.
 
 None blocks a sandbox launch.

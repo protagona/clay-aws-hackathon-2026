@@ -80,7 +80,7 @@ These ran on macOS with network access and **no AWS credentials**:
 | Secrets | gitleaks 8.30.1 (git history 605627f..HEAD and working tree), Semgrep `p/secrets` | clean |
 | Dependencies | OSV-Scanner 2.7.0, Trivy 0.76.0 on `uv.lock` and `infra/package-lock.json` | 4 Medium in `mcp` 2.1.1. The fix is blocked by `strands-agents` 1.62.0 pinning `mcp<2.2`. One CVE is reachable only through a malicious MCP server; the rest aren't reachable. Accepted as F-008 and F-009, review-by 2026-11-30. |
 | SAST | Semgrep CE 1.181.0 (`p/python`, `p/security-audit`, `p/secrets`, `p/fastapi`, `p/jwt`) | 1 warning (`\| safe` on sanitized HTML), a false positive after reading the code |
-| IaC | Checkov 3.3.28 and Trivy 0.76.0 on the synthesized CloudFormation; Checkov on the CI workflow | S3 access logging off (F-010, Low, accepted for the sandbox). SSE-S3 instead of a CMK (F-011, scanner-rated HIGH, **needs your ruling**). Workflow is clean. |
+| IaC | Checkov 3.3.28 and Trivy 0.76.0 on the synthesized CloudFormation; Checkov on the CI workflow | S3 access logging off (F-010, Low, accepted for the sandbox). SSE-S3 instead of a CMK (F-011, scanner-rated HIGH, **accepted by the user 2026-10-30** for the sandbox). Workflow is clean. |
 | Container images | n/a | no images |
 | Prompt injection | none on the allowlist | **unscanned.** Covered by the data-block design and an offline test; the live judge test is L5. |
 
