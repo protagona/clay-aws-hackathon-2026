@@ -160,6 +160,29 @@ The same `uv run pytest` passes 115/115 in a fresh local clone. Once billing is 
 - **UI score format:** `W1.00 O.67`. See the Verification notes.
 - **Cached input tokens** (found 2026-10-30 while measuring per-role usage): Kimi K3 on Bedrock caches prompts automatically and reports cached tokens in `cacheReadInputTokens`, outside `inputTokens`. `tokens_in` (and so the `max_input_tokens` guardrail and cost) now includes cached tokens, and `tokens_in_cached` records the cached part. Kimi runs recorded before the fix under-count input. Cached tokens are priced at the full input rate, so recorded cost is an overestimate for caching models.
 
+## Demo readiness (2026-10-30)
+
+- **Default live config** is a Kimi K3 agent with an Opus 4.6 judge (ADR-12). `bedrock-alt.toml` swaps the agent to Sonnet 4.6, and `bedrock-otel.toml` adds the OTel tracer. Tests assert each differs only in its one section.
+- **Golden runs (G-1):** 4 live runs in `fixtures/runs/golden/` with tests for validity and offline replay:
+
+  | Run | Overall |
+  |---|---|
+  | Kimi K3 | 1.00 |
+  | Sonnet 4.6 | 0.96 |
+  | Qwen3 235B | 0.81 |
+  | gpt-oss-120b | 0.73 |
+
+  Live failures (call-limit exhaustion) didn't reproduce on re-runs, because model behavior varies. The failure path is shown with `fixtures/runs/failed`.
+- **Demo script (G-3):** `docs/demo.md`, rehearsed end to end against live Bedrock, RODA and Phoenix:
+
+  | Segment | Time |
+  |---|---|
+  | Live run | 23 s |
+  | Evaluate | 11 s |
+  | Model swap | 38 + 10 s |
+  | Tracer swap | 27 s (21 spans in Phoenix) |
+  | Offline replay | instant |
+
 ## Follow-ups
 
 - L4 (`cdk deploy` and S3 mirror) when wanted. Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.

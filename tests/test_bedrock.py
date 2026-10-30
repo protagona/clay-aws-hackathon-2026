@@ -75,3 +75,9 @@ def test_complete_counts_cached_input_tokens():
         "metrics": {"latencyMs": 10}})
     with stub:
         assert p.complete(REQ).tokens_in == 4090
+
+
+def test_bedrock_otel_differs_only_in_tracing():  # the live tracer-swap demo (AC16)
+    a, b = load_config("config/bedrock.toml"), load_config("config/bedrock-otel.toml")
+    assert a.tracing.tracers == ["jsonl"] and b.tracing.tracers == ["jsonl", "otel"]
+    assert a.model_copy(update={"tracing": b.tracing, "path": b.path}) == b

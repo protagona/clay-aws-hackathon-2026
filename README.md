@@ -89,6 +89,7 @@ On Bedrock, with credentials:
 
 - `config/bedrock.toml` (the default): **Kimi K3 as the agent, Opus 4.6 as the judge**. The cheaper model takes the token-heavy role. Measured at about $0.16 per run plus evaluation (design ADR-11).
 - `config/bedrock-alt.toml`: identical except the agent is **Claude Sonnet 4.6**. Use it for the model-swap demo.
+- `config/bedrock-otel.toml`: identical except it also exports OpenTelemetry spans. Use it for the tracer-swap demo.
 
 Which models can actually run the agent in this account? See [docs/eval-sandbox/bedrock-models.md](docs/eval-sandbox/bedrock-models.md), produced by calling every model. Re-check after quota or access changes with:
 
@@ -126,6 +127,10 @@ For a backend that needs auth, such as Langfuse at `/api/public/otel/v1/traces`:
 2. Set `headers_env = "LANGFUSE_OTLP"` in `[tracing.otel]`.
 
 The header value is never written to any file. If the endpoint is down, the run still completes, with one warning.
+
+## Demo
+
+The run-of-show, with commands, timings, talking points and fallbacks, is in [docs/demo.md](docs/demo.md). It was rehearsed end to end on 2026-10-30. Recorded live runs for offline replay are in `fixtures/runs/golden/`: `uv run foundry ui --runs-dir fixtures/runs/golden`.
 
 ## Replay (when the live agent fails)
 
