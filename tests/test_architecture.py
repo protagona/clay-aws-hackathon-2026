@@ -150,3 +150,62 @@ def test_the_checker_catches_a_bad_edge(tmp_path):
     assert any("data/bad.py:2 imports foundry.engine.runner" in p for p in problems), problems
     assert any("data/bad.py:3 imports fastapi" in p for p in problems), problems
     assert any("module foundry.stray is in no layer" in p for p in problems), problems
+
+
+# --- increment 16: the server-rendered UI is gone, and stays gone -------------------------------------------------
+
+LEFTOVER = re.compile(r"\bclassic\b|\bjinja2?\b|\bmarkupsafe\b|monitor\.js|Jinja2Templates", re.IGNORECASE)
+# Every remaining mention, each for a reason. A pair that no longer matches anything fails too, so this can't go stale.
+LEFTOVER_ALLOWED = {
+    ("README.md", "the server-rendered UI of increments 1–8 (`/classic`) was removed in increment 16"),
+    ("tests/test_api.py", 'for path in ("/classic", "/classic/", "/classic/runs/x"):'),  # this allowlist's own entry
+    ("tests/test_architecture.py", "LEFTOVER = re.compile("),  # this test's own patterns
+    ("tests/test_architecture.py", 'if top in ("jinja2", "markupsafe"):'),
+    ("tests/test_architecture.py", '("README.md", "the server-rendered UI'),  # the allowlist's own entries
+    ("tests/test_architecture.py", "# this allowlist's own entry"),
+}
+SCANNED = ["src", "tests", "scripts", "web/src", "README.md"]
+
+
+def _text_files():
+    for base in SCANNED:
+        p = ROOT / base
+        files = [p] if p.is_file() else p.rglob("*")
+        for f in files:
+            if f.is_file() and not ({"__pycache__", "web_dist", "node_modules"} & set(f.parts)) \
+                    and f.suffix in {".py", ".ts", ".tsx", ".mjs", ".md", ".css", ".html", ".json", ".toml", ".txt"}:
+                yield f
+
+
+def test_no_classic_ui_left():
+    hits, used = [], set()
+    for f in _text_files():
+        rel = str(f.relative_to(ROOT))
+        for n, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+            if not LEFTOVER.search(line):
+                continue
+            ok = [(p, s) for p, s in LEFTOVER_ALLOWED if p == rel and s in line]
+            used.update(ok)
+            if not ok:
+                hits.append(f"{rel}:{n}: {line.strip()[:120]}")
+    assert not hits, "leftovers of the removed server-rendered UI:\n" + "\n".join(hits)
+    assert not LEFTOVER_ALLOWED - used, f"allowlisted but no longer present: {LEFTOVER_ALLOWED - used}"
+
+
+def test_no_stale_module_paths():
+    """Strings the import checks can't see: `-m` targets and package-data loads must name the moved modules."""
+    stale = re.compile(r"-m\"?,? ?\"?foundry\.(harness|mcp_servers)\b|files\(\"foundry\.templates\"\)")
+    hits = [f"{f.relative_to(ROOT)}:{n}" for base in ("src", "tests", "scripts", "config")
+            for f in (ROOT / base).rglob("*") if f.is_file() and f.suffix in {".py", ".toml", ".mjs"}
+            and "__pycache__" not in f.parts
+            for n, line in enumerate(f.read_text(errors="replace").splitlines(), 1) if stale.search(line)]
+    assert not hits, hits
+
+
+def test_no_duplicate_test_names():
+    """Two top-level `def test_x` in one module: the second silently replaces the first (ruff F811 isn't in CI)."""
+    dups = []
+    for f in (ROOT / "tests").glob("test_*.py"):
+        names = [n.name for n in ast.parse(f.read_text()).body if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")]
+        dups += [f"{f.name}: {n}" for n in set(names) if names.count(n) > 1]
+    assert not dups, dups

@@ -1,4 +1,4 @@
-"""Local UI: score cards, report pages, and starting runs/evaluations as `foundry` subprocesses.
+"""Local UI server: the JSON API and the built TypeScript app, and starting runs/evaluations as `foundry` subprocesses.
 
 Bound to 127.0.0.1 only. Every request's Host is checked (DNS rebinding); every POST needs a same-origin
 Origin (when sent) and the per-process CSRF token. At most one UI-started run at a time.
@@ -6,7 +6,6 @@ Origin (when sent) and the per-process CSRF token. At most one UI-started run at
 
 from __future__ import annotations
 
-import hmac
 import re
 import secrets
 import subprocess
@@ -17,10 +16,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
-from fastapi.templating import Jinja2Templates
-from markupsafe import Markup
+from fastapi import FastAPI, Request, UploadFile
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from foundry.engine.batch import spread
 from foundry.config import ConfigError, load_config
@@ -34,13 +31,8 @@ from foundry.data.project import CONFIG_STEM_RE
 from foundry.data.runs import RunDir
 from foundry.data.tasks import parse_prompts
 from foundry.ui import dashboard
-from foundry.ui.render import render
 
-TEMPLATES = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
-TEMPLATES.env.filters["markdown"] = lambda text: Markup(render(text[:FEED_TEXT_MAX]))  # same safe renderer as reports
-FEED_TEXT_MAX = 20_000  # characters of a model step rendered in the feed
 JOB_ID_RE = re.compile(r"^[a-f0-9]{16}$")
-STATIC = {"monitor.js": "text/javascript"}  # the only files /classic/static serves
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; "
        "img-src 'self' data:; font-src 'self'; form-action 'self'; frame-ancestors 'none'")
 
@@ -96,12 +88,9 @@ class UiState:
         return self.runs_dir / ".batches"
 
 
-CLASSIC = "/classic"  # the server-rendered UI (increments 1-8), kept as a fallback beside the TypeScript app
 
 
 def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765, receiver_port: int = 4318) -> FastAPI:
-    from foundry.ui import actions as act
-    from foundry.ui.actions import UiError
 
     st = UiState(Path(runs_dir).resolve(), Path(project_root).resolve(), port, receiver_port=receiver_port)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -133,263 +122,6 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
         response.headers["X-Frame-Options"] = "DENY"
         return response
 
-    ui = APIRouter(prefix=CLASSIC)
-
-    def check_csrf(token: str) -> Response | None:
-        if not hmac.compare_digest(token.encode(), st.csrf.encode()):
-            return PlainTextResponse("Missing or invalid CSRF token; reload the page and try again", status_code=403)
-        return None
-
-    def page(request: Request, name: str, status: int = 200, **ctx) -> HTMLResponse:
-        return TEMPLATES.TemplateResponse(request, name, {"csrf": st.csrf, "P": CLASSIC, **ctx}, status_code=status)
-
-    def error(request: Request, status: int, message: str) -> HTMLResponse:
-        return page(request, "error.html", status=status, message=message)
-
-    def go(path: str) -> RedirectResponse:
-        return RedirectResponse(CLASSIC + path, status_code=303)
-
-    @ui.get("/", response_class=HTMLResponse)
-    def index(request: Request, model: str = ""):
-        cards = _cards(st)
-        busy = any(c.get("headline") in ("running", "evaluating") for c in cards) or st.receiver is not None
-        if model:  # the dashboard leaderboard links here
-            cards = [c for c in cards if not c["unreadable"] and c["model"] == model]
-        return page(request, "index.html", cards=cards, configs=_configs(st), prompts=_prompt_ids(st),
-                    banners=[j for j in st.jobs.values() if j.failed_visibly], refresh=busy, nav="runs",
-                    model_filter=model)
-
-    @ui.get("/dashboard", response_class=HTMLResponse)
-    def dashboard_page(request: Request, rubric: str = "active"):
-        return page(request, "dashboard.html", nav="dashboard", **act.dashboard_view(st, rubric))
-
-    @ui.get("/runs/{run_id}", response_class=HTMLResponse)
-    def run_page(request: Request, run_id: str):
-        path = act.run_path(st, run_id)
-        if path is None:
-            return error(request, 404, "Run not found")
-        ctx = act.run_view(st, path)
-        others = [c for c in sorted((c for c in _cards(st) if not c["unreadable"]), key=lambda c: c["started_at"],
-                                    reverse=True) if c["run_id"] != path.name][:COMPARE_CHOICES]
-        return page(request, "run.html", others=others, noscript_refresh=ctx["m"]["live"], **ctx)
-
-    @ui.get("/runs/{run_id}/live", response_class=HTMLResponse)
-    def run_live(request: Request, run_id: str, seen: int = 0):
-        """The #monitor fragment alone, polled by monitor.js while the run is live."""
-        path = act.run_path(st, run_id)
-        if path is None:
-            return PlainTextResponse("Run not found", status_code=404)
-        return page(request, "_monitor.html", **act.run_view(st, path, seen=seen))
-
-    @ui.get("/static/{name}")
-    def static(name: str):
-        if name not in STATIC:
-            return PlainTextResponse("Not found", status_code=404)
-        return Response((Path(__file__).with_name("static") / name).read_bytes(), media_type=STATIC[name],
-                        headers={"Cache-Control": "no-cache"})
-
-    @ui.get("/compare", response_class=HTMLResponse)
-    def compare_page(request: Request, a: str = "", b: str = ""):
-        try:
-            sa, sb, rows = act.compare(st, a, b)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return page(request, "compare.html", nav="runs", a=sa, b=sb, rows=rows)
-
-    @ui.post("/runs")
-    def start_run(request: Request, prompt_id: str = Form(""), config: str = Form(""), csrf: str = Form("")):
-        if (denied := check_csrf(csrf)) is not None:
-            return denied
-        try:
-            act.start_run(st, prompt_id, config)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return go("/")
-
-    @ui.post("/runs/{run_id}/evaluate")
-    def start_evaluate(request: Request, run_id: str, csrf: str = Form("")):
-        if (denied := check_csrf(csrf)) is not None:
-            return denied
-        try:
-            act.start_evaluate(st, run_id)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return go(f"/runs/{run_id}")
-
-    # --- batches -----------------------------------------------------------------------------------
-
-    @ui.get("/batches", response_class=HTMLResponse)
-    def batches(request: Request):
-        running = any(j.kind == "batch" and j.alive for j in st.jobs.values())
-        return page(request, "batches.html", nav="batches", batches=_batch_list(st), configs=_configs(st),
-                    models=_model_choices(st), prompts=_prompt_ids(st), running=running, refresh=running)
-
-    @ui.post("/batches")
-    def start_batch(request: Request, config: str = Form(""), models: list[str] = Form(default=[]),
-                    prompts: list[str] = Form(default=[]), repeats: int = Form(1), concurrency: int = Form(2),
-                    evaluate: str = Form(""), max_cost: float = Form(2.0), csrf: str = Form("")):
-        if (denied := check_csrf(csrf)) is not None:
-            return denied
-        try:
-            batch_id = act.start_batch(st, config, models, prompts, repeats, concurrency, bool(evaluate), max_cost)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return go(f"/batches/{batch_id}")
-
-    @ui.get("/batches/{batch_id}", response_class=HTMLResponse)
-    def batch_page(request: Request, batch_id: str):
-        try:
-            view = act.batch_view(st, batch_id)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return page(request, "batch.html", nav="batches", refresh=view["running"], **view)
-
-    # --- import & receiver ---------------------------------------------------------------------------
-
-    @ui.get("/import", response_class=HTMLResponse)
-    def import_page(request: Request):
-        rec = st.receiver
-        return page(request, "import.html", nav="import", tasks=_task_ids(st), configs=_configs(st),
-                    receiver=rec, received=[p.name for p in getattr(rec, "written", [])][-10:],
-                    refresh=rec is not None)
-
-    @ui.post("/import")
-    async def do_import(request: Request, file: UploadFile = File(...), task: str = Form("adb"),
-                        prompt_id: str = Form("imported"), config: str = Form(""), csrf: str = Form("")):
-        if (denied := check_csrf(csrf)) is not None:
-            return denied
-        try:
-            act.check_import_form(st, task, prompt_id, config)
-            dest = await save_upload(st, file)
-            paths = act.import_saved_trace(st, dest, file.filename or "", task, prompt_id, config)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return go(f"/runs/{paths[0].name}" if len(paths) == 1 else "/")
-
-    @ui.post("/receiver/start")
-    def receiver_start(request: Request, task: str = Form("adb"), prompt_id: str = Form("imported"),
-                       config: str = Form(""), csrf: str = Form("")):
-        if (denied := check_csrf(csrf)) is not None:
-            return denied
-        try:
-            act.receiver_start(st, task, prompt_id, config)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return go("/import")
-
-    @ui.post("/receiver/stop")
-    def receiver_stop(csrf: str = Form("")):
-        if (denied := check_csrf(csrf)) is not None:
-            return denied
-        act.receiver_stop(st)
-        return go("/import")
-
-    # --- rubric import (increment 8) ------------------------------------------------------------------------
-
-    @ui.get("/rubric", response_class=HTMLResponse)
-    def rubric_page(request: Request, task: str = "adb"):
-        try:
-            view = act.rubric_overview(st, task)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return page(request, "rubric.html", nav="rubric", configs=_configs(st), **view)
-
-    @ui.post("/rubric/draft")
-    async def rubric_draft(request: Request, csrf: str = Form(""), task: str = Form("adb"), kind: str = Form("file"),
-                           text: str = Form(""), url: str = Form(""), mcp: str = Form(""), args: str = Form(""),
-                           config: str = Form("bedrock"), file: UploadFile | None = File(None)):
-        from starlette.concurrency import run_in_threadpool
-
-        if (denied := check_csrf(csrf)) is not None:
-            return denied
-        try:
-            name, data = await read_rubric_upload(file)
-            draft_id = await run_in_threadpool(act.rubric_create_draft, st, task, kind, config, file_name=name,
-                                               file_data=data, text=text, url=url, mcp=mcp, args=args)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return go(f"/rubric/drafts/{draft_id}?task={task}")
-
-    def draft_view(request: Request, task: str, draft_id: str, message: str | None = None, status: int = 200):
-        try:
-            view = act.rubric_draft(st, task, draft_id)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return page(request, "rubric_draft.html", status=status, nav="rubric", message=message, **view)
-
-    @ui.get("/rubric/drafts/{draft_id}", response_class=HTMLResponse)
-    def rubric_draft_page(request: Request, draft_id: str, task: str = "adb"):
-        return draft_view(request, task, draft_id)
-
-    @ui.post("/rubric/drafts/{draft_id}")
-    async def rubric_draft_post(request: Request, draft_id: str):
-        form = await request.form()
-        if (denied := check_csrf(str(form.get("csrf", "")))) is not None:
-            return denied
-        task, action = str(form.get("task", "adb")), str(form.get("action", "save"))
-        try:
-            if action == "discard":  # before loading: an unreadable draft must still be discardable
-                act.rubric_discard(st, task, draft_id)
-                return go(f"/rubric?task={task}")
-            body = _draft_from_form(form)
-            if action == "add":
-                body["criteria"].append({"id": "", "name": "", "description": "", "max": 4, "weight": 1, "levels": {}})
-            elif action.startswith("remove-") and action[7:].isdigit() and int(action[7:]) < len(body["criteria"]):
-                body["criteria"].pop(int(action[7:]))
-            err = act.rubric_update_draft(st, task, draft_id, body, activate=action == "activate")
-            if action == "activate":
-                return go(f"/rubric?task={task}")
-        except UiError as exc:
-            if exc.status == 404:
-                return error(request, 404, exc.message)
-            return draft_view(request, task, draft_id, exc.message, status=exc.status)
-        return draft_view(request, task, draft_id, "Saved." if not err else None)
-
-    @ui.get("/rubric/drafts/{draft_id}/source")
-    def rubric_draft_source(draft_id: str, task: str = "adb"):
-        try:
-            src = act.rubric_source(st, task, draft_id)
-        except UiError:
-            return PlainTextResponse("Not found", status_code=404)
-        return Response(src.read_bytes(), media_type="application/octet-stream",
-                        headers={"Content-Disposition": f'attachment; filename="rubric-source{src.suffix}"'})
-
-    @ui.get("/rubric/history/{name}", response_class=HTMLResponse)
-    def rubric_version_page(request: Request, name: str, task: str = "adb"):
-        try:
-            view = act.rubric_version(st, task, name)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return page(request, "rubric_version.html", nav="rubric", **view)
-
-    @ui.post("/rubric/history/activate")
-    def rubric_history_activate(request: Request, csrf: str = Form(""), task: str = Form("adb"),
-                                file: str = Form("")):
-        if (denied := check_csrf(csrf)) is not None:
-            return denied
-        try:
-            act.rubric_activate_version(st, task, file)
-        except UiError as exc:
-            return error(request, exc.status, exc.message)
-        return go(f"/rubric?task={task}")
-
-    @ui.get("/jobs/{job_id}/log", response_class=PlainTextResponse)
-    def job_log(job_id: str):
-        job = st.jobs.get(job_id) if JOB_ID_RE.match(job_id) else None
-        if job is None:
-            return PlainTextResponse("Job not found", status_code=404)
-        return PlainTextResponse(job.log.read_text(errors="replace") if job.log.exists() else "")
-
-    @ui.post("/jobs/{job_id}/dismiss")
-    def dismiss(job_id: str, csrf: str = Form("")):
-        if (denied := check_csrf(csrf)) is not None:
-            return denied
-        job = st.jobs.get(job_id) if JOB_ID_RE.match(job_id) else None
-        if job is not None:
-            job.dismissed = True
-        return go("/")
-
-    app.include_router(ui)
     from foundry.ui.api import make_router, mount_spa
 
     app.include_router(make_router(st))
@@ -474,27 +206,6 @@ def _rubric_info(st: UiState, run: dict, scores: dict | None) -> dict | None:
     return {"id": rid, "version": str(scores.get("rubric_version") or "?"), "link": link}
 
 
-def _draft_from_form(form) -> dict:
-    """The review form back into a rubric dict (untrusted; the store validates and canonicalises it)."""
-    def num(v, cast, default):
-        try:
-            return cast(v)
-        except (TypeError, ValueError):
-            return default
-
-    count = min(num(form.get("count"), int, 0), 50)
-    crits = []
-    for i in range(count):
-        mx = num(form.get(f"c{i}-max"), int, 4)
-        levels = {str(k): str(form.get(f"c{i}-level-{k}", "")).strip() for k in range(1, min(max(mx, 2), 20) + 1)}
-        crits.append({"id": str(form.get(f"c{i}-id", "")).strip(), "name": str(form.get(f"c{i}-name", "")).strip(),
-                      "description": str(form.get(f"c{i}-description", "")).strip(), "max": mx,
-                      "weight": num(form.get(f"c{i}-weight"), float, 1.0),
-                      "levels": {k: v for k, v in levels.items() if v}})
-    return {"rubric_id": str(form.get("rubric_id", "")).strip(), "version": str(form.get("version", "")).strip(),
-            "description": str(form.get("description", "")).strip(), "criteria": crits}
-
-
 def _spawn(st: UiState, kind: str, run_id: str, label: str, args: list[str], lock_token: str | None = None,
            lock_dir: Path | None = None) -> Job:
     job_id = secrets.token_hex(8)
@@ -546,7 +257,6 @@ def _variant_stats(rows: list[dict]) -> list[dict]:
     return out
 
 
-COMPARE_CHOICES = 200  # runs offered in a run page's "Compare with" select
 
 
 def _compare_side(path: Path) -> dict:

@@ -88,7 +88,7 @@ def test_hostile_scores_are_skipped_not_fatal():  # D7
     assert d["criteria"] == [] and d["missed"] == [] and d["kpis"]["spent"] == 0.1
 
 
-def test_dashboard_from_real_runs(tmp_path):  # D1, D6 (increment 16: through /api, was the classic page)
+def test_dashboard_from_real_runs(tmp_path):  # D1, D6 (increment 16: through /api, was a server-rendered page)
     runs = tmp_path / "runs"
     runs.mkdir()
     clean = _seed(runs, "clean")
@@ -101,7 +101,7 @@ def test_dashboard_from_real_runs(tmp_path):  # D1, D6 (increment 16: through /a
     assert any(p["run_id"] == "fixture-clean" for p in body["d"]["scatter"]["dots"])
 
 
-# test_model_filter_on_runs_tab (classic) was dropped in increment 16: the board filters on the client now
+# test_model_filter_on_runs_tab (server-rendered) was dropped in increment 16: the board filters on the client now
 # (Vitest "key numbers follow the model filter"); /api/runs returns every run.
 
 

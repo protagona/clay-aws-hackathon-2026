@@ -205,12 +205,16 @@ def test_spa_served_and_fallback(tmp_path):  # B1, B3
     for path in ("/", "/runs/whatever", "/rubric/drafts/abc", "/dashboard?rubric=all"):
         r = c.get(path)
         assert r.status_code == 200 and '<div id="root"></div>' in r.text
-    assert c.get("/classic/").status_code == 200 and "Foundry Eval Sandbox" in c.get("/classic/").text
-    assert c.get("/classic").status_code == 307
+    for path in ("/classic", "/classic/", "/classic/runs/x"):  # increment 16: the removed UI's paths fall through to the SPA
+        r = c.get(path)
+        assert r.status_code == 200 and '<div id="root"></div>' in r.text, path
     asset = next((DIST / "assets").glob("*.js")).name
     r = c.get(f"/assets/{asset}")
     assert r.status_code == 200 and "immutable" in r.headers["cache-control"]
-    assert c.get("/assets/../api.py").status_code in (404, 200) and "def make_router" not in c.get("/assets/../api.py").text
+    index = (DIST / "index.html").read_text()
+    for bad in ("..%2Findex.html", "%2e%2e/%2e%2e/spa.py", "%2e%2e/%2e%2e/api.py", "%00", "a%00b"):  # files that exist
+        r = c.get(f"/assets/{bad}")
+        assert r.status_code == 404 and r.text != index and "def " not in r.text, bad
 
 
 def test_csp_and_bundle(tmp_path):  # B2, B2a
@@ -226,7 +230,7 @@ def test_csp_and_bundle(tmp_path):  # B2, B2a
         assert "data:font" not in css.read_text() and "url(data:application/font" not in css.read_text()
 
 
-def test_must_deny_paths(tmp_path, monkeypatch):  # A3: the classic UI's must-deny cases, against /api
+def test_must_deny_paths(tmp_path, monkeypatch):  # A3: the must-deny cases of the old server-rendered UI, against /api
     runs = tmp_path / "runs"
     _seed(runs, "clean")
     root = _project(tmp_path)
@@ -266,7 +270,7 @@ def test_spent_counts_every_run_mean_only_active_rubric(tmp_path):  # A5
     assert k["spent"] == pytest.approx(d_all["spent"]) and k["scored"] == 1 and k["runs"] == 2
 
 
-def test_must_deny_paths_continued(tmp_path, monkeypatch):  # A3: the rest of the classic must-deny cases
+def test_must_deny_paths_continued(tmp_path, monkeypatch):  # A3: the rest of those must-deny cases
     import os
     import socket
 
@@ -294,7 +298,7 @@ def test_must_deny_paths_continued(tmp_path, monkeypatch):  # A3: the rest of th
     assert r.status_code == 400 and "non-public address" in r.json()["error"]
 
 
-def test_must_deny_paths_classic_parity(tmp_path):  # A3: the remaining classic must-deny cases, ported (verify 2)
+def test_must_deny_paths_parity(tmp_path):  # A3: the remaining must-deny cases, ported (verify 2)
     import os
 
     from foundry.data import locks as lock

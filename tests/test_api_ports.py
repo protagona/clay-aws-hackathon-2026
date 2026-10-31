@@ -1,5 +1,5 @@
-"""Increment 16: the checks only the classic UI's tests made, ported to /api (dependent-inventory.md, "Port" rows),
-so removing /classic loses no coverage. Runs and evaluations are real `foundry` subprocesses, as before."""
+"""Increment 16: the checks only the old server-rendered UI's tests made, ported to /api (dependent-inventory.md,
+"Port" rows), so removing that UI loses no coverage. Runs and evaluations are real `foundry` subprocesses, as before."""
 
 import json
 import re
@@ -138,7 +138,7 @@ def test_render_blocks_protocol_relative_links():  # was test_render_blocks_prot
     assert 'href="https://ok.example"' in html and 'href="runs/x"' in html
 
 
-def test_compare_unevaluated_and_hostile_scores(tmp_path):  # was the classic compare tests (C1)
+def test_compare_unevaluated_and_hostile_scores(tmp_path):  # was the server-rendered compare tests (C1)
     runs = tmp_path / "runs"
     d = _seed(runs, "clean", "recovered", "failed")
     for n in ("clean", "recovered"):
@@ -195,7 +195,7 @@ def test_run_detail_names_the_rubric_that_scored_it(tmp_path):  # was test_run_p
     {"criteria": [{"id": "a", "name": "A", "description": "d", "max": 25, "weight": 1, "levels": {"1": "x", "25": "y"}}]},
     {"criteria": [{"id": "a", "name": "A", "description": "d", "max": 3, "weight": "inf", "levels": {"1": "x", "3": "y"}}]},
 ])
-def test_malformed_model_drafts_open_and_can_be_discarded(tmp_path, monkeypatch, bad):  # was the classic one
+def test_malformed_model_drafts_open_and_can_be_discarded(tmp_path, monkeypatch, bad):  # was the server-rendered UI's one
     import foundry.engine.models.registry as registry
     from foundry.engine.models.base import Completion
 

@@ -1,5 +1,5 @@
 """The JSON API behind the TypeScript UI (increment 9, A1-A5). Thin: every endpoint calls foundry.ui.actions or the
-same helpers the classic pages use; nothing here scores, validates rubrics or reads run files on its own.
+same helpers as before; nothing here scores, validates rubrics or reads run files on its own.
 
 Writes need the X-CSRF-Token header (a custom header cannot be sent cross-site without a CORS preflight, which is
 never granted) and, for JSON bodies, Content-Type: application/json. Errors are always {"error": ...}.
@@ -377,7 +377,7 @@ def _field(message: str | None) -> str | None:
 
 
 def _card_extras(st, run_id: str) -> dict:
-    """Numbers a board card shows that the classic card didn't need (all from the run's own files)."""
+    """Numbers a board card shows beyond the card basics (all from the run's own files)."""
     from foundry.ui import app as core
 
     path = st.runs_dir / run_id
@@ -434,20 +434,18 @@ def mount_spa(app: FastAPI) -> None:
 
     @app.get("/assets/{name:path}")
     def assets(name: str):
-        f = (DIST / "assets" / name).resolve()
+        try:
+            f = (DIST / "assets" / name).resolve()
+        except ValueError:  # a NUL byte in the path (/assets/%00) raised a 500 (increment 16 sunset gate)
+            return _err(404, "Not found")
         if not f.is_relative_to((DIST / "assets").resolve()) or not f.is_file():
             return _err(404, "Not found")
         return FileResponse(f, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
     @app.get("/{rest:path}", response_class=HTMLResponse)
     def spa(rest: str):
-        if rest == "classic":
-            from fastapi.responses import RedirectResponse
-
-            return RedirectResponse("/classic/", status_code=307)
         index = DIST / "index.html"
         if not index.is_file():
-            return HTMLResponse('<!doctype html><title>Foundry</title><p>UI bundle not built; run '
-                                '<code>npm --prefix web run build</code>, or use <a href="/classic/">the classic UI</a>.',
-                                status_code=503)
+            return HTMLResponse("<!doctype html><title>Foundry</title><p>The UI bundle isn't built. Run "
+                                "<code>cd web && npm ci && npm run build</code>.", status_code=503)
         return HTMLResponse(index.read_text(), headers={"Cache-Control": "no-cache"})

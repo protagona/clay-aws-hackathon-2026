@@ -28,18 +28,3 @@ def foundry(*args: str, env: dict | None = None, timeout: float = 300) -> subpro
         [sys.executable, "-m", "foundry", *args],
         cwd=ROOT, capture_output=True, text=True, env=env, timeout=timeout,
     )
-
-
-def classic_client(app, base_url="http://127.0.0.1:8765", **kw):
-    """A TestClient for the classic (server-rendered) UI, which moved under /classic in increment 9: root-relative
-    paths get the prefix, so the existing page tests run unchanged against it."""
-    from fastapi.testclient import TestClient
-
-    class Classic(TestClient):
-        def request(self, method, url, *a, **k):
-            u = str(url)
-            if u.startswith("/") and not u.startswith(("/classic", "/api", "/assets")):
-                url = "/classic" + u
-            return super().request(method, url, *a, **k)
-
-    return Classic(app, base_url=base_url, **kw)

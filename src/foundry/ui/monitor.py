@@ -1,7 +1,8 @@
 """The run page's live monitor (increment-5): gauges against the run's limits, a waterfall of steps, and a feed.
 
 Everything here is computed from the run's own files, which are untrusted: numbers are type-checked and text is
-left to Jinja's autoescaping.
+left as plain text: only api/render.py turns run text into HTML, and the web app shows everything else as
+text.
 """
 
 from __future__ import annotations

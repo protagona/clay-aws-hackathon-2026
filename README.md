@@ -65,7 +65,7 @@ It's a TypeScript single-page app (React, Vite, Tailwind) over a FastAPI JSON AP
 - **Pop-up notifications** tell you when a run or its scoring finishes.
 - **Light and dark** follow the system setting; the toggle remembers your choice.
 - **Phone width:** the run monitor becomes a full-screen sheet.
-- **Classic UI:** the server-rendered UI of increments 1–8 is still at **`/classic`**.
+- **One UI:** the server-rendered UI of increments 1–8 (`/classic`) was removed in increment 16; use `/`. Scripts use `/api/*` with the `X-CSRF-Token` header from `GET /api/session` and JSON bodies.
 - **Bind address:** the UI listens on 127.0.0.1 only.
 
 **Developing the UI:** the source is in `web/`, and needs Node `^22.22.2 || >=24.15.0`.
@@ -402,7 +402,7 @@ uv run pytest -m "not network"    # fully offline
 | Agent framework | **Strands Agents** 1.62, behind our own provider and tracer seams |
 | Infrastructure as code | **AWS CDK in Python** |
 | Tracing | **Our own JSONL** (system of record) plus **OpenTelemetry** GenAI spans as the swappable second tracer |
-| UI | **FastAPI and Jinja2**, server-rendered, with no JavaScript build |
+| UI | **FastAPI** JSON API serving a prebuilt TypeScript app (React, Vite) |
 
 The reasons are in [the design](docs/eval-sandbox/design.md#decisions).
 

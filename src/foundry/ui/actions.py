@@ -1,7 +1,6 @@
 """What the UI can read and do, independent of how it is rendered (increment 9, A2).
 
-The classic Jinja pages and the JSON API both call these; errors are raised as UiError(status, message) and each
-front end turns them into its own error response. Untrusted run files are read through the same checks as before.
+The JSON API calls these; errors are raised as UiError(status, message), which the API turns into JSON. Untrusted run files are read through the same checks as before.
 """
 
 from __future__ import annotations
