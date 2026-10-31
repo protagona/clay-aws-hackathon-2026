@@ -1,8 +1,10 @@
 """The JSON API behind the TypeScript UI (increment 9, A1-A5; its own layer since increment 16). HTTP only: each
 endpoint parses the request, calls foundry.services, and shapes the response. Nothing here reads files or scores.
 
-Writes need the X-CSRF-Token header and, for JSON bodies, Content-Type: application/json (foundry.api.guard).
-Errors are always {"error": ...} (foundry.api.errors).
+Every route declares its request and response models (foundry.api.schemas, increment 17); FastAPI checks each
+response against its model, and keys a service leaves out stay out (exclude_unset). Writes need the X-CSRF-Token
+header and, for JSON bodies, Content-Type: application/json (foundry.api.guard). Errors are always {"error": ...}
+(foundry.api.errors).
 """
 
 from __future__ import annotations
@@ -11,11 +13,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from foundry.api.errors import error
 from foundry.api.guard import write_check
+from foundry.api import schemas as S
 from foundry.api.render import render
 from foundry.api.uploads import read_rubric_upload, save_upload
 from foundry.services import batches, configs, dashboard, imports, jobs, prompts, rubrics, runs, tools
@@ -47,68 +50,17 @@ def field_of(message: str | None) -> str | None:
     return head if head and " " not in head else None
 
 
-# --- request bodies ---------------------------------------------------------------------------------------------
-
-
-class RunBody(BaseModel):
-    prompt_id: str = Field(max_length=100)
-    config: str = Field(max_length=100)
-
-
-class BatchBody(BaseModel):
-    config: str = Field(max_length=100)
-    models: list[str] = Field(default_factory=list, max_length=20)
-    prompts: list[str] = Field(default_factory=list, max_length=50)
-    repeats: int = 1
-    concurrency: int = 2
-    evaluate: bool = False
-    max_cost: float = 2.0
-
-
-class ReceiverBody(BaseModel):
-    task: str = "adb"
-    prompt_id: str = "imported"
-    config: str = ""
-
-
-class DraftBody(BaseModel):
-    task: str = "adb"
-    body: dict
-    activate: bool = False
-
-
-class PromptBody(BaseModel):  # increment 13: limits are checked by the store, so errors come back as 400 + field
-    task: str = "adb"
-    prompt_id: str | None = None
-    prompt: str = ""
-
-
-class TaskBody(BaseModel):
-    task: str = "adb"
-
-
-class ArchiveBody(BaseModel):
-    task: str = "adb"
-    archived: bool
-
-
-class StagesBody(BaseModel):
-    task: str = "adb"
-    stages: list[list[str]]
-
-
-class HistoryBody(BaseModel):
-    task: str = "adb"
-    file: str = Field(max_length=200)
-
-
 def make_router(ws: Workspace, csrf: str) -> APIRouter:
     write = [Depends(write_check(csrf))]
     r = APIRouter(prefix="/api")
 
+    def route(method: str, path: str, model, **kw):
+        """Every JSON route: its response model, and absent keys stay absent (never become null)."""
+        return r.api_route(path, methods=[method], response_model=model, response_model_exclude_unset=True, **kw)
+
     # --- session & meta ---------------------------------------------------------------------------------------
 
-    @r.get("/session")
+    @route("GET", "/session", S.Session)
     def session():
         return {"csrf": csrf, "configs": configs.config_names(ws), "prompts": configs.prompt_ids(ws),
                 "models": configs.model_choices(ws), "tasks": configs.task_ids(ws),
@@ -116,11 +68,11 @@ def make_router(ws: Workspace, csrf: str) -> APIRouter:
 
     # --- runs -------------------------------------------------------------------------------------------------
 
-    @r.get("/runs")
+    @route("GET", "/runs", S.RunsResponse)
     def board():
         return runs.board(ws)
 
-    @r.get("/runs/{run_id}")
+    @route("GET", "/runs/{run_id}", S.RunDetail)
     def run_detail(run_id: str):
         view = to_json(runs.detail(ws, runs.need_run(ws, run_id)))
         report_md = view.pop("report_md")
@@ -130,38 +82,38 @@ def make_router(ws: Workspace, csrf: str) -> APIRouter:
             s["text_html"] = render(s["text"][:20_000]) if s.get("type") == "llm_call" and s.get("text") else None
         return view
 
-    @r.post("/runs", dependencies=write, status_code=201)
-    def start_run(body: RunBody):
+    @route("POST", "/runs", S.StartRunResponse, dependencies=write, status_code=201)
+    def start_run(body: S.RunBody):
         return {"run_id": runs.start_run(ws, body.prompt_id, body.config)}
 
-    @r.post("/runs/{run_id}/evaluate", dependencies=write, status_code=202)
+    @route("POST", "/runs/{run_id}/evaluate", S.Ok, dependencies=write, status_code=202)
     def evaluate(run_id: str):
         runs.start_evaluate(ws, run_id)
         return {"ok": True}
 
-    @r.get("/compare")
+    @route("GET", "/compare", S.Compare)
     def compare(a: str = "", b: str = ""):
         sa, sb, rows = runs.compare(ws, a, b)
         return to_json({"a": sa, "b": sb, "rows": rows})
 
     # --- dashboard --------------------------------------------------------------------------------------------
 
-    @r.get("/dashboard")
+    @route("GET", "/dashboard", S.Dashboard)
     def dashboard_page(rubric: str = "active"):
         return to_json(dashboard.dashboard_view(ws, rubric))
 
     # --- batches ----------------------------------------------------------------------------------------------
 
-    @r.get("/batches")
+    @route("GET", "/batches", S.BatchesResponse)
     def batch_list():
         return {"batches": to_json(batches.batch_list(ws)), "running": jobs.alive_of(ws, "batch") is not None}
 
-    @r.post("/batches", dependencies=write, status_code=201)
-    def start_batch(body: BatchBody):
+    @route("POST", "/batches", S.StartBatchResponse, dependencies=write, status_code=201)
+    def start_batch(body: S.BatchBody):
         return {"batch_id": batches.start_batch(ws, body.config, body.models, body.prompts, body.repeats,
                                                 body.concurrency, body.evaluate, body.max_cost)}
 
-    @r.get("/batches/{batch_id}")
+    @route("GET", "/batches/{batch_id}", S.BatchDetail)
     def batch(batch_id: str):
         v = batches.batch_view(ws, batch_id)
         job = v.pop("job")
@@ -170,7 +122,7 @@ def make_router(ws: Workspace, csrf: str) -> APIRouter:
 
     # --- import & receiver ------------------------------------------------------------------------------------
 
-    @r.post("/import", dependencies=write, status_code=201)
+    @route("POST", "/import", S.ImportResponse, dependencies=write, status_code=201)
     async def do_import(file: UploadFile = File(...), task: str = Form("adb"), prompt_id: str = Form("imported"),
                         config: str = Form("")):
         imports.check_import_form(ws, task, prompt_id, config)
@@ -178,27 +130,27 @@ def make_router(ws: Workspace, csrf: str) -> APIRouter:
         paths = imports.import_saved_trace(ws, dest, file.filename or "", task, prompt_id, config)
         return {"runs": [p.name for p in paths]}
 
-    @r.get("/receiver")
+    @route("GET", "/receiver", S.ReceiverStatus)
     def receiver():
         return imports.receiver_status(ws)
 
-    @r.post("/receiver/start", dependencies=write)
-    def receiver_start(body: ReceiverBody):
+    @route("POST", "/receiver/start", S.Ok, dependencies=write)
+    def receiver_start(body: S.ReceiverBody):
         imports.receiver_start(ws, body.task, body.prompt_id, body.config)
         return {"ok": True}
 
-    @r.post("/receiver/stop", dependencies=write)
+    @route("POST", "/receiver/stop", S.Ok, dependencies=write)
     def receiver_stop():
         imports.receiver_stop(ws)
         return {"ok": True}
 
     # --- rubric -----------------------------------------------------------------------------------------------
 
-    @r.get("/rubric")
+    @route("GET", "/rubric", S.RubricOverview)
     def rubric(task: str = "adb"):
         return to_json(rubrics.overview(ws, task))
 
-    @r.post("/rubric/drafts", dependencies=write, status_code=201)
+    @route("POST", "/rubric/drafts", S.CreateDraftResponse, dependencies=write, status_code=201)
     async def create_draft(task: str = Form("adb"), kind: str = Form("file"), text: str = Form(""),
                            url: str = Form(""), mcp: str = Form(""), args: str = Form(""),
                            config: str = Form("bedrock"), file: UploadFile | None = File(None)):
@@ -207,12 +159,12 @@ def make_router(ws: Workspace, csrf: str) -> APIRouter:
                                            file_data=data, text=text, url=url, mcp=mcp, args=args)
         return {"draft_id": draft_id}
 
-    @r.get("/rubric/drafts/{draft_id}")
+    @route("GET", "/rubric/drafts/{draft_id}", S.DraftView)
     def draft(draft_id: str, task: str = "adb"):
         return to_json(rubrics.draft_view(ws, task, draft_id))
 
-    @r.put("/rubric/drafts/{draft_id}", dependencies=write)
-    def update_draft(draft_id: str, body: DraftBody):
+    @route("PUT", "/rubric/drafts/{draft_id}", S.DraftSaveResult, dependencies=write)
+    def update_draft(draft_id: str, body: S.DraftBody):
         try:
             err = rubrics.update_draft(ws, body.task, draft_id, body.body, activate=body.activate)
         except ServiceError as exc:
@@ -221,91 +173,91 @@ def make_router(ws: Workspace, csrf: str) -> APIRouter:
             raise
         return {"valid": err is None, "error": err, "field": field_of(err), "activated": body.activate and err is None}
 
-    @r.delete("/rubric/drafts/{draft_id}", dependencies=write)
+    @route("DELETE", "/rubric/drafts/{draft_id}", S.Ok, dependencies=write)
     def discard(draft_id: str, task: str = "adb"):
         rubrics.discard(ws, task, draft_id)
         return {"ok": True}
 
-    @r.get("/rubric/drafts/{draft_id}/source")
+    @r.get("/rubric/drafts/{draft_id}/source", response_class=Response)  # a file download, not JSON (exempt)
     def draft_source(draft_id: str, task: str = "adb"):
         data, suffix = rubrics.draft_source(ws, task, draft_id)
         return Response(data, media_type="application/octet-stream",
                         headers={"Content-Disposition": f'attachment; filename="rubric-source{suffix}"'})
 
-    @r.get("/rubric/active")
+    @route("GET", "/rubric/active", S.RubricWithMeta)
     def rubric_active(task: str = "adb"):
         return to_json(rubrics.active(ws, task))
 
-    @r.get("/runs/{run_id}/rubric")
+    @route("GET", "/runs/{run_id}/rubric", S.RubricWithMeta)
     def run_rubric(run_id: str):
         return to_json(runs.run_rubric(ws, run_id))
 
-    @r.get("/rubric/history/{name}")
+    @route("GET", "/rubric/history/{name}", S.RubricVersion)
     def version(name: str, task: str = "adb"):
         return to_json(rubrics.version(ws, task, name))
 
-    @r.post("/rubric/history/activate", dependencies=write)
-    def activate_version(body: HistoryBody):
+    @route("POST", "/rubric/history/activate", S.Ok, dependencies=write)
+    def activate_version(body: S.HistoryBody):
         rubrics.activate_version(ws, body.task, body.file)
         return {"ok": True}
 
     # --- prompts (increment 13) ------------------------------------------------------------------------------
 
-    @r.get("/prompts")
+    @route("GET", "/prompts", S.PromptsResponse)
     def prompt_list(task: str = "adb"):
         return prompts.prompts_view(ws, task)
 
-    @r.get("/prompts/tools")  # before /prompts/{prompt_id}; "tools" is a reserved prompt id
+    @route("GET", "/prompts/tools", S.ToolMenu)  # before /prompts/{prompt_id}; "tools" is a reserved prompt id
     def prompt_tools(task: str = "adb"):
         return tools.tool_menu(ws, task)
 
-    @r.post("/prompts/tools/refresh", dependencies=write)
+    @route("POST", "/prompts/tools/refresh", S.Ok, dependencies=write)
     def refresh_tools():
         tools.refresh_tools(ws)
         return {"ok": True}
 
-    @r.get("/prompts/{prompt_id}")
+    @route("GET", "/prompts/{prompt_id}", S.PromptDetail)
     def prompt(prompt_id: str, task: str = "adb"):
         return prompts.prompt_view(ws, task, prompt_id)
 
-    @r.post("/prompts", dependencies=write, status_code=201)
-    def create_prompt(body: PromptBody):
+    @route("POST", "/prompts", S.CreatePromptResponse, dependencies=write, status_code=201)
+    def create_prompt(body: S.PromptBody):
         return {"prompt_id": prompts.create(ws, body.task, body.prompt_id, body.prompt)}
 
-    @r.put("/prompts/{prompt_id}", dependencies=write)
-    def update_prompt(prompt_id: str, body: PromptBody):
+    @route("PUT", "/prompts/{prompt_id}", S.Ok, dependencies=write)
+    def update_prompt(prompt_id: str, body: S.PromptBody):
         prompts.set_text(ws, body.task, prompt_id, body.prompt)
         return {"ok": True}
 
-    @r.post("/prompts/{prompt_id}/version", dependencies=write, status_code=201)
-    def version_prompt(prompt_id: str, body: TaskBody):
+    @route("POST", "/prompts/{prompt_id}/version", S.CreatePromptResponse, dependencies=write, status_code=201)
+    def version_prompt(prompt_id: str, body: S.TaskBody):
         return {"prompt_id": prompts.new_version(ws, body.task, prompt_id)}
 
-    @r.post("/prompts/{prompt_id}/archive", dependencies=write)
-    def archive_prompt(prompt_id: str, body: ArchiveBody):
+    @route("POST", "/prompts/{prompt_id}/archive", S.Ok, dependencies=write)
+    def archive_prompt(prompt_id: str, body: S.ArchiveBody):
         prompts.archive(ws, body.task, prompt_id, body.archived)
         return {"ok": True}
 
-    @r.put("/prompts/{prompt_id}/stages", dependencies=write)
-    def prompt_stages(prompt_id: str, body: StagesBody):
+    @route("PUT", "/prompts/{prompt_id}/stages", S.StagesSaved, dependencies=write)
+    def prompt_stages(prompt_id: str, body: S.StagesBody):
         return {"ok": True, "expected_sha256": prompts.set_stages(ws, body.task, prompt_id, body.stages)}
 
     # --- jobs (toasts, failures) ------------------------------------------------------------------------------
 
-    @r.get("/jobs")
+    @route("GET", "/jobs", S.JobsResponse)
     def job_list():
         return {"jobs": jobs.recent(ws)}
 
-    @r.get("/jobs/{job_id}/log")
+    @route("GET", "/jobs/{job_id}/log", S.JobLog)
     def job_log(job_id: str):
         return {"log": jobs.log_text(ws, job_id)}
 
-    @r.post("/jobs/{job_id}/dismiss", dependencies=write)
+    @route("POST", "/jobs/{job_id}/dismiss", S.Ok, dependencies=write)
     def dismiss(job_id: str):
         jobs.dismiss(ws, job_id)
         return {"ok": True}
 
-    @r.api_route("/{rest:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+    @r.api_route("/{rest:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"], responses={404: {}})  # only ever 404
     def unknown(rest: str):
         raise ServiceError(404, "No such API endpoint")
 

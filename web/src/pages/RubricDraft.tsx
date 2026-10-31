@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, del, getSession, put } from "../api";
 import { useToast } from "../components/toasts";
 import { ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton } from "../components/ui";
-import type { DraftView, Rubric, RubricCriterion } from "../types";
+import type { DraftSaveResult, DraftView, Rubric, RubricCriterion } from "../types";
 import { usePoll } from "../usePoll";
 
 const blank = (): RubricCriterion => ({ id: "", name: "", description: "", max: 4, weight: 1, levels: {} });
@@ -73,7 +73,7 @@ export default function RubricDraft() {
     if (!body) return;
     setBusy(true);
     try {
-      const r = await put<{ valid: boolean; error: string | null; field: string | null; activated: boolean }>(
+      const r = await put<DraftSaveResult>(
         `/api/rubric/drafts/${encodeURIComponent(id)}`, { task: "adb", body, activate });
       setStatus(r);
       if (r.activated) {
@@ -131,7 +131,7 @@ export default function RubricDraft() {
         <p className="text-xs text-slate-500">{m.source.format} · {m.source.bytes.toLocaleString()} bytes · sha256 {m.source.sha256.slice(0, 12)}…</p>
         {q.data.source_text !== null ? <pre className="mt-3 max-h-[28rem] overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-800">{q.data.source_text}</pre>
           : <a className="mt-3 inline-block text-sm text-sky-600 underline" href={`/api/rubric/drafts/${encodeURIComponent(id)}/source?task=adb`}>Open source</a>}
-        <p className="mt-3 text-xs text-slate-500">Drafted by {m.model ?? "— (already a rubric)"}{m.prompt_id && ` · prompt ${m.prompt_id}`}{m.usage && ` · ${m.usage.tokens_in} in / ${m.usage.tokens_out} out`}{m.usage?.cost_usd !== undefined && ` · $${m.usage.cost_usd.toFixed(3)}`}</p>
+        <p className="mt-3 text-xs text-slate-500">Drafted by {m.model ?? "— (already a rubric)"}{m.prompt_id && ` · prompt ${m.prompt_id}`}{m.usage && ` · ${m.usage.tokens_in} in / ${m.usage.tokens_out} out`}{m.usage?.cost_usd != null && ` · $${m.usage.cost_usd.toFixed(3)}`}</p>
         {m.raw_reply && <details className="mt-2 text-xs"><summary className="cursor-pointer text-sky-600">Raw model reply</summary><pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap">{m.raw_reply.slice(0, 8000)}</pre></details>}
       </Panel>
       </Section>

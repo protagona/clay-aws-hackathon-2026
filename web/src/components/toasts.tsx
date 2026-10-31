@@ -1,7 +1,7 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { get } from "../api";
-import type { Job } from "../types";
+import type { Job, JobsResponse } from "../types";
 
 export interface Toast { id: string; tone: "ok" | "bad" | "info"; text: string; href?: string }
 
@@ -24,7 +24,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     let timer: number;
     const tick = async () => {
       try {
-        const { jobs } = await get<{ jobs: Job[] }>("/api/jobs");
+        const { jobs } = await get<JobsResponse>("/api/jobs");
         for (const toast of jobToasts(jobs, seen.current, started.current)) push(toast);
       } catch { /* the board shows connection problems */ }
       timer = window.setTimeout(tick, 3000);

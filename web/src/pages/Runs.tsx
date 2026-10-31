@@ -7,7 +7,7 @@ import { useToast } from "../components/toasts";
 import { Empty, ErrorBanner, Kpi, PageHeader, Pill, ScoreRing, Section, Skeleton, Spinner, SubSection, Tabs } from "../components/ui";
 import { clock, money, shortModel, statusWord } from "../format";
 import { RubricView } from "../components/RubricView";
-import type { Card, Criterion, Kpis, RunDetail, Rubric, RunsResponse } from "../types";
+import type { Card, Criterion, Kpis, RubricWithMeta, RunDetail, RunsResponse } from "../types";
 import { boardInterval, runInterval, usePoll } from "../usePoll";
 
 export default function Runs() {
@@ -93,8 +93,8 @@ type Tab = "overview" | "timeline" | "steps" | "report" | "rubric";
 
 /** Increment 10: the rubric that scored this run (its own copy), or the active one if it isn't scored yet. */
 function RunRubric({ id, scored, criteria }: { id: string; scored: boolean; criteria?: Criterion[] }) {
-  const own = usePoll<{ rubric: Rubric; sha256: string; active: boolean }>(scored ? `/api/runs/${encodeURIComponent(id)}/rubric` : null, () => null);
-  const active = usePoll<{ rubric: Rubric }>(scored ? null : "/api/rubric/active?task=adb", () => null);
+  const own = usePoll<RubricWithMeta>(scored ? `/api/runs/${encodeURIComponent(id)}/rubric` : null, () => null);
+  const active = usePoll<RubricWithMeta>(scored ? null : "/api/rubric/active?task=adb", () => null);
   const data = scored ? own.data : active.data;
   const error = scored ? own.error : active.error;
   if (error) return <ErrorBanner message={error} />;
@@ -162,7 +162,7 @@ export function RunDrawer({ id, onEvaluate, refresh = 0 }: { id: string; onEvalu
         </div>)}
         {d && tab === "timeline" && <><TabCaption>Each bar is one step, placed by when it ran. Longer bars took longer.</TabCaption><Waterfall m={d.m} /></>}
         {d && tab === "steps" && <><TabCaption>Every step in order: what the model said and which tools it called.</TabCaption><StepFeed m={d.m} /></>}
-        {d && tab === "rubric" && <RunRubric id={id} scored={!!d.scores} criteria={d.scores?.output.criteria} />}
+        {d && tab === "rubric" && <RunRubric id={id} scored={!!d.scores} criteria={d.scores?.output.criteria ?? undefined} />}
         {d && tab === "report" && (d.report_html
           ? <><TabCaption>The judge's written report on this run.</TabCaption><article className="report" dangerouslySetInnerHTML={{ __html: d.report_html }} /></>
           : <Empty title={d.evaluating ? "Being scored…" : d.interrupted ? "Scoring was interrupted" : "Not scored yet"}>

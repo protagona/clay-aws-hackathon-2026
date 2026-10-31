@@ -7,7 +7,7 @@ import { StepEditor } from "../components/StepEditor";
 import { useToast } from "../components/toasts";
 import { Empty, ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton } from "../components/ui";
 import { money, score, shortModel } from "../format";
-import type { PromptDetail, PromptsResponse, ToolMenu } from "../types";
+import type { CreatePromptResponse, PromptDetail, PromptsResponse, ToolMenu } from "../types";
 import { usePoll } from "../usePoll";
 
 const back = <Link to="/prompts" className="text-sm text-sky-600">← All prompts</Link>;
@@ -25,7 +25,7 @@ function NewPrompt() {
     setBusy(true);
     setError(null);
     try {
-      const { prompt_id } = await post<{ prompt_id: string }>("/api/prompts", { task: "adb", prompt_id: id, prompt: text });
+      const { prompt_id } = await post<CreatePromptResponse>("/api/prompts", { task: "adb", prompt_id: id, prompt: text });
       toast({ tone: "ok", text: `Created ${prompt_id}` });
       getSession(true);
       navigate(`/prompts/${encodeURIComponent(prompt_id)}`);
@@ -104,7 +104,7 @@ function EditPrompt({ id }: { id: string }) {
           {error && error.field !== "prompt" && <ErrorBanner message={error.message} />}
           {d.locked ? (
             d.next_version_id ? <button className="btn-primary" disabled={busy} onClick={() => act(async () => {
-              const { prompt_id } = await post<{ prompt_id: string }>(`/api/prompts/${encodeURIComponent(id)}/version`, { task: "adb" });
+              const { prompt_id } = await post<CreatePromptResponse>(`/api/prompts/${encodeURIComponent(id)}/version`, { task: "adb" });
               getSession(true);
               navigate(`/prompts/${encodeURIComponent(prompt_id)}`);
             }, `Created ${d.next_version_id}`)}>Make a new version → {d.next_version_id}</button>

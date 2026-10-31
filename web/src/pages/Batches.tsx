@@ -4,11 +4,11 @@ import { ApiError, getSession, post } from "../api";
 import { useToast } from "../components/toasts";
 import { Empty, ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton } from "../components/ui";
 import { money, shortModel } from "../format";
-import type { BatchSummary, Session } from "../types";
+import type { BatchesResponse, Session, StartBatchResponse } from "../types";
 import { usePoll } from "../usePoll";
 
 export default function Batches() {
-  const list = usePoll<{ batches: BatchSummary[]; running: boolean }>("/api/batches", (d) => (d?.running ? 2000 : 10000));
+  const list = usePoll<BatchesResponse>("/api/batches", (d) => (d?.running ? 2000 : 10000));
   const [session, setSession] = useState<Session | null>(null);
   const [config, setConfig] = useState("offline");
   const [models, setModels] = useState<string[]>([]);
@@ -29,7 +29,7 @@ export default function Batches() {
     setBusy(true);
     setError(null);
     try {
-      const { batch_id } = await post<{ batch_id: string }>("/api/batches",
+      const { batch_id } = await post<StartBatchResponse>("/api/batches",
         { config, models, prompts, repeats, concurrency, evaluate, max_cost: maxCost });
       toast({ tone: "info", text: `Batch ${batch_id} started` });
       navigate(`/batches/${batch_id}`);

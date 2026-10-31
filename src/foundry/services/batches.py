@@ -12,6 +12,10 @@ from foundry.services import configs, jobs
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
+REPEATS = (1, 5)  # inclusive ranges a batch accepts (the API's BatchBody declares the same limits from these)
+CONCURRENCY = (1, 4)
+MAX_COST = 50.0  # USD; the cap must be above 0 and at most this
+
 
 def start_batch(ws: Workspace, config: str, models: list[str], prompts: list[str], repeats: int, concurrency: int,
                 evaluate: bool, max_cost: float) -> str:
@@ -26,8 +30,10 @@ def start_batch(ws: Workspace, config: str, models: list[str], prompts: list[str
         configs.check_runnable(ws, cfg, config, prompts, configs.task_prompts(ws, cfg.task.id))
     except ConfigError as exc:
         raise ServiceError(400, configs.relative_paths(ws, str(exc))) from None
-    if not (1 <= repeats <= 5 and 1 <= concurrency <= 4 and 0 < max_cost <= 50):
-        raise ServiceError(400, "Repeats must be 1-5, parallel runs 1-4, and the cost cap between $0 and $50.")
+    if not (REPEATS[0] <= repeats <= REPEATS[1] and CONCURRENCY[0] <= concurrency <= CONCURRENCY[1]
+            and 0 < max_cost <= MAX_COST):
+        raise ServiceError(400, f"Repeats must be {REPEATS[0]}-{REPEATS[1]}, parallel runs {CONCURRENCY[0]}-"
+                                f"{CONCURRENCY[1]}, and the cost cap between $0 and ${MAX_COST:g}.")
     with ws.lock:
         active = jobs.alive_of(ws, "batch")
         if active is not None:

@@ -1,7 +1,7 @@
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { ApiError, getSession, onSessionChange, post } from "../api";
-import type { Session } from "../types";
+import type { Session, StartRunResponse } from "../types";
 import { useToast } from "./toasts";
 import { Dialog } from "./ui";
 
@@ -170,7 +170,7 @@ function NewRunDialog({ open, onClose, session }: { open: boolean; onClose: () =
     setBusy(true);
     setError(null);
     try {
-      const { run_id } = await post<{ run_id: string }>("/api/runs", { prompt_id: prompt, config });
+      const { run_id } = await post<StartRunResponse>("/api/runs", { prompt_id: prompt, config });
       toast({ tone: "info", text: `Started ${prompt} on ${config}` });
       onClose();
       navigate(`/runs/${run_id}`);

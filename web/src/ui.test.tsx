@@ -10,7 +10,8 @@ import { boardInterval, runInterval } from "./usePoll";
 afterEach(cleanup);
 
 const card = (run_id: string, column: Card["column"], extra: Partial<Card> = {}): Card =>
-  ({ run_id, prompt_id: run_id, model: "us.moonshotai.kimi-k3", status: "succeeded", headline: "x", column, ...extra });
+  ({ run_id, prompt_id: run_id, model: "us.moonshotai.kimi-k3", status: "succeeded", headline: "x", column,
+     unreadable: false, kpi: { spent: 0, overall: null }, ...extra });
 
 describe("Board", () => {  // T2: columns come from the API's `column`, never computed here
   it("puts each card in the column the API named", () => {

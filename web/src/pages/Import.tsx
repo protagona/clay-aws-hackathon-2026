@@ -4,10 +4,9 @@ import { ApiError, getSession, post, upload } from "../api";
 import { Dropzone } from "../components/Dropzone";
 import { useToast } from "../components/toasts";
 import { PageHeader, Panel, Pill, Section } from "../components/ui";
-import type { Session } from "../types";
+import type { ImportResponse, ReceiverStatus, Session } from "../types";
 import { usePoll } from "../usePoll";
 
-interface Receiver { running: boolean; port: number; endpoint: string; count: number; received: string[] }
 
 export default function Import() {
   const [session, setSession] = useState<Session | null>(null);
@@ -17,7 +16,7 @@ export default function Import() {
   const [config, setConfig] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const rec = usePoll<Receiver>("/api/receiver", (d) => (d?.running ? 2000 : 10000));
+  const rec = usePoll<ReceiverStatus>("/api/receiver", (d) => (d?.running ? 2000 : 10000));
   const toast = useToast();
   const navigate = useNavigate();
   useEffect(() => { getSession().then(setSession); }, []);
@@ -33,7 +32,7 @@ export default function Import() {
     setError(null);
     setProgress(0);
     try {
-      const { runs } = await upload<{ runs: string[] }>("/api/import", form, setProgress);
+      const { runs } = await upload<ImportResponse>("/api/import", form, setProgress);
       toast({ tone: "ok", text: `Imported ${runs.length} run${runs.length === 1 ? "" : "s"}` });
       navigate(runs.length === 1 ? `/runs/${runs[0]}` : "/");
     } catch (err) {

@@ -165,7 +165,7 @@ def card_extras(ws: Workspace, run_id: str) -> dict:
     agents = run.get("agents") if isinstance(run.get("agents"), dict) else {}
     cost = None
     wf = sc.get("workflow") if isinstance(sc.get("workflow"), dict) else {}
-    if isinstance(wf.get("cost_usd"), (int, float)):
+    if data_runs.num(wf.get("cost_usd")) is not None:  # never a bool (increment 17)
         cost = wf["cost_usd"]
     mode = agents.get("mode") if isinstance(agents.get("mode"), str) else None
     started: list[str] = []

@@ -226,9 +226,10 @@ def test_batch_validation(tmp_path):  # was test_batch_form_validation
     _, c, h = _client(tmp_path / "runs", root)
     base = {"config": "test", "prompts": ["adb-001"], "repeats": 1, "concurrency": 2, "max_cost": 1}
     assert c.post("/api/batches", headers={"x-csrf-token": "nope"}, json=base).status_code == 403
-    for bad in ({"config": "../x"}, {"prompts": []}, {"prompts": ["adb-999"]}, {"models": ["not-a-model"]},
-                {"max_cost": 500}, {"concurrency": 40}):
+    for bad in ({"config": "../x"}, {"prompts": []}, {"prompts": ["adb-999"]}, {"models": ["not-a-model"]}):
         assert c.post("/api/batches", headers=h, json={**base, **bad}).status_code == 400, bad
+    for bad in ({"max_cost": 500}, {"concurrency": 40}):  # the body's own ranges: 422 since increment 17 (Q2)
+        assert c.post("/api/batches", headers=h, json={**base, **bad}).status_code == 422, bad
     assert c.get("/api/batches/b-1").status_code == 404
 
 

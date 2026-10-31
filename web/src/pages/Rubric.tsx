@@ -4,7 +4,7 @@ import { ApiError, getSession, post, upload } from "../api";
 import { Dropzone } from "../components/Dropzone";
 import { useToast } from "../components/toasts";
 import { ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton, Spinner, Tabs } from "../components/ui";
-import type { RubricOverview, Session } from "../types";
+import type { CreateDraftResponse, RubricOverview, Session } from "../types";
 import { pretty } from "../format";
 import { usePoll } from "../usePoll";
 
@@ -40,7 +40,7 @@ export default function Rubric() {
     setError(null);
     setPhase(kind === "file" ? "uploading" : "drafting");
     try {
-      const { draft_id } = await upload<{ draft_id: string }>("/api/rubric/drafts", form, (p) => {
+      const { draft_id } = await upload<CreateDraftResponse>("/api/rubric/drafts", form, (p) => {
         setProgress(p);
         if (p >= 100) setPhase("drafting");
       });
@@ -87,7 +87,7 @@ export default function Rubric() {
               <tbody>{d?.versions.map((v) => (
                 <tr key={v.sha256}><td>v{v.version}</td><td><Link className="text-sky-600" to={`/rubric/history/${v.file}`}>{v.rubric_id}</Link></td>
                   <td className="whitespace-nowrap">{v.activated_at ? v.activated_at.slice(0, 16).replace("T", " ") : "(original)"}</td>
-                  <td className="max-w-[12rem] truncate" title={v.source?.label ?? v.note}>{v.source?.label ?? v.note ?? ""}</td><td>{v.runs}</td>
+                  <td className="max-w-[12rem] truncate" title={v.source?.label ?? v.note ?? undefined}>{v.source?.label ?? v.note ?? ""}</td><td>{v.runs}</td>
                   <td>{v.active ? <span className="font-medium text-emerald-600">✓ active</span> : <button className="btn-ghost" onClick={() => activate(v.file)}>Activate</button>}</td></tr>
               ))}</tbody></table>
           )}

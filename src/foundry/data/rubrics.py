@@ -254,8 +254,12 @@ class Store:
                 e = json.loads(line)
             except ValueError:
                 continue
-            if isinstance(e, dict) and HISTORY_FILE_RE.match(str(e.get("file", ""))) and isinstance(e.get("sha256"), str):
-                out.append(e)
+            if isinstance(e, dict) and HISTORY_FILE_RE.match(str(e.get("file", ""))) and isinstance(e.get("sha256"), str) \
+                    and all(isinstance(e.get(k), str) for k in ("rubric_id", "version")) \
+                    and all(e.get(k) is None or isinstance(e[k], str) for k in ("activated_at", "note", "draft_id")) \
+                    and (e.get("source") is None or (isinstance(e["source"], dict)
+                                                     and all(v is None or isinstance(v, str) for v in e["source"].values()))):
+                out.append({**e, "activated_at": e.get("activated_at")})  # the API's types (increment 17)
         return out
 
     def active_sha(self) -> str | None:

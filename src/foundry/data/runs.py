@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import secrets
@@ -150,11 +151,21 @@ def read_run(path: Path) -> dict | None:
         return None
     if not all(isinstance(run.get(k), str) for k in ("prompt_id", "status")):
         return None
+    # Optional fields the API types (increment 17, R4): present, not null and the wrong type -> unreadable.
+    agents = run.get("agents")
+    optional = [(run["model"].get("id"), str), (run.get("prompt"), str), (run.get("task_id"), str),
+                (run.get("started_at"), str), (agents, dict),
+                (agents.get("mode") if isinstance(agents, dict) else None, str)]
+    if any(v is not None and not isinstance(v, t) for v, t in optional):
+        return None
     return run
 
 
 def num(value) -> float | None:
-    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    """A finite number (never a bool, NaN or infinity) as float, else None."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+        return float(value)
+    return None
 
 
 def float_or_none(v) -> float | None:
@@ -171,11 +182,35 @@ def read_scores(path: Path) -> dict | None:
         return None
     try:
         raw = json.loads(f.read_text())
-        return {**raw, "overall": num(raw.get("overall")),
-                "workflow": {**raw["workflow"], "score": num(raw["workflow"].get("score"))},
-                "output": {**raw["output"], "score": num(raw["output"].get("score"))}}
+        out = {**raw, "overall": num(raw.get("overall")),
+               "workflow": {**raw["workflow"], "score": num(raw["workflow"].get("score"))},
+               "output": {**raw["output"], "score": num(raw["output"].get("score"))}}
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
+    if "criteria" in out["output"]:
+        out["output"]["criteria"] = _criteria(out["output"]["criteria"])
+        if out["output"]["criteria"] is None:
+            del out["output"]["criteria"]
+    return out
+
+
+def _criteria(items) -> list[dict] | None:
+    """Judge criteria as the API types them (increment 17, R4): items with a string id and a numeric score; a bad
+    max, name or rationale is dropped from its item. None when it isn't a list at all."""
+    if not isinstance(items, list):
+        return None
+    out = []
+    for c in items:
+        if not (isinstance(c, dict) and isinstance(c.get("id"), str) and num(c.get("score")) is not None):
+            continue
+        c = dict(c)
+        if "max" in c and num(c["max"]) is None:
+            del c["max"]
+        for k in ("name", "rationale"):
+            if k in c and not isinstance(c[k], str):
+                del c[k]
+        out.append(c)
+    return out
 
 
 def run_dirs(runs_dir: Path) -> list[Path]:
