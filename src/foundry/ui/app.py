@@ -28,7 +28,7 @@ from foundry.config import ConfigError, load_config
 from foundry.contract import evaluation_interrupted
 from foundry.evaluate import lock
 from foundry.runstore import RunDir, is_valid_run_id
-from foundry.tasks import load_prompts
+from foundry.tasks import parse_prompts
 from foundry.ui import dashboard
 from foundry.ui.render import render
 
@@ -55,6 +55,7 @@ class Job:
     dismissed: bool = False
     finished_at: float | None = None  # time.time() when the process exited (toasts in the TypeScript UI)
     lock_token: str | None = None
+    prompts: list[str] | None = None  # a batch's prompts, so their text stays locked while it runs (increment 13)
 
     @property
     def alive(self) -> bool:
@@ -688,12 +689,14 @@ def _configs(st: UiState) -> list[str]:
 
 
 def _prompt_ids(st: UiState) -> list[str]:
+    """Active (not archived) prompt ids of every task the configs use, read from this UI's own root."""
     ids: list[str] = []
     for stem in _configs(st):
         try:
             cfg = load_config(st.root / "config" / f"{stem}.toml")
-            ids += [p.prompt_id for p in load_prompts(cfg.task.id) if p.prompt_id not in ids]
-        except ConfigError:
+            path = st.root / "tasks" / cfg.task.id / "prompts.jsonl"
+            ids += [p.prompt_id for p in parse_prompts(path) if not p.archived and p.prompt_id not in ids]
+        except (ConfigError, OSError, ValueError):  # ValueError: a file that isn't UTF-8
             continue
     return ids
 

@@ -216,14 +216,17 @@ def test_evaluate_refused_for_running_run(tmp_path):
 def test_failed_job_banner(tmp_path):
     root = _project(tmp_path, [{"text": "x"}])
     cfg = root / "config" / "test.toml"
-    cfg.write_text(re.sub(r'script = ".*"', 'script = "/nonexistent/{prompt_id}.json"', cfg.read_text()))
+    # a script that exists (so the UI's up-front check passes, increment 13) but can't load: the run fails to start
+    (root / "broken").mkdir()
+    (root / "broken" / "adb-001.json").write_text("{}")
+    cfg.write_text(re.sub(r'script = ".*"', 'script = "broken/{prompt_id}.json"', cfg.read_text()))
     runs = tmp_path / "runs"
     app, c = _client(runs, root)
     assert c.post("/runs", data={"prompt_id": "adb-001", "config": "test", "csrf": _csrf(app)}).status_code == 303
     (job,) = app.state.ui.jobs.values()
     assert _wait(lambda: job.exit_code is not None) and job.exit_code == 2
     html = c.get("/").text
-    assert "Run adb-001 failed to start:" in html and "Scripted model script not found" in html
+    assert "Run adb-001 failed to start:" in html and "must be a JSON array of turns" in html
     assert c.get(f"/jobs/{job.id}/log").status_code == 200
     assert c.post(f"/jobs/{job.id}/dismiss", data={"csrf": _csrf(app)}).status_code == 303
     assert "failed to start" not in c.get("/").text

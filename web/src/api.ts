@@ -12,10 +12,20 @@ export class ApiError extends Error {
 }
 
 let session: Promise<Session> | null = null;
+const listeners = new Set<(s: Session) => void>();
 
+/** The session (configs, prompts, ...); `force` refetches it and tells every subscriber (increment 13). */
 export function getSession(force = false): Promise<Session> {
-  if (!session || force) session = get<Session>("/api/session");
+  if (!session || force) {
+    session = get<Session>("/api/session");
+    if (force) session.then((s) => listeners.forEach((fn) => fn(s))).catch(() => {});
+  }
   return session;
+}
+
+export function onSessionChange(fn: (s: Session) => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
 }
 
 async function parse<T>(r: Response): Promise<T> {

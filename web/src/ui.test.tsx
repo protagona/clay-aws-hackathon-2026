@@ -270,3 +270,68 @@ describe("logo (increment 14)", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("prompts (increment 13)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const row = (prompt_id: string, extra = {}) => ({ prompt_id, prompt: `Text of ${prompt_id}`, archived: false, stages: [["search_datasets"]], runs: 2, pending: false, scored: 2, mean: 0.9, ...extra });
+
+  it("groups active and archived prompts into their own sections", async () => {
+    const { default: Prompts } = await import("./pages/Prompts");
+    const body = { prompts: [row("adb-001"), row("adb-002", { archived: true, runs: 0, mean: null })], next_id: "adb-003", root_name: "x" };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+    render(<MemoryRouter><Prompts /></MemoryRouter>);
+    const active = await screen.findByRole("region", { name: "Active prompts" });
+    expect(within(active).getByText("adb-001")).toBeTruthy();
+    expect(within(active).getByText("1 prompt")).toBeTruthy();
+    expect(within(active).getByText("2 runs · 1 expected step")).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Archived" })).getByText("adb-002")).toBeTruthy();
+    expect(within(active).getByRole("link", { name: "+ New prompt" }).getAttribute("href")).toBe("/prompts/new");
+  });
+
+  it("locks the text of a prompt with runs and offers a new version", async () => {
+    const { default: PromptEdit } = await import("./pages/PromptEdit");
+    const { Route, Routes } = await import("react-router-dom");
+    const detail = { prompt: { prompt_id: "adb-005", prompt: "Compare imagery.", archived: false, stages: null }, runs_total: 23,
+      pending: false, locked: true, next_version_id: "adb-005-v2", scored: 23, mean: 0.96, runs: [] };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(url.includes("/tools") ? { tools: [] } : detail), { status: 200 })));
+    render(<MemoryRouter initialEntries={["/prompts/adb-005"]}><Routes><Route path="/prompts/:id" element={<PromptEdit />} /></Routes></MemoryRouter>);
+    const text = await screen.findByLabelText("Prompt text");
+    expect((text as HTMLTextAreaElement).readOnly).toBe(true);
+    expect(screen.getByText(/Locked: 23 runs used this text./)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Make a new version → adb-005-v2" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.getByText(/No steps: this prompt's workflow score has no sequence check./)).toBeTruthy();
+  });
+
+  it("edits steps: add a tool, move and remove steps, then save", async () => {
+    const { StepEditor } = await import("./components/StepEditor");
+    const { fireEvent } = await import("@testing-library/react");
+    const onSave = vi.fn(async () => {});
+    render(<StepEditor stages={[["search_datasets"], ["get_dataset_details"]]} tools={["stac/search_items"]} onSave={onSave} error={null} />);
+    fireEvent.change(screen.getByLabelText("Add a tool to step 1"), { target: { value: "list_datasets" } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Add" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Move step 2 up" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove step 3" }));
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save steps" }));
+    expect(onSave).toHaveBeenCalledWith([["get_dataset_details"], ["search_datasets", "list_datasets"]]);
+  });
+});
+
+describe("step editor keeps unsaved edits (increment 13, verify finding)", () => {
+  it("survives the parent re-rendering with a fresh, equal array", async () => {
+    const { StepEditor } = await import("./components/StepEditor");
+    const { fireEvent } = await import("@testing-library/react");
+    const props = { tools: [], onSave: vi.fn(async () => {}), error: null };
+    const { rerender } = render(<StepEditor stages={[]} {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Add step" }));
+    fireEvent.change(screen.getByLabelText("Add a tool to step 1"), { target: { value: "search_datasets" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    rerender(<StepEditor stages={[]} {...props} error="Step 1: try again" />);  // a fresh [] and an error, as the page does
+    expect(screen.getByText("search_datasets")).toBeTruthy();
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+    rerender(<StepEditor stages={[["saved_tool"]]} {...props} />);  // a real change to the saved steps does reset
+    expect(screen.getByText("saved_tool")).toBeTruthy();
+  });
+});

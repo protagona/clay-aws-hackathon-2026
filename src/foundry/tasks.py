@@ -20,6 +20,7 @@ PROMPT_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 class Prompt:
     prompt_id: str
     prompt: str
+    archived: bool = False  # hidden from the UI's pickers (increment 13); the CLI still accepts it
 
 
 def task_dir(task_id: str) -> Path:
@@ -30,8 +31,13 @@ def load_prompts(task_id: str) -> list[Prompt]:
     path = task_dir(task_id) / "prompts.jsonl"
     if not path.exists():
         raise ConfigError(path, "(file)", f"no prompts for task '{task_id}'")
+    return parse_prompts(path)
+
+
+def parse_prompts(path: Path) -> list[Prompt]:
+    """Every prompt line of a prompts.jsonl (the UI reads its own root's file through this; increment 13)."""
     prompts = []
-    for lineno, line in enumerate(path.read_text().splitlines(), start=1):
+    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip():
             continue
         try:
@@ -42,7 +48,7 @@ def load_prompts(task_id: str) -> list[Prompt]:
         if not isinstance(pid, str) or not PROMPT_ID_RE.match(pid) or ".." in pid:
             raise ConfigError(f"{path}:{lineno}", "prompt_id",
                               f"{pid!r} must match ^[A-Za-z0-9._-]{{1,64}}$ (it becomes part of the run id and path)")
-        prompts.append(Prompt(pid, text))
+        prompts.append(Prompt(pid, text, obj.get("archived") is True))
     return prompts
 
 
@@ -98,12 +104,17 @@ class Expectation:
 
 def load_expected(task_id: str, prompt_id: str) -> Expectation | None:
     """The expectation for (task, prompt), or None when the task has no expected.jsonl or no line for the prompt."""
-    path = task_dir(task_id) / "expected.jsonl"
+    return parse_expected(task_dir(task_id) / "expected.jsonl").get(prompt_id)
+
+
+def parse_expected(path: Path) -> dict[str, Expectation]:
+    """Every prompt's expectation in an expected.jsonl ({} when there is no file); a later line for an id wins."""
     if not path.exists():
-        return None
+        return {}
     raw = path.read_bytes()
-    found = None
-    for lineno, line in enumerate(raw.decode().splitlines(), start=1):
+    sha = hashlib.sha256(raw).hexdigest()
+    found: dict[str, Expectation] = {}
+    for lineno, line in enumerate(raw.decode("utf-8").splitlines(), start=1):
         if not line.strip():
             continue
         try:
@@ -118,6 +129,5 @@ def load_expected(task_id: str, prompt_id: str) -> Expectation | None:
                            for s in stages)):
             raise RubricError(f"{path}:{lineno}: stages must be a non-empty list of non-empty lists of tool names "
                               '("name" or "server/name")')
-        if pid == prompt_id:
-            found = stages
-    return Expectation(found, hashlib.sha256(raw).hexdigest()) if found is not None else None
+        found[pid] = Expectation(stages, sha)
+    return found

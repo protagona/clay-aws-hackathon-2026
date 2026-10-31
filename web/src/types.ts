@@ -286,3 +286,28 @@ export interface DraftView {
   body: Rubric;
   source_text: string | null;
 }
+
+// Increment 13: prompts.
+export interface PromptRow {
+  prompt_id: string;
+  prompt: string;
+  archived: boolean;
+  stages: string[][] | null;
+  runs: number;
+  pending: boolean;
+  scored: number;
+  mean: number | null;
+}
+
+export interface PromptsResponse { prompts: PromptRow[]; next_id: string; root_name: string }
+
+export interface PromptDetail {
+  prompt: { prompt_id: string; prompt: string; archived: boolean; stages: string[][] | null };
+  runs_total: number;
+  pending: boolean;
+  locked: boolean;
+  next_version_id: string | null;
+  scored: number;
+  mean: number | null;
+  runs: { run_id: string; model: string; started_at: string | null; overall: number | null; cost: number | null }[];
+}

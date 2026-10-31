@@ -1,12 +1,13 @@
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { ApiError, getSession, post } from "../api";
+import { ApiError, getSession, onSessionChange, post } from "../api";
 import type { Session } from "../types";
 import { useToast } from "./toasts";
 import { Dialog } from "./ui";
 
 const NAV = [
   { to: "/", label: "Runs" },
+  { to: "/prompts", label: "Prompts" },
   { to: "/batches", label: "Batches" },
   { to: "/dashboard", label: "Dashboard" },
   { to: "/rubric", label: "Rubric" },
@@ -45,7 +46,10 @@ export function Shell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
   const on = (to: string) => (to === "/" ? pathname === "/" || pathname.startsWith("/runs/") || pathname === "/compare" : pathname.startsWith(to));
-  useEffect(() => { getSession().then(setSession).catch(() => setSession(null)); }, []);
+  useEffect(() => {
+    getSession().then(setSession).catch(() => setSession(null));
+    return onSessionChange(setSession);  // a new or archived prompt reaches the New run dialog (increment 13)
+  }, []);
 
   return (
     <div className="min-h-screen">
@@ -99,7 +103,9 @@ function NewRunDialog({ open, onClose, session }: { open: boolean; onClose: () =
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
   const navigate = useNavigate();
-  useEffect(() => { if (session && !prompt) setPrompt(session.prompts[0] ?? ""); }, [session, prompt]);
+  useEffect(() => {  // keep the selection valid: an archived prompt leaves the list, so it can't stay selected
+    if (session && !session.prompts.includes(prompt)) setPrompt(session.prompts[0] ?? "");
+  }, [session, prompt]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();

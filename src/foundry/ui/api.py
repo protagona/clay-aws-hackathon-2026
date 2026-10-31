@@ -73,6 +73,26 @@ class DraftBody(BaseModel):
     activate: bool = False
 
 
+class PromptBody(BaseModel):  # increment 13: limits are checked by the store, so errors come back as 400 + field
+    task: str = "adb"
+    prompt_id: str | None = None
+    prompt: str = ""
+
+
+class TaskBody(BaseModel):
+    task: str = "adb"
+
+
+class ArchiveBody(BaseModel):
+    task: str = "adb"
+    archived: bool
+
+
+class StagesBody(BaseModel):
+    task: str = "adb"
+    stages: list[list[str]]
+
+
 class HistoryBody(BaseModel):
     task: str = "adb"
     file: str = Field(max_length=200)
@@ -265,6 +285,43 @@ def make_router(st) -> APIRouter:
     def version(name: str, task: str = "adb"):
         return _json(act.rubric_version(st, task, name))
 
+    # --- prompts (increment 13) ------------------------------------------------------------------------------
+
+    @r.get("/prompts")
+    def prompts(task: str = "adb"):
+        return act.prompts_view(st, task)
+
+    @r.get("/prompts/tools")  # before /prompts/{prompt_id}; "tools" is a reserved prompt id
+    def prompt_tools(task: str = "adb"):
+        return {"tools": act.tool_suggestions(st, task)}
+
+    @r.get("/prompts/{prompt_id}")
+    def prompt(prompt_id: str, task: str = "adb"):
+        return act.prompt_view(st, task, prompt_id)
+
+    @r.post("/prompts", dependencies=write, status_code=201)
+    def create_prompt(body: PromptBody):
+        return {"prompt_id": act.prompt_create(st, body.task, body.prompt_id, body.prompt)}
+
+    @r.put("/prompts/{prompt_id}", dependencies=write)
+    def update_prompt(prompt_id: str, body: PromptBody):
+        act.prompt_set_text(st, body.task, prompt_id, body.prompt)
+        return {"ok": True}
+
+    @r.post("/prompts/{prompt_id}/version", dependencies=write, status_code=201)
+    def version_prompt(prompt_id: str, body: TaskBody):
+        return {"prompt_id": act.prompt_new_version(st, body.task, prompt_id)}
+
+    @r.post("/prompts/{prompt_id}/archive", dependencies=write)
+    def archive_prompt(prompt_id: str, body: ArchiveBody):
+        act.prompt_archive(st, body.task, prompt_id, body.archived)
+        return {"ok": True}
+
+    @r.put("/prompts/{prompt_id}/stages", dependencies=write)
+    def prompt_stages(prompt_id: str, body: StagesBody):
+        sha = act.prompt_set_stages(st, body.task, prompt_id, body.stages)
+        return {"ok": True, "expected_sha256": sha}
+
     @r.post("/rubric/history/activate", dependencies=write)
     def activate_version(body: HistoryBody):
         act.rubric_activate_version(st, body.task, body.file)
@@ -357,7 +414,7 @@ def install(app: FastAPI) -> None:
 
     @app.exception_handler(UiError)
     async def ui_error(request: Request, exc: UiError):
-        return _err(exc.status, exc.message)
+        return _err(exc.status, exc.message, **({"field": exc.field} if exc.field else {}))
 
     @app.exception_handler(RequestValidationError)
     async def bad_body(request: Request, exc: RequestValidationError):

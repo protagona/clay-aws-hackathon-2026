@@ -17,6 +17,8 @@ const Rubric = lazy(() => import("./pages/Rubric"));
 const RubricDraft = lazy(() => import("./pages/RubricDraft"));
 const RubricVersion = lazy(() => import("./pages/RubricVersion"));
 const Import = lazy(() => import("./pages/Import"));
+const Prompts = lazy(() => import("./pages/Prompts"));
+const PromptEdit = lazy(() => import("./pages/PromptEdit"));
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -28,6 +30,8 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/" element={<Runs />} />
               <Route path="/runs/:id" element={<Runs />} />
               <Route path="/compare" element={<Compare />} />
+              <Route path="/prompts" element={<Prompts />} />
+              <Route path="/prompts/:id" element={<PromptEdit />} />
               <Route path="/batches" element={<Batches />} />
               <Route path="/batches/:id" element={<Batch />} />
               <Route path="/dashboard" element={<Dashboard />} />

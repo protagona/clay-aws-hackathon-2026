@@ -12,3 +12,6 @@ batches/
 tasks/*/rubrics/drafts/
 tasks/*/rubrics/sources/
 tasks/*/rubrics/.rubric.lock
+# prompts store (increment 13): its lock and any temp file a crash leaves behind
+tasks/*/.prompts.lock
+tasks/*/*.tmp-*

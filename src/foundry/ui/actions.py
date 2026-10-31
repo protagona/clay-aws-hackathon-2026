@@ -15,16 +15,17 @@ from foundry.config import ConfigError, load_config
 from foundry.contract import evaluation_interrupted
 from foundry.evaluate import lock
 from foundry.runstore import RunDir, is_valid_run_id, new_run_id
-from foundry.tasks import load_prompts
+from foundry.prompts.store import PromptStore, StoreError
+from foundry.tasks import RubricError, parse_prompts
 from foundry.ui import dashboard
 from foundry.ui.monitor import monitor
 from foundry.ui.render import render
 
 
 class UiError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, field: str | None = None):
         super().__init__(message)
-        self.status, self.message = status, message
+        self.status, self.message, self.field = status, message, field  # field: the form field it belongs to
 
 
 def _core():
@@ -98,11 +99,10 @@ def start_run(st, prompt_id: str, config: str) -> str:
         raise UiError(400, f"Unknown config '{config}'. Available: {', '.join(configs)}")
     try:
         cfg = load_config(st.root / "config" / f"{config}.toml")
-        ids = [p.prompt_id for p in load_prompts(cfg.task.id)]
+        prompts = task_prompts(st, cfg.task.id)
     except ConfigError as exc:
-        raise UiError(400, str(exc)) from None
-    if prompt_id not in ids:
-        raise UiError(400, f"Unknown prompt id '{prompt_id}' for task '{cfg.task.id}'. Available: {', '.join(ids)}")
+        raise UiError(400, _rel(st, str(exc))) from None
+    _check_runnable(st, cfg, config, [prompt_id], prompts)
     with st.lock:
         active = next((j for j in st.jobs.values() if j.kind == "run" and j.alive), None)
         if active is not None:
@@ -208,9 +208,13 @@ def start_batch(st, config: str, models: list[str], prompts: list[str], repeats:
     unknown = [m for m in models if m not in core._model_choices(st)]
     if unknown:
         raise UiError(400, f"Unknown model(s): {', '.join(unknown)}")
-    prompt_ids = core._prompt_ids(st)
-    if not prompts or any(p not in prompt_ids for p in prompts):
-        raise UiError(400, f"Pick one or more prompts from: {', '.join(prompt_ids)}")
+    if not prompts:
+        raise UiError(400, f"Pick one or more prompts from: {', '.join(core._prompt_ids(st))}")
+    try:
+        cfg = load_config(st.root / "config" / f"{config}.toml")
+        _check_runnable(st, cfg, config, prompts, task_prompts(st, cfg.task.id))
+    except ConfigError as exc:
+        raise UiError(400, _rel(st, str(exc))) from None
     if not (1 <= repeats <= 5 and 1 <= concurrency <= 4 and 0 < max_cost <= 50):
         raise UiError(400, "Repeats must be 1-5, parallel runs 1-4, and the cost cap between $0 and $50.")
     with st.lock:
@@ -225,7 +229,8 @@ def start_batch(st, config: str, models: list[str], prompts: list[str], repeats:
             args += ["--models", ",".join(models)]
         if evaluate:
             args.append("--evaluate")
-        core._spawn(st, "batch", batch_id, f"Batch {batch_id}", args)
+        job = core._spawn(st, "batch", batch_id, f"Batch {batch_id}", args)
+        job.prompts = list(prompts)  # a queued job has no run dir yet; this keeps those prompts' text locked
     return batch_id
 
 
@@ -439,3 +444,183 @@ def rubric_activate_version(st, task: str, name: str) -> None:
         rubric_store(st, task).activate_version(name)
     except StoreError as exc:
         raise UiError(409 if "progress" in str(exc) else 404, str(exc)) from None
+
+
+# --- prompts (increment 13) -----------------------------------------------------------------------------------
+
+
+def _rel(st, msg: str) -> str:
+    """Error text without the server's absolute paths."""
+    return msg.replace(f"{st.root}/", "").replace(str(st.root), ".")
+
+
+def task_prompts(st, task: str) -> list:
+    """Every prompt of a task in this UI's own root (archived ones included)."""
+    path = st.root / "tasks" / task / "prompts.jsonl"
+    if not path.is_file():
+        raise ConfigError(f"tasks/{task}/prompts.jsonl", "(file)", f"no prompts for task '{task}'")
+    try:
+        return parse_prompts(path)
+    except ConfigError as exc:
+        raise UiError(400, _rel(st, str(exc))) from None
+
+
+def _check_runnable(st, cfg, config: str, ids: list[str], prompts: list) -> None:
+    """Known and not archived; a config that replays scripts must have one for each prompt (P7, P10)."""
+    by_id = {p.prompt_id: p for p in prompts}
+    for pid in ids:
+        p = by_id.get(pid)
+        if p is None:
+            active = ", ".join(q.prompt_id for q in prompts if not q.archived)
+            raise UiError(400, f"Unknown prompt id '{pid}' for task '{cfg.task.id}'. Available: {active}")
+        if p.archived:
+            raise UiError(400, f"{pid} is archived. Unarchive it on the Prompts page to run it.")
+        if cfg.model.provider == "scripted" and cfg.model.script:
+            script = Path(cfg.model.script.format(prompt_id=pid))
+            if not (script if script.is_absolute() else st.root / script).is_file():
+                raise UiError(400, f"The offline config '{config}' has no script for {pid}. Pick a Bedrock config.")
+
+
+def prompt_store(st, task: str) -> PromptStore:
+    if task not in _core()._task_ids(st):
+        raise UiError(400, f"Unknown task '{task}'")
+    return PromptStore(st.root / "tasks" / task, task)
+
+
+def _store(st, fn, *args):
+    try:
+        return fn(*args)
+    except StoreError as exc:
+        raise UiError(exc.status, _rel(st, exc.message), exc.field) from None
+    except (ConfigError, RubricError) as exc:
+        raise UiError(400, _rel(st, str(exc))) from None
+
+
+def _runs_by_prompt(st, task: str) -> tuple[dict[str, list[dict]], list[str]]:
+    """Readable runs of the task grouped by prompt id, and the names of unreadable run dirs (counted by name)."""
+    core = _core()
+    by: dict[str, list[dict]] = {}
+    unreadable = []
+    for d in core._run_dirs(st):
+        run = core._read_run(d)
+        if run is None:
+            unreadable.append(d.name)
+        elif run.get("task_id") == task and isinstance(run.get("prompt_id"), str):
+            by.setdefault(run["prompt_id"], []).append({"run_id": d.name, "run": run})
+    return by, unreadable
+
+
+def _pending(st, pid: str) -> bool:
+    """A live UI run of this prompt, or a live batch that includes it (read without st.lock: callers may hold it)."""
+    for j in list(st.jobs.values()):
+        if not j.alive:
+            continue
+        if j.kind == "run" and f"_{pid}_" in j.run_id:
+            return True
+        if j.kind == "batch" and pid in (getattr(j, "prompts", None) or []):
+            return True
+    return False
+
+
+def run_count(st, task: str, pid: str, index=None) -> dict:
+    by, unreadable = index or _runs_by_prompt(st, task)
+    runs = len(by.get(pid, [])) + sum(f"_{pid}_" in name for name in unreadable)
+    return {"runs": runs, "pending": _pending(st, pid)}
+
+
+def prompts_view(st, task: str) -> dict:
+    store = prompt_store(st, task)
+    rows = _store(st, store.rows)
+    index = _runs_by_prompt(st, task)
+    shares = board_kpis(st)["shares"]
+    out = []
+    for r in rows:
+        own = [shares.get(x["run_id"], {}).get("overall") for x in index[0].get(r["prompt_id"], [])]
+        scored = [v for v in own if isinstance(v, (int, float))]
+        out.append({**r, **run_count(st, task, r["prompt_id"], index), "scored": len(scored),
+                    "mean": sum(scored) / len(scored) if scored else None})
+    return {"prompts": out, "next_id": _store(st, store.next_id, set(index[0])), "root_name": st.root.name}
+
+
+def prompt_view(st, task: str, pid: str) -> dict:
+    _need_prompt_id(pid)
+    store = prompt_store(st, task)
+    row = _store(st, store.get, pid)
+    if row is None:
+        raise UiError(404, f"No prompt {pid}")
+    index = _runs_by_prompt(st, task)
+    count = run_count(st, task, pid, index)
+    shares = board_kpis(st)["shares"]
+    mine = index[0].get(pid, [])
+    runs = sorted(({"run_id": x["run_id"], "model": dashboard.model_key(x["run"]), "started_at": x["run"].get("started_at"),
+                    "overall": core_scores(st, x["run_id"]), "cost": shares.get(x["run_id"], {}).get("spent")} for x in mine),
+                  key=lambda r: str(r["started_at"] or ""), reverse=True)
+    scored = [v for v in (shares.get(x["run_id"], {}).get("overall") for x in mine) if isinstance(v, (int, float))]
+    return {"prompt": row, "runs_total": count["runs"], "pending": count["pending"],
+            "next_version_id": _store(st, store.next_version_id, pid, set(index[0])),
+            "locked": count["runs"] > 0 or count["pending"], "scored": len(scored),
+            "mean": sum(scored) / len(scored) if scored else None, "runs": runs[:20]}
+
+
+def core_scores(st, run_id: str):
+    sc = _core()._scores(st.runs_dir / run_id) or {}
+    v = sc.get("overall")
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _need_prompt_id(pid: str) -> None:
+    from foundry.tasks import PROMPT_ID_RE
+
+    if not PROMPT_ID_RE.match(pid) or ".." in pid:
+        raise UiError(404, "No such prompt")
+
+
+def tool_suggestions(st, task: str) -> list[str]:
+    tools: set[str] = set()
+    for e in _entries(st):
+        for s in e["steps"]:
+            if getattr(s, "type", None) == "tool_call" and isinstance(getattr(s, "name", None), str):
+                tools.add(s.name)
+                if isinstance(getattr(s, "server", None), str) and s.server:
+                    tools.add(f"{s.server}/{s.name}")
+    for r in _store(st, prompt_store(st, task).rows):
+        for step in r["stages"] or []:
+            tools.update(step)
+    return sorted(tools)[:500]
+
+
+def prompt_create(st, task: str, pid, text) -> str:
+    store = prompt_store(st, task)
+    index = _runs_by_prompt(st, task)
+    taken = set(index[0]) | ({pid} if isinstance(pid, str) and run_count(st, task, pid, index)["runs"] else set())
+    _store(st, store.create, pid, text, taken)
+    return pid
+
+
+def prompt_set_text(st, task: str, pid: str, text) -> None:
+    _need_prompt_id(pid)
+    store = prompt_store(st, task)
+    with st.lock:  # no run may start between the check and the write
+        count = run_count(st, task, pid)
+        if count["runs"]:
+            raise UiError(409, f"{pid} has {count['runs']} run{'s' if count['runs'] != 1 else ''}, so its text can't change. "
+                               "Make a new version instead.")
+        if count["pending"]:
+            raise UiError(409, f"{pid} has a run in progress, so its text can't change. "
+                               "Try again when it finishes, or make a new version.")
+        _store(st, store.set_text, pid, text)
+
+
+def prompt_new_version(st, task: str, pid: str) -> str:
+    _need_prompt_id(pid)
+    return _store(st, prompt_store(st, task).copy_version, pid, set(_runs_by_prompt(st, task)[0]))
+
+
+def prompt_archive(st, task: str, pid: str, archived: bool) -> None:
+    _need_prompt_id(pid)
+    _store(st, prompt_store(st, task).set_archived, pid, bool(archived))
+
+
+def prompt_set_stages(st, task: str, pid: str, stages) -> str:
+    _need_prompt_id(pid)
+    return _store(st, prompt_store(st, task).set_stages, pid, stages)

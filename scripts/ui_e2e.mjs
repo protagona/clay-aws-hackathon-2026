@@ -101,7 +101,8 @@ async function clarity(scoredRun) {
   const rub = await api("/api/rubric?task=adb");
   const routes = [["board", "/"], ["batches", "/batches"], ["dashboard", "/dashboard"], ["rubric", "/rubric"], ["active rubric", "/rubric/active"],
     ["run's rubric", `/rubric/runs/${encodeURIComponent(scoredRun)}`], ["import", "/import"], ["compare (empty)", "/compare"],
-    ["compare", `/compare?a=${encodeURIComponent(scoredRun)}&b=${encodeURIComponent(scoredRun)}`], ["not found", "/nope"]];
+    ["compare", `/compare?a=${encodeURIComponent(scoredRun)}&b=${encodeURIComponent(scoredRun)}`], ["not found", "/nope"],
+    ["prompts", "/prompts"], ["a prompt", "/prompts/adb-001"], ["new prompt", "/prompts/new"]];  // increment 13 (views only)
   const opt = [["batch", batch && `/batches/${batch}`], ["history version", rub?.versions?.[0]?.file && `/rubric/history/${rub.versions[0].file}`],
     ["rubric draft", rub?.drafts?.[0]?.draft_id && `/rubric/drafts/${rub.drafts[0].draft_id}`]];
   for (const [name, path] of opt) if (path) routes.push([name, path]); else console.log(`SKIP ${name}: none available`);
