@@ -395,6 +395,8 @@ uv run pytest                     # everything; the `network` tests call the rea
 uv run pytest -m "not network"    # fully offline
 ```
 
+**Where code goes:** `src/foundry` is split into layers (data, engine, services, api, ui), and a test fails when an import crosses them the wrong way. [docs/architecture.md](docs/architecture.md) has the rules and where new code belongs.
+
 ## Stack decisions (K-5)
 
 | Area | Decision |

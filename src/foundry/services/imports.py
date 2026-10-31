@@ -30,8 +30,9 @@ def _prices(ws: Workspace, config: str):
 
 def import_saved_trace(ws: Workspace, dest: Path, filename: str, task: str, prompt_id: str, config: str) -> list[Path]:
     try:
+        prices = _prices(ws, config)  # before reading the trace, so a bad config is reported first, as before
         return import_spans(spans_from_file(dest), ws.runs_dir, task, prompt_id,
-                            f"upload:{Path(filename or 'trace').name}", _prices(ws, config))
+                            f"upload:{Path(filename or 'trace').name}", prices)
     except (ImportError_, ConfigError) as exc:
         detail = str(exc).replace(str(dest), Path(filename or "trace").name)  # never show the server's upload path
         raise ServiceError(400, f"Could not import {filename}: {detail}") from None

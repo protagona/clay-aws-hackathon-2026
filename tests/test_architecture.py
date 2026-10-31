@@ -66,16 +66,17 @@ def module_name(path: Path, src: Path) -> str:
     return ".".join(parts)
 
 
-def imports(path: Path, src: Path) -> list[tuple[int, str]]:
-    """Every foundry module (and web framework) this file imports, with the line. `from foundry import x` resolves to
-    foundry.x when x is a module; relative imports are resolved against the file's package."""
+def imports(path: Path, src: Path) -> list[tuple[int, str, str | None]]:
+    """Every foundry module (and web framework) this file imports, with the line and, for `from m import name` of a
+    name that isn't a module, that name. `from foundry import x` resolves to foundry.x when x is a module; relative
+    imports are resolved against the file's package."""
     tree = ast.parse(path.read_text(), filename=str(path))
     me = module_name(path, src)
     package = me if path.name == "__init__.py" else me.rpartition(".")[0]
     out = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            out += [(node.lineno, a.name) for a in node.names]
+            out += [(node.lineno, a.name, None) for a in node.names]
         elif isinstance(node, ast.ImportFrom):
             base = node.module or ""
             if node.level:
@@ -85,7 +86,7 @@ def imports(path: Path, src: Path) -> list[tuple[int, str]]:
             for a in node.names:
                 full = f"{base}.{a.name}"
                 is_module = (src / Path(*full.split("."))).with_suffix(".py").exists() or (src / Path(*full.split("."))).is_dir()
-                out.append((node.lineno, full if is_module else base))
+                out.append((node.lineno, full, None) if is_module else (node.lineno, base, a.name))
     return out
 
 
@@ -101,7 +102,7 @@ def violations(src: Path, unmoved_ok: bool = True) -> list[str]:
         if mine is None:
             found.append(f"{path.relative_to(src)}: module {me} is in no layer")
             continue
-        for line, target in imports(path, src):
+        for line, target, name in imports(path, src):
             where = f"{path.relative_to(src)}:{line}"
             top = target.split(".")[0]
             if top in WEB_FRAMEWORKS and mine not in WEB_LAYERS:
@@ -117,8 +118,9 @@ def violations(src: Path, unmoved_ok: bool = True) -> list[str]:
                 found.append(f"{where} imports {target}, which is in no layer")
             elif theirs not in ALLOWED[mine] | {mine}:
                 found.append(f"{where} imports {target}: {mine} may import {', '.join(sorted(ALLOWED[mine]))}")
-            elif theirs != mine and re.search(r"\._[a-z]", "." + target.rpartition(".")[2]):
-                found.append(f"{where} imports {target}: a private name of another layer")
+            elif theirs != mine and any(part.startswith("_") and not part.startswith("__")
+                                        for part in [*target.split(".")[1:], name or ""]):
+                found.append(f"{where} imports {target}{'.' + name if name else ''}: a private name of another layer")
     return found
 
 
@@ -147,8 +149,14 @@ def test_the_checker_catches_a_bad_edge(tmp_path):
         (pkg / d / "__init__.py").write_text("")
     (pkg / "engine" / "runner.py").write_text("X = 1\n")
     (pkg / "data" / "bad.py").write_text("def f():\n    from foundry.engine import runner\n    import fastapi\n")
+    (pkg / "data" / "store.py").write_text("def _atomic_write():\n    pass\n")
+    (pkg / "engine" / "sneaky.py").write_text("from foundry.data.store import _atomic_write\nimport jinja2\n"
+                                              "from foundry.data import store\n")  # the last one is fine
     (pkg / "stray.py").write_text("")
     problems = violations(tmp_path, unmoved_ok=False)
+    assert any("engine/sneaky.py:1 imports foundry.data.store._atomic_write: a private name" in p for p in problems), problems
+    assert any("engine/sneaky.py:2 imports jinja2" in p for p in problems), problems
+    assert not any("engine/sneaky.py:3" in p for p in problems), problems
     assert any("data/bad.py:2 imports foundry.engine.runner" in p for p in problems), problems
     assert any("data/bad.py:3 imports fastapi" in p for p in problems), problems
     assert any("module foundry.stray is in no layer" in p for p in problems), problems
@@ -160,7 +168,8 @@ def test_the_checker_catches_a_bad_edge(tmp_path):
 # foundry.services.jobs (processes) instead; each exception below is the one module whose job that is.
 FILE_CALLS = {"open", "read_text", "read_bytes", "write_text", "write_bytes", "iterdir", "glob", "rglob", "mkdir",
               "unlink", "exists", "is_file", "is_dir", "is_symlink", "rmdir", "rename", "touch", "stat"}
-FILE_MODULES = {"shutil", "subprocess"}  # importing these at all; `os.<anything>(...)` calls too (os.environ is fine)
+FILE_MODULES = {"shutil", "subprocess", "tempfile"}  # importing these at all; `os.<anything>(...)` calls and
+# `from os import <anything but environ>` too (os.environ is fine, under any alias)
 FILE_ALLOWED = {
     "foundry/services/jobs.py",  # starts `foundry` subprocesses with their stderr in a log file
     "foundry/api/uploads.py",  # streams an upload to disk under its size cap
@@ -169,14 +178,18 @@ FILE_ALLOWED = {
 
 def file_calls(path: Path) -> list[tuple[int, str]]:
     tree = ast.parse(path.read_text(), filename=str(path))
+    os_names = {"os"} | {a.asname for n in ast.walk(tree) if isinstance(n, ast.Import)
+                         for a in n.names if a.name == "os" and a.asname}
     out = []
     for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "os":
+            out += [(node.lineno, f"from os import {a.name}") for a in node.names if a.name != "environ"]
         if isinstance(node, ast.Call):
             f = node.func
             if isinstance(f, ast.Name) and f.id == "open":
                 out.append((node.lineno, "open()"))
-            elif isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id == "os":
-                out.append((node.lineno, f"os.{f.attr}()"))
+            elif isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id in os_names:
+                out.append((node.lineno, f"{f.value.id}.{f.attr}()"))
             elif isinstance(f, ast.Attribute) and f.attr in FILE_CALLS:
                 out.append((node.lineno, f".{f.attr}()"))
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -200,8 +213,10 @@ def test_services_and_api_dont_touch_files():
 def test_the_file_check_catches_a_read(tmp_path):
     f = tmp_path / "m.py"
     f.write_text("import shutil\nimport os\nfrom pathlib import Path\nPath('x').read_text()\nopen('y')\n"
-                 "os.replace('a', 'b')\n'a'.replace('a', 'b')\nos.environ.get('X')\n")
-    assert sorted(w for _, w in file_calls(f)) == [".read_text()", "import shutil", "open()", "os.replace()"]
+                 "os.replace('a', 'b')\n'a'.replace('a', 'b')\nos.environ.get('X')\nimport os as o\no.remove('x')\n"
+                 "from os import replace, environ\nimport tempfile\n")
+    assert sorted(w for _, w in file_calls(f)) == [".read_text()", "from os import replace", "import shutil",
+                                                   "import tempfile", "o.remove()", "open()", "os.replace()"]
 
 
 def test_services_have_no_import_cycles():
@@ -209,7 +224,7 @@ def test_services_have_no_import_cycles():
     graph = {}
     for path in (SRC / "foundry" / "services").glob("*.py"):
         me = module_name(path, SRC)
-        graph[me] = {t for _, t in imports(path, SRC) if t.startswith("foundry.services.") and t != me}
+        graph[me] = {t for _, t, _ in imports(path, SRC) if t.startswith("foundry.services.") and t != me}
     state: dict[str, int] = {}
 
     def visit(m, stack):
@@ -235,6 +250,8 @@ LEFTOVER_ALLOWED = {
     ("tests/test_api.py", 'for path in ("/classic", "/classic/", "/classic/runs/x"):'),  # this allowlist's own entry
     ("tests/test_architecture.py", "LEFTOVER = re.compile("),  # this test's own patterns
     ("tests/test_architecture.py", 'if top in ("jinja2", "markupsafe"):'),
+    ("tests/test_architecture.py", 'from foundry.data.store import _atomic_write\\nimport jinja2'),  # this allowlist's own entry (the checker's self-test)
+    ("tests/test_architecture.py", 'assert any("engine/sneaky.py:2 imports jinja2"'),  # this allowlist's own entry
     ("tests/test_architecture.py", '("README.md", "the server-rendered UI'),  # the allowlist's own entries
     ("tests/test_architecture.py", "# this allowlist's own entry"),
 }
