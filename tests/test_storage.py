@@ -7,7 +7,7 @@ import pytest
 from botocore.stub import ANY, Stubber
 from harness_helpers import PROMPT, write_config
 
-from foundry import storage
+from foundry.data import storage
 from foundry.config import StorageCfg, load_config
 from foundry.harness.runner import run
 

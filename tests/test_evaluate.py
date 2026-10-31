@@ -128,7 +128,7 @@ def test_injection_only_inside_data_block(tmp_path, fixture_run, monkeypatch):  
 
 
 def test_view_caps():
-    from foundry.runstore import RunDir
+    from foundry.data.runs import RunDir
     from conftest import FIXTURES
 
     rd = RunDir(FIXTURES / "clean")
@@ -212,7 +212,7 @@ def test_judge_equals_agent_warns(tmp_path, fixture_run, capsys):
 
 
 def test_concurrent_evaluation_refused(tmp_path, fixture_run):
-    from foundry.evaluate import lock
+    from foundry.data import locks as lock
 
     run = fixture_run("clean")
     token = lock.acquire(run)

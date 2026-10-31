@@ -29,8 +29,8 @@ def main(args) -> int:
     from foundry.config import ConfigError, load_eval_config
     from foundry.evaluate.evaluate import EvaluateError, evaluate
     from foundry.receiver import GRACE_S, Receiver
-    from foundry.runstore import RunDir
-    from foundry.tasks import UnknownPrompt, resolve_prompt
+    from foundry.data.runs import RunDir
+    from foundry.data.tasks import UnknownPrompt, resolve_prompt
 
     cmd = list(args.cmd)
     if cmd and cmd[0] == "--":

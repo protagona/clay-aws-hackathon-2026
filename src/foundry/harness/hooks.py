@@ -17,7 +17,7 @@ from strands.hooks import (
     HookRegistry,
 )
 
-from foundry.runstore import utc_now
+from foundry.data.runs import utc_now
 from foundry.tracing.base import TracerSet
 
 PREVIEW_CHARS = 1000

@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from foundry.contract import CONTRACT_VERSION, HarnessRef, ModelRef, Output, RunRecord, Step
-from foundry.runstore import RunDir
+from foundry.data.runs import RunDir
 
 MAX_FILE_BYTES = 50 * 1024 * 1024
 PREVIEW = 1000

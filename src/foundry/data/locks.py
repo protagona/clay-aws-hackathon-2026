@@ -7,7 +7,7 @@ import os
 import secrets
 from pathlib import Path
 
-from foundry.runstore import utc_now
+from foundry.data.runs import utc_now
 
 LOCK = ".evaluating"
 

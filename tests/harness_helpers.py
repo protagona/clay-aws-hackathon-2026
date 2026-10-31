@@ -4,7 +4,7 @@ import textwrap
 from pathlib import Path
 
 from foundry.config import load_config
-from foundry.tasks import Prompt
+from foundry.data.tasks import Prompt
 
 FAULT_SERVER = Path(__file__).with_name("mcp_fault_server.py")
 

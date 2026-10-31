@@ -21,7 +21,7 @@ from pathlib import Path
 
 from foundry.config import ConfigError, load_config, load_eval_config, project_root
 from foundry.contract import evaluation_interrupted
-from foundry.tasks import UnknownPrompt, load_prompts, resolve_prompt
+from foundry.data.tasks import UnknownPrompt, load_prompts, resolve_prompt
 
 SUMMARY_FIELDS = ["variant", "model", "prompt", "repeat", "status", "model_calls", "tool_calls", "tool_errors",
                   "tokens_in", "tokens_out", "cost_usd", "workflow", "output", "overall", "duration_s", "run_dir"]

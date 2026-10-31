@@ -16,7 +16,7 @@ import shutil
 from pathlib import Path
 
 from foundry.config import ConfigError
-from foundry.tasks import PROMPT_ID_RE, TOOL_RE, RubricError, parse_expected, parse_prompts
+from foundry.data.tasks import PROMPT_ID_RE, TOOL_RE, RubricError, parse_expected, parse_prompts
 
 MAX_TEXT = 20_000
 MAX_STEPS = 12

@@ -10,7 +10,7 @@ from foundry.models.base import ProviderError
 from foundry.rubrics.service import acquire, create_draft
 from foundry.rubrics.sources import SourceError
 from foundry.rubrics.store import Store, StoreError
-from foundry.tasks import RubricError, task_dir
+from foundry.data.tasks import RubricError, task_dir
 
 
 def add_parser(sub) -> None:
@@ -59,7 +59,7 @@ def main(args) -> int:
         if args.rubric_command == "list":
             versions = store.versions(Path(args.runs_dir))
             if not any(v["active"] for v in versions):
-                from foundry.tasks import load_rubric
+                from foundry.data.tasks import load_rubric
 
                 r, _ = load_rubric(store_dir / "rubric.json")
                 print(f"* {r.rubric_id} v{r.version} (rubric.json; enters the history on the first activation)")

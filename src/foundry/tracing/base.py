@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from foundry.contract import RunRecord, Step
-from foundry.runstore import utc_now
+from foundry.data.runs import utc_now
 
 
 class Tracer(Protocol):

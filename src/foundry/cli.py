@@ -131,8 +131,8 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 def _cmd_run(args: argparse.Namespace) -> int:
     from foundry.config import ConfigError, load_config
     from foundry.harness.runner import run
-    from foundry.runstore import is_valid_run_id
-    from foundry.tasks import UnknownPrompt, resolve_prompt
+    from foundry.data.runs import is_valid_run_id
+    from foundry.data.tasks import UnknownPrompt, resolve_prompt
 
     try:
         cfg = load_config(args.config)
@@ -214,7 +214,7 @@ def _cmd_batch(args: argparse.Namespace) -> int:
 def _cmd_import(args: argparse.Namespace) -> int:
     from foundry.config import ConfigError, load_eval_config
     from foundry.importer import ImportError_, import_spans, spans_from_file
-    from foundry.runstore import is_valid_run_id
+    from foundry.data.runs import is_valid_run_id
 
     if not is_valid_run_id(args.prompt_id):
         print(f"Invalid --prompt-id {args.prompt_id!r}: must match ^[A-Za-z0-9._-]+$", file=sys.stderr)

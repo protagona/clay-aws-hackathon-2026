@@ -26,9 +26,9 @@ from markupsafe import Markup
 from foundry.batch import spread
 from foundry.config import ConfigError, load_config
 from foundry.contract import evaluation_interrupted
-from foundry.evaluate import lock
-from foundry.runstore import RunDir, is_valid_run_id
-from foundry.tasks import parse_prompts
+from foundry.data import locks as lock
+from foundry.data.runs import RunDir, is_valid_run_id
+from foundry.data.tasks import parse_prompts
 from foundry.ui import dashboard
 from foundry.ui.render import render
 

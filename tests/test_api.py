@@ -297,7 +297,7 @@ def test_must_deny_paths_continued(tmp_path, monkeypatch):  # A3: the rest of th
 def test_must_deny_paths_classic_parity(tmp_path):  # A3: the remaining classic must-deny cases, ported (verify 2)
     import os
 
-    from foundry.evaluate import lock
+    from foundry.data import locks as lock
 
     runs = tmp_path / "runs"
     _seed(runs, "clean", "hostile", "recovered")

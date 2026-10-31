@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from foundry.contract import RunRecord, Step
-from foundry.tasks import Expectation
+from foundry.data.tasks import Expectation
 
 VERSION = "v2"
 WEIGHTS = {"completion": 0.40, "reliability": 0.20, "recovery": 0.15, "validity": 0.10, "efficiency": 0.15}

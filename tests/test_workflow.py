@@ -2,7 +2,7 @@ import pytest
 from conftest import FIXTURES
 
 from foundry.evaluate import workflow
-from foundry.runstore import RunDir
+from foundry.data.runs import RunDir
 
 
 def _score(name):
@@ -49,7 +49,7 @@ def test_efficiency_curve():
 
 # --- v2 sequence component (increment-4 S1-S4) ---
 
-from foundry.tasks import Expectation, RubricError, load_expected, load_prompts  # noqa: E402
+from foundry.data.tasks import Expectation, RubricError, load_expected, load_prompts  # noqa: E402
 
 DISCOVER = ["search_datasets", "list_datasets"]
 CONFIRM = ["get_dataset_details", "preview_dataset"]

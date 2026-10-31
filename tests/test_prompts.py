@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from foundry.prompts.store import PromptStore, StoreError
-from foundry.tasks import parse_expected, parse_prompts
+from foundry.data.prompts import PromptStore, StoreError
+from foundry.data.tasks import parse_expected, parse_prompts
 
 ROOT = Path(__file__).resolve().parents[1]
 REAL = [ROOT / "tasks/adb/prompts.jsonl", ROOT / "tasks/adb/expected.jsonl"]
@@ -106,7 +106,7 @@ def test_store_lock_and_atomic(store):  # P11
 
 
 def test_hand_edit_detected(store, monkeypatch):  # a hand edit between our read and our replace is refused, not lost
-    import foundry.prompts.store as mod
+    import foundry.data.prompts as mod
 
     real = mod.parse_prompts
 
@@ -198,7 +198,7 @@ def test_archive_hides_from_session_and_refuses_runs(api):  # P7
     assert r.status_code == 400 and "adb-002 is archived" in r.json()["error"]
     r = c.post("/api/batches", headers=h, json={"config": "offline", "prompts": ["adb-002"], "max_cost": 1})
     assert r.status_code == 400 and "archived" in r.json()["error"]
-    from foundry.tasks import load_prompts
+    from foundry.data.tasks import load_prompts
     assert any(p.prompt_id == "adb-002" for p in load_prompts("adb"))  # the CLI still resolves it (FOUNDRY_HOME copy)
     assert c.post("/api/prompts/adb-002/archive", headers=h, json={"archived": False}).status_code == 200
     assert "adb-002" in c.get("/api/session").json()["prompts"]

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from foundry.contract import RunRecord, Step
-from foundry.runstore import RunDir
+from foundry.data.runs import RunDir
 
 
 class JsonlTracer:

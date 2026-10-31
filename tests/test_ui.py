@@ -11,7 +11,7 @@ from conftest import FIXTURES, ROOT, classic_client
 from eval_helpers import eval_config, load
 from harness_helpers import write_config
 
-from foundry.evaluate import lock
+from foundry.data import locks as lock
 from foundry.evaluate.evaluate import evaluate
 from foundry.ui.app import create_app
 

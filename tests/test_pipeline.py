@@ -178,7 +178,7 @@ def test_hooks_refuse_after_timeout():  # P3: deterministic, no clock
 
 def test_struggles_name_revisions_not_approvals(tmp_path):  # report narrative for pipeline verdict notes
     from foundry.evaluate.summarize import struggles
-    from foundry.runstore import RunDir
+    from foundry.data.runs import RunDir
 
     turns = [PLAN, ANSWER, {"text": "VERDICT: revise"}, {"text": "v2"}, {"text": "VERDICT: approve"}]
     run_dir, _ = _run(tmp_path, turns)

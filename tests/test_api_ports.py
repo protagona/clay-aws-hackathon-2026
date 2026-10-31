@@ -12,7 +12,7 @@ from eval_helpers import eval_config, load
 from fastapi.testclient import TestClient
 from harness_helpers import write_config
 
-from foundry.evaluate import lock
+from foundry.data import locks as lock
 from foundry.evaluate.evaluate import evaluate
 from foundry.ui.app import create_app
 

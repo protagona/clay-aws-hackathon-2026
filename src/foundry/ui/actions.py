@@ -13,10 +13,10 @@ from pathlib import Path
 
 from foundry.config import ConfigError, load_config
 from foundry.contract import evaluation_interrupted
-from foundry.evaluate import lock
-from foundry.runstore import RunDir, is_valid_run_id, new_run_id
-from foundry.prompts.store import PromptStore, StoreError
-from foundry.tasks import RubricError, parse_prompts
+from foundry.data import locks as lock
+from foundry.data.runs import RunDir, is_valid_run_id, new_run_id
+from foundry.data.prompts import PromptStore, StoreError
+from foundry.data.tasks import RubricError, parse_prompts
 from foundry.ui import dashboard
 from foundry.ui.monitor import monitor
 from foundry.ui.render import render
@@ -305,7 +305,7 @@ def rubric_store(st, task: str):
 
 
 def rubric_overview(st, task: str) -> dict:
-    from foundry.tasks import RubricError, load_rubric
+    from foundry.data.tasks import RubricError, load_rubric
 
     store = rubric_store(st, task)
     try:
@@ -397,7 +397,7 @@ def rubric_source(st, task: str, draft_id: str) -> Path:
 
 def rubric_version(st, task: str, name: str) -> dict:
     from foundry.rubrics.store import StoreError
-    from foundry.tasks import RubricError, load_rubric
+    from foundry.data.tasks import RubricError, load_rubric
 
     store = rubric_store(st, task)
     try:
@@ -408,7 +408,7 @@ def rubric_version(st, task: str, name: str) -> dict:
 
 
 def _rubric_with_meta(store, path: Path) -> dict:
-    from foundry.tasks import RubricError, load_rubric
+    from foundry.data.tasks import RubricError, load_rubric
 
     try:
         rubric, raw = load_rubric(path)
@@ -569,7 +569,7 @@ def core_scores(st, run_id: str):
 
 
 def _need_prompt_id(pid: str) -> None:
-    from foundry.tasks import PROMPT_ID_RE
+    from foundry.data.tasks import PROMPT_ID_RE
 
     if not PROMPT_ID_RE.match(pid) or ".." in pid:
         raise UiError(404, "No such prompt")
