@@ -230,3 +230,66 @@ src/foundry/
   - `server.py` calls `api.errors.install(app)` and includes the api router **before** the SPA catch-all, keeping today's route order.
   - The 503 text and the `/classic` redirect are fixed, as in the inventory.
 - **Also updated:** `scripts/judge_sanity.py`'s imports, the `harness/mcp.py:72` comment, the `config/*.toml` comments naming `src/foundry/mcp_servers/stac.py`, and `tests/test_api_ports.py`.
+
+**Pass 2: blockers resolved. These replace the corresponding pass 1 items.**
+1. **No services cycle.** The pure aggregation goes to a leaf module, `services/stats.py`: `build`, `costs`, `model_key`, `MAX_COLOURED`, `_nice_axis` and the scatter and struggle helpers, everything in today's `ui/dashboard.py` except the view assembly. It imports only `engine.batch.spread` and the kernel.
+   - `services/runs.py` (board, cards, compare) imports `stats`.
+   - `services/dashboard.py` (`dashboard_view` only) imports `stats`, `runs.entries` and `rubrics.rubric_options`.
+   - `services/rubrics.py` imports neither.
+
+   The final graph: `stats` ← `runs` ← `dashboard`, with `rubrics` ← `runs` and `rubrics` ← `dashboard`. There's no cycle, and `test_architecture.py` gets a cycle check over `foundry.services.*` to prove it.
+2. **Every filesystem call in services moves to data,** where it's named:
+   - `data/project.py`: `config_stems(root)` (was `_configs`'s glob), `task_ids(root)` (was `_task_ids`'s glob), `active_rubric_sha(root, task)` (was `_rubric_options`' `read_bytes`), and `config_path(root, stem)`
+   - `data/rubrics.py`: `Store.write_draft_meta(...)` (was `rubrics/service.create_draft`'s `meta.json` write)
+   - `services/jobs.py`: reads the job log (was `api.py:354`), on its allowlist with the subprocesses
+   - `data/runs.py`: `read_report(path)` and `read_trace_steps(path)` (for `run_view` and card extras)
+   - `data/tool_cache.py`: `read(runs_dir)`
+   - `data/rubrics.py`: `read_source(path, limit)` (for the draft source text)
+
+   If the rule finds any other call, it's a build failure to fix in that slice, never to allowlist.
+3. **The grep gate and the test name** are resolved in the inventory's pass 2 record: a pytest with an explicit allowlist replaces the grep, and the test is renamed `test_must_deny_paths_parity`.
+4. **`_check` stays in `engine/rubrics/draft.py`,** since only `draft()` uses it. `data/rubrics.py` takes only `check`, `form_shape`, `canonical`, `validation_error`, `as_rubric_json`, the regexes, the limits, `Source` and `DraftResult`, and no private names cross a layer.
+
+**Pass 2 questions, decided:**
+- **`run_rubric`** goes to `services/runs.py`. It uses `data.runs` and `data.rubrics` directly, and `runs` imports `rubrics` for `rubric_info` and `rubric_options`. `rubrics` never imports `runs`, so there's no cycle.
+- **Batch rows:** `data.batches.batch_rows(path, runs_dir)` takes `runs_dir` explicitly to decide each row's `link`, exactly as today. `batch_list(batches_dir)` is unchanged.
+
+**Pass 2 minors, applied:**
+- **Patching the model provider:** services reach `build_provider` the way the code does today, as the module attribute `registry.build_provider(...)` at call time, never `from … import build_provider` at the top. So `test_api_ports.py`'s patch of `foundry.engine.models.registry.build_provider` still intercepts it.
+- **The run-detail route** renders `report_md` into `report_html` and removes `report_md`, keeping the response shape. `test_api.py::test_run_detail_and_404` gains `assert "report_md" not in body`.
+- **Build order, revised:**
+  - slice 2: data
+  - slice 3: engine
+  - **slice 4: remove the classic UI** (its own commit; the ports already pass)
+  - slice 5: services, api, ui and server
+  - slice 6: the architecture test made strict (its allowlist emptied) and the docs
+
+  Deleting the classic UI before slice 5 means its handlers are never rewired. The inventory's "5b" becomes slice 4.
+- **Public helpers in `data.runs`:** `num` and `float_or_none` (were `_num` and `_float`), with the other readers.
+- **Old package directories:** after each `git mv`, any directory left holding only `__pycache__` is deleted (`find src/foundry -type d -empty -delete` after removing the `__pycache__` dirs). Otherwise the old paths would still import as namespace packages. The import sweep then asserts that `import foundry.harness` fails.
+- **The jinja2 rule** catches only a direct `import jinja2`. With the classic UI deleted and `jinja2` out of the dependencies, nothing can pull it in indirectly.
+
+**Pass 3 (the last allowed pass): one blocker, taken to the user with a fix. The user approved it (2026-10-31): "Yes, build with these fixes".**
+- **The `runs` ↔ `prompts` cycle.** `task_prompts`, `_check_runnable` (renamed `check_runnable`) and `_rel` (renamed `relative_paths`) go to `services/configs.py`, a leaf that imports only data, engine and kernel. **The full services import graph** is enforced by a no-cycles test over `foundry.services.*`:
+
+  | Module | Imports |
+  |---|---|
+  | `errors`, `stats`, `run_view`, `configs`, `workspace` | no other services module (`stats` and `run_view` use engine, data and kernel only) |
+  | `jobs` | `workspace` (`Workspace` is used only as a string annotation, so `workspace` never imports `jobs`) |
+  | `rubrics` | `configs`, `errors` |
+  | `runs` | `rubrics`, `stats`, `run_view`, `jobs`, `configs`, `errors` |
+  | `prompts` | `runs`, `stats`, `configs`, `errors` |
+  | `tools` | `prompts`, `runs`, `jobs`, `configs`, `errors` |
+  | `batches` | `configs`, `jobs`, `errors` |
+  | `imports` | `configs`, `errors` |
+  | `dashboard` | `stats`, `runs`, `rubrics` |
+
+**Pass 3 questions and minors, applied:**
+- **Static string checks:** besides the architecture test, `test_architecture.py::test_no_stale_module_paths` fails on any `-m foundry.(harness|mcp_servers)` or `files("foundry.templates")` in `src/`, `tests/`, `scripts/` or `config/`. It replaces pass 1's `-m` grep. Stale imports are caught by the "unclassified target" rule.
+- **Every module under `src/foundry` must be classified by its own path.** An orphan such as `rubrics/__init__.py` or a leftover `evaluate/__init__.py` fails the test. Each new package has its own `__init__.py` with a one-line description of the layer.
+- **The kernel may read files:** `contract.validate_run_dir`, `contract.evaluation_interrupted` and `config.load_config` read run files and TOML as the shared kernel. Spec L1's "data owns every read" is narrowed to "every read by services, api and ui", which `test_architecture.py` enforces.
+- **`GET /api/rubric/drafts/{id}/source`:** the route gets the bytes from `services.rubrics.draft_source()`, which calls `data.rubrics.read_source(path, None)`. The route makes no filesystem call.
+- **`data.runs.read_trace_lenient(path)`** keeps `_card_extras`' lenient parse exactly as it is: raw lines, `errors="replace"`, dicts only, bad lines skipped. `run_view` keeps using `RunDir.read_steps`. These are two named functions, so there's no behaviour change.
+- **`/assets` traversal checks** target files that exist: `/assets/..%2Findex.html` and `/assets/%2e%2e/%2e%2e/spa.py` must give 404 without the file's contents.
+- **A visible change outside `/api`:** a missing asset now returns a plain 404, no longer JSON. B1 covers only `/api`.
+- **Stale path text** is updated in slice 3 (engine): README lines 120, 206 and 208, the `pyproject.toml:49` comment, and `web/src/types.ts:1`.

@@ -123,3 +123,37 @@ grep -rnE "classic|TEMPLATES|Jinja2Templates|templates/[a-z_]+\.html|monitor\.js
 - **`render`:** services return Markdown, and the API renders it (design gate record, item 1).
 - **The 503 page:** it gives only the build command (above).
 - **Migration notice for bookmarks:** the README's "Classic UI" line is replaced by one sentence: "The classic UI (`/classic`) was removed in increment 16; use `/`." "Page not found" on an old bookmark is accepted.
+
+**Pass 2: all blockers resolved. These replace the corresponding pass 1 items.**
+1. **No name collision:** `test_must_deny_paths_classic_parity` becomes `test_must_deny_paths_parity`. `test_must_deny_paths` already exists at `test_api.py:229`, and a duplicate name would silently shadow it. Ruff's F811 check is in the verify run.
+2. **The verification is a test, not a grep.** `tests/test_architecture.py::test_no_classic_ui_left` scans `src/`, `tests/`, `scripts/`, `web/src/` and `README.md` (text files only, skipping `__pycache__` and `web_dist`) for `classic`, `Jinja2Templates`, `TEMPLATES`, `monitor.js`, `/classic`, `jinja2` and `markupsafe`. It fails on any hit not in an explicit allowlist of `(path, exact substring)` pairs, each with a reason:
+   - README's removal sentence
+   - `test_api.py::test_spa_served_and_fallback`'s `/classic` fall-through assertions
+   - `test_api_ports.py`'s docstring
+   - `test_dashboard.py`'s two history comments
+   - this test's own pattern list
+
+   An allowlisted pair that no longer matches anything also fails, so the list can't go stale. This replaces both grep commands, and the comment-line exclusion is gone. `grep -n "jinja2\|markupsafe" pyproject.toml uv.lock` must print nothing (`jinja2` is a direct dependency only).
+3. **The fall-through is tested fully:** `test_spa_served_and_fallback` asserts that `/classic`, `/classic/` and `/classic/runs/x` each return 200 with the SPA index (no 307).
+
+**Pass 2 questions, decided:**
+- **The static allowlist checks move to `/assets`,** not dropped: `test_spa_served_and_fallback` adds `/assets/..%2Fapi.py`, `/assets/%2e%2e/%2e%2e/pyproject.toml` and a null byte, each refused with 404 and never a file's contents.
+- **The removal is its own commit (slice 5b),** after the layer move (5a), so it can be reverted alone.
+- **Stale security docstrings:** `monitor.py` (now `services/run_view.py`), `actions.py` and `api.py` say untrusted text is "left to Jinja's autoescaping". They're rewritten to state the real rule: services return raw text; only `api/render.py` produces HTML (`text_html`, `report_html`); the SPA renders everything else as text.
+- **`markupsafe`** leaves with `jinja2`; it's imported only by the classic template filter.
+- **Migration guide, addition:** scripts that posted classic forms must call `/api/*` with the `x-csrf-token` header (from `GET /api/session`) and a JSON body (multipart for uploads).
+- **A same-origin write being accepted** is covered: both e2e scripts make real browser writes (New run, prompts, rubric draft, steps), and `test_api.py` sends writes without an `Origin` header. The client-side model filter is covered by Vitest ("key numbers follow the model filter").
+
+**Pass 3 (the last allowed pass): two blockers, taken to the user with fixes. The user approved them (2026-10-31): "Yes, build with these fixes".**
+1. **`/assets` with a null byte** (`/assets/%00`, `/assets/a%00b`) returns 500 today, because `Path.resolve` raises `ValueError`. **Fix in slice 4:** the assets handler returns a plain 404. This is the second allowed behaviour change (spec B1), and `test_spa_served_and_fallback` asserts it.
+2. **Living docs, rewritten in slice 4:**
+   - `docs/security/threat-model.md`: "Jinja autoescape" becomes the real rule: services return raw text, only `api/render.py` makes HTML, and the SPA renders the rest as text. Its coverage points at `test_run_text_is_inert_but_still_markdown`, `test_must_deny_paths`, `test_must_deny_paths_parity` and `test_security_headers_and_framing`, replacing the deleted `test_ui.py` tests.
+   - `README.md`: line 405 ("FastAPI and Jinja2, server-rendered, no JavaScript build") becomes "FastAPI JSON API serving a prebuilt TypeScript app", and line 68 gets the removal sentence.
+
+**Pass 3 questions, decided:**
+- **`test_no_classic_ui_left`** is **case-insensitive, on whole words.** Its patterns are `\bclassic\b`, `\bjinja2?\b`, `\bmarkupsafe\b`, `monitor\.js` and `Jinja2Templates`. `TEMPLATES` is dropped as a pattern, because it would match the prompt-template package. It **lands in slice 4,** together with the rewording of every hit outside its allowlist:
+  - the docstrings in `ui/actions.py`, `ui/api.py` and `ui/monitor.py`
+  - the comments in `test_api.py` and `test_api_ports.py`
+  
+  Rewording comments is allowed under B1, since it changes no assertion.
+- **Duplicate test names:** `test_architecture.py::test_no_duplicate_test_names` uses `ast` over `tests/` and fails on two top-level `def test_x` with the same name in one module, so the F811 risk is caught by the suite itself, not by a manual ruff run.
