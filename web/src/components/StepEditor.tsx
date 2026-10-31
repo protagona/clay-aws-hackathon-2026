@@ -1,13 +1,15 @@
 // Increment 13: a prompt's expected tool steps - an ordered list of steps, each "any of" one or more tools.
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
+import type { ToolMenu } from "../types";
+import { ToolPicker } from "./ToolPicker";
 
-export function StepEditor({ stages, tools, onSave, error }: {
-  stages: string[][]; tools: string[]; onSave: (stages: string[][]) => Promise<void>; error: string | null;
+const EMPTY: ToolMenu = { tools: [], listed_at: null, errors: [], refreshing: false };
+
+export function StepEditor({ stages, menu = EMPTY, onRefresh = () => {}, onSave, error }: {
+  stages: string[][]; menu?: ToolMenu; onRefresh?: () => void; onSave: (stages: string[][]) => Promise<void>; error: string | null;
 }) {
   const [steps, setSteps] = useState<string[][]>(stages);
-  const [draft, setDraft] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
-  const list = useId();
   // Reset only when the saved steps really change: the parent passes a fresh array on every render, and resetting on
   // identity would wipe unsaved edits (verify finding).
   const saved = JSON.stringify(stages);
@@ -19,15 +21,10 @@ export function StepEditor({ stages, tools, onSave, error }: {
     [next[i], next[i + d]] = [next[i + d], next[i]];
     setSteps(next);
   };
-  const add = (i: number) => {
-    const t = (draft[i] ?? "").trim();
-    if (t && !steps[i].includes(t)) set(i, [...steps[i], t]);
-    setDraft({ ...draft, [i]: "" });
-  };
+  const add = (i: number, t: string) => { if (t && !steps[i].includes(t)) set(i, [...steps[i], t]); };
 
   return (
     <div className="space-y-3">
-      <datalist id={list}>{tools.map((t) => <option key={t} value={t} />)}</datalist>
       {steps.length === 0 && <p className="text-sm text-slate-500">No steps: this prompt's workflow score has no sequence check.</p>}
       <ol className="space-y-2">
         {steps.map((step, i) => (
@@ -39,13 +36,8 @@ export function StepEditor({ stages, tools, onSave, error }: {
                 {t}<button className="text-slate-500 hover:text-rose-600" aria-label={`Remove ${t} from step ${i + 1}`} onClick={() => set(i, step.filter((x) => x !== t))}>×</button>
               </span>
             ))}
-            <span className="inline-flex items-center gap-1">
-              <input list={list} aria-label={`Add a tool to step ${i + 1}`} placeholder="+ tool" value={draft[i] ?? ""}
-                className="w-48 max-w-full rounded-full bg-white px-3 py-1 font-mono text-xs ring-1 ring-slate-300 dark:bg-slate-900 dark:ring-slate-700"
-                onChange={(e) => setDraft({ ...draft, [i]: e.target.value })}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(i); } }} />
-              <button className="btn-ghost text-xs" onClick={() => add(i)} disabled={!(draft[i] ?? "").trim()}>Add</button>
-            </span>
+            <ToolPicker label={`Add a tool to step ${i + 1}`} tools={menu.tools ?? []} onPick={(t) => add(i, t)} refreshing={menu.refreshing} loading={menu === EMPTY}
+              errors={menu.errors} listedAt={menu.listed_at} onRefresh={onRefresh} />
             <span className="ml-auto flex gap-1">
               <button className="btn-ghost" aria-label={`Move step ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}>↑</button>
               <button className="btn-ghost" aria-label={`Move step ${i + 1} down`} disabled={i === steps.length - 1} onClick={() => move(i, 1)}>↓</button>

@@ -1,0 +1,11 @@
+{"listed_at": "2026-10-31T17:00:00Z",
+ "servers": [{"name": "roda", "package": "awslabs.roda-mcp-server", "version": "0.1.7", "error": null},
+             {"name": "stac", "package": "foundry.mcp_servers.stac", "version": "0.1.0", "error": null}],
+ "tools": [
+  {"server": "roda", "name": "get_dataset_details", "description": "Get detailed information about a specific dataset."},
+  {"server": "roda", "name": "list_datasets", "description": "List RODA datasets with optional tag filtering."},
+  {"server": "roda", "name": "preview_dataset", "description": "Show the S3 bucket structure for a public dataset (no AWS account required)."},
+  {"server": "roda", "name": "search_datasets", "description": "Search RODA datasets by keyword with optional filters."},
+  {"server": "stac", "name": "get_item", "description": "Get one scene's details: date, platform, cloud cover, projection, and every asset."},
+  {"server": "stac", "name": "list_collections", "description": "List the imagery collections the STAC API offers (id, title, temporal extent, license)."},
+  {"server": "stac", "name": "search_items", "description": "Find scenes (STAC items) in one collection that intersect a bbox and dates."}]}

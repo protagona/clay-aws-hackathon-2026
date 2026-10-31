@@ -575,18 +575,96 @@ def _need_prompt_id(pid: str) -> None:
         raise UiError(404, "No such prompt")
 
 
-def tool_suggestions(st, task: str) -> list[str]:
-    tools: set[str] = set()
+TOOLS_CACHE = ".ui-tools.json"
+
+
+def _tools_cache(st) -> dict | None:
+    """The last `foundry tools` listing, if it is a regular file holding the expected shape; anything else is ignored."""
+    import json
+
+    path = st.runs_dir / TOOLS_CACHE
+    if not _core()._regular(path):
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("tools"), list) or not isinstance(data.get("servers"), list):
+        return None
+    return data
+
+
+def _tools_job(st):
+    return next((j for j in list(st.jobs.values()) if j.kind == "tools" and j.alive), None)
+
+
+def refresh_tools(st, *, quiet: bool = False) -> None:
+    """Start `foundry tools` in the background (409 if one is already running, unless quiet)."""
+    with st.lock:
+        if _tools_job(st) is not None:
+            if quiet:
+                return
+            raise UiError(409, "The tool list is already being refreshed")
+        _core()._spawn(st, "tools", "tools", "Tool listing", ["tools", "--out", str(st.runs_dir / TOOLS_CACHE)])
+
+
+def tool_menu(st, task: str) -> dict:
+    """Every tool: the servers' full menu (cached listing) plus anything seen in traces or expected steps (T2)."""
+    store = prompt_store(st, task)
+    used: dict[tuple, int] = {}  # (server, name) -> runs that called it
     for e in _entries(st):
+        seen = set()
         for s in e["steps"]:
             if getattr(s, "type", None) == "tool_call" and isinstance(getattr(s, "name", None), str):
-                tools.add(s.name)
-                if isinstance(getattr(s, "server", None), str) and s.server:
-                    tools.add(f"{s.server}/{s.name}")
-    for r in _store(st, prompt_store(st, task).rows):
+                server = s.server if isinstance(getattr(s, "server", None), str) and s.server else None
+                seen.add((server, s.name))
+        for key in seen:
+            used[key] = used.get(key, 0) + 1
+    cache = _tools_cache(st)
+    tools: dict[tuple, dict] = {}
+    for t in (cache or {}).get("tools", []):
+        if isinstance(t, dict) and isinstance(t.get("name"), str) and isinstance(t.get("server"), str):
+            desc = t.get("description")
+            server, name = t["server"][:64], t["name"][:128]
+            tools[(server, name)] = {"server": server, "name": name,
+                                               "description": desc[:600] if isinstance(desc, str) else None, "runs": 0}
+    def entry(server, name) -> dict:
+        """The menu entry for a tool: an exact (server, name) match, else the only entry with that bare name (a trace
+        step or expected step without a server), else a new entry with no description (grouped under "other")."""
+        if (server, name) in tools:
+            return tools[(server, name)]
+        if server is not None and (None, name) in tools:  # a serverless entry seen first: it is this server's tool
+            t = tools.pop((None, name))
+            t["server"] = server
+            tools[(server, name)] = t
+            return t
+        if server is None:
+            same = [t for (s, n), t in tools.items() if n == name]
+            if len(same) == 1:
+                return same[0]
+        return tools.setdefault((server, name), {"server": server, "name": name, "description": None, "runs": 0})
+
+    for (server, name), n in used.items():
+        entry(server, name)["runs"] += n
+    for r in _store(st, store.rows):
         for step in r["stages"] or []:
-            tools.update(step)
-    return sorted(tools)[:500]
+            for t in step:
+                server, _, name = t.rpartition("/")
+                entry(server or None, name)
+    jobs = [j for j in list(st.jobs.values()) if j.kind == "tools"]
+    refreshing = any(j.alive for j in jobs)
+    if cache is None and not jobs:  # list once per UI session; a failed listing is reported, not retried on every GET
+        refresh_tools(st, quiet=True)
+        refreshing = True
+    errors = [{"server": str(s.get("name"))[:64], "error": s["error"][:500]} for s in (cache or {}).get("servers", [])
+              if isinstance(s, dict) and isinstance(s.get("error"), str)]
+    last = jobs[-1] if jobs else None
+    if not refreshing and last is not None and last.exit_code not in (0, None):
+        errors.append({"server": "*", "error": "The last tool listing failed; see the job log. Refresh to try again."
+                       + (" Showing the list from before." if cache is not None else "")})
+    return {"tools": sorted(tools.values(), key=lambda t: (t["server"] or "~", t["name"])),
+            "listed_at": cache["listed_at"][:40] if cache and isinstance(cache.get("listed_at"), str) else None,
+            "errors": errors, "refreshing": refreshing}
 
 
 def prompt_create(st, task: str, pid, text) -> str:

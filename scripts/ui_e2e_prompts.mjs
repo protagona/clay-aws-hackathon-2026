@@ -7,7 +7,7 @@
 // two expected steps, tries to run it on the offline config (refused: no script), archives it and checks it left the
 // New run picker. Pages are checked for a title, caption and no sideways scroll at 1440 and 375 px.
 import { spawn } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -17,6 +17,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const home = mkdtempSync(join(tmpdir(), "foundry-prompts-e2e-"));
 cpSync(join(repo, "tasks"), join(home, "tasks"), { recursive: true });
 cpSync(join(repo, "config"), join(home, "config"), { recursive: true });
+mkdirSync(join(home, "runs"));  // a seeded tool list, so no live `foundry tools` listing starts (increment 15)
+copyFileSync(join(repo, "scripts/e2e/tools-cache.json"), join(home, "runs", ".ui-tools.json"));
 
 function findChrome() {
   if (process.env.CHROME) return process.env.CHROME;

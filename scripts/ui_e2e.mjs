@@ -1,20 +1,47 @@
-// End-to-end check of the TypeScript UI (increment 9, T3) against a running `foundry ui`, driven over the Chrome
-// DevTools Protocol with Node's built-in WebSocket (no npm packages). Needs a headless Chromium: by default the
-// Playwright-cached chrome-headless-shell, or CHROME=/path/to/chrome.
+// End-to-end check of the TypeScript UI (increment 9, T3), driven over the Chrome DevTools Protocol with Node's
+// built-in WebSocket (no npm packages). Needs a headless Chromium: by default the Playwright-cached
+// chrome-headless-shell, or CHROME=/path/to/chrome.
 //
-//   node scripts/ui_e2e.mjs [http://127.0.0.1:8765] [screenshot-dir]
+//   node scripts/ui_e2e.mjs [screenshot-dir]
+//
+// Increment 15: it starts its own `foundry ui` (port 8798) on a temp copy of tasks/, config/ and runs/, so the run it
+// starts never lands on the real board; it refuses to go on unless that server serves the copy, and checks at the end
+// that the real runs/ is unchanged.
 //
 // Starts an offline run from the New run dialog, waits for its card in "Needs attention", clicks Evaluate, and
 // waits for it to reach "Scored" with a score ring, all without a page reload. Then screenshots the board and the
 // drawer in light and dark at 1440 and 375 px.
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
-const base = process.argv[2] ?? "http://127.0.0.1:8765";
-const out = process.argv[3];
+const repo = new URL("..", import.meta.url).pathname;
+const base = "http://127.0.0.1:8798";
+const out = process.argv[2];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Run directories only: the live server may write its own dot-files (a tool list) meanwhile.
+const realRuns = () => (existsSync(join(repo, "runs")) ? readdirSync(join(repo, "runs")).filter((n) => !n.startsWith(".")).sort().join("\n") : "");
+const chrome = findChrome();  // before anything starts: a missing browser exits with nothing to clean up
+const before = realRuns();
+const home = mkdtempSync(join(tmpdir(), "foundry-e2e-"));
+cpSync(join(repo, "tasks"), join(home, "tasks"), { recursive: true });
+cpSync(join(repo, "config"), join(home, "config"), { recursive: true });
+if (existsSync(join(repo, "runs"))) {  // real data for the pages, minus job logs, locks and the cached tool list
+  cpSync(join(repo, "runs"), join(home, "runs"), { recursive: true,
+    filter: (src) => !/[\\/](\.ui-jobs|\.ui-tools\.json|\.eval\.lock|[^\\/]*\.lock)$/.test(src) });
+} else mkdirSync(join(home, "runs"));
+copyFileSync(join(repo, "scripts/e2e/tools-cache.json"), join(home, "runs", ".ui-tools.json"));  // no live listing
+const server = spawn("uv", ["run", "foundry", "ui", "--port", "8798", "--runs-dir", join(home, "runs")],
+  { cwd: repo, env: { ...process.env, FOUNDRY_HOME: home }, stdio: "ignore" });
+let up = null;
+for (let i = 0; i < 120 && !up; i++) { try { up = await (await fetch(`${base}/api/prompts?task=adb`)).json(); } catch { await sleep(500); } }
+if (!up || up.root_name !== basename(home)) {
+  console.error(`FAIL: ${up ? `the server serves "${up.root_name}", not the temp copy; refusing to go on` : "the server didn't start"}`);
+  server.kill();
+  await Promise.race([new Promise((r) => server.once("exit", r)), sleep(5000)]);
+  rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); process.exit(1);
+}
 
 function findChrome() {
   if (process.env.CHROME) return process.env.CHROME;
@@ -31,11 +58,17 @@ function findChrome() {
   process.exit(3);
 }
 
-const proc = spawn(findChrome(), ["--headless", "--disable-gpu", "--hide-scrollbars", "--remote-debugging-port=9335",
+const proc = spawn(chrome, ["--headless", "--disable-gpu", "--hide-scrollbars", "--remote-debugging-port=9335",
   `--user-data-dir=${join(tmpdir(), "foundry-e2e")}`, "about:blank"], { stdio: "ignore" });
 let targets;
 for (let i = 0; i < 50 && !targets; i++) {
   try { targets = await (await fetch("http://127.0.0.1:9335/json")).json(); } catch { await sleep(200); }
+}
+if (!targets?.find((t) => t.type === "page")) {  // the browser never answered: stop what started, leave nothing behind
+  console.error("FAIL: headless Chrome's DevTools endpoint never answered");
+  proc.kill(); server.kill();
+  await Promise.race([new Promise((r) => server.once("exit", r)), sleep(5000)]);
+  rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); process.exit(1);
 }
 const ws = new WebSocket(targets.find((t) => t.type === "page").webSocketDebuggerUrl);
 await new Promise((r) => (ws.onopen = r));
@@ -53,7 +86,17 @@ async function until(expr, what, ms = 120000) {
   while (Date.now() < end) { const v = await js(expr); if (v) return v; await sleep(300); }
   throw new Error(`timed out waiting for ${what}`);
 }
-const fail = (msg) => { console.error(`FAIL: ${msg}`); ws.close(); proc.kill(); process.exit(1); };
+const fail = (msg) => { throw new Error(msg); };  // a throw: nothing after a failed check runs
+const exited = (p) => (p.exitCode !== null ? Promise.resolve() : Promise.race([new Promise((r) => p.once("exit", r)), sleep(5000)]));
+async function done(code) {
+  try { ws.close(); } catch { /* closed */ }
+  proc.kill(); server.kill();
+  await Promise.all([exited(proc), exited(server)]);
+  rmSync(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  if (realRuns() !== before) { console.error("FAIL: the real runs/ changed during the test"); process.exit(1); }  // E2
+  if (code === 0) console.log("real runs/ unchanged\nPASS");
+  process.exit(code);
+}
 
 // Shorthand an observer can't decode (increment 12, C5). Matched case-insensitively against visible UI text, leaving out
 // what agents and the judge wrote (the report, model replies, rubric text, prompt text: [data-content], .report, pre).
@@ -204,6 +247,44 @@ try {
   await send("Emulation.setEmulatedMedia", { features: [] });
   console.log("logo and tab icon follow the theme");
 
+  // Increment 15: the Setup menu reaches each setup page, at desktop and phone width.
+  for (const w of [1440, 375]) {
+    await send("Emulation.setDeviceMetricsOverride", { width: w, height: 900, deviceScaleFactor: 1, mobile: w < 600 });
+    for (const [item, path, from] of [["Prompts", "/prompts", "/"], ["Rubric", "/rubric", "/prompts"], ["Import", "/import", "/rubric"]]) {
+      await send("Page.navigate", { url: base + from });  // from a setup page too: the label is longer there
+      await until("!!document.querySelector('main h1')", "the board");
+      await js(`[...document.querySelectorAll('button[aria-haspopup="menu"]')].find(b => b.offsetParent !== null).click()`);
+      await until(`!!document.querySelector('[role="menu"]')`, "the Setup menu");
+      const box = await js(`(() => { const r = document.querySelector('[role="menu"]').getBoundingClientRect(); return [r.left, r.right]; })()`);
+      if (box[0] < 0 || box[1] > w) fail(`the Setup menu runs off screen at ${w}px from ${from}: ${box}`);
+      await js(`[...document.querySelectorAll('[role="menuitem"]')].find(a => a.textContent.startsWith(${JSON.stringify(item)})).click()`);
+      await until(`location.pathname === ${JSON.stringify(path)}`, `${item} through the Setup menu`);
+      await until(`[...document.querySelectorAll('button[aria-haspopup="menu"]')].find(b => b.offsetParent !== null)?.textContent.includes(${JSON.stringify(`Setup · ${item}`)})`,
+        `the Setup button to read "Setup · ${item}" at ${w}px`, 5000);
+    }
+  }
+  await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+  console.log("Setup menu reaches Prompts, Rubric and Import at 1440 and 375 px");
+
+  // Increment 15: the tool picker lists the servers' tools with descriptions.
+  await send("Page.navigate", { url: base + "/prompts/adb-001" });
+  await until(`!!document.querySelector('[role="combobox"]')`, "the step editor");
+  await js(`document.querySelector('[role="combobox"]').focus()`);
+  const desc = await until(`[...document.querySelectorAll('[role="option"]')].map(o => o.textContent).find(t => t.includes('list_collections'))`, "the tool list");
+  if (!desc.includes("imagery collections")) fail(`the picker shows no description: ${desc}`);
+  console.log("tool picker shows descriptions");
+  for (const w of [375, 320]) {  // verify finding: at phone width the panel must stay on screen
+    await send("Emulation.setDeviceMetricsOverride", { width: w, height: 900, deviceScaleFactor: 1, mobile: true });
+    await send("Page.navigate", { url: base + "/prompts/adb-006" });  // a step with a chip, so the box sits further right
+    await until(`!!document.querySelector('[role="combobox"]')`, "the step editor");
+    await js(`document.querySelector('[role="combobox"]').focus()`);
+    await until(`!!document.querySelector('[role="listbox"]')`, "the tool list");
+    const r = await js(`(() => { const b = document.querySelector('[role="listbox"]').parentElement.getBoundingClientRect(); return [b.left, b.right]; })()`);
+    if (r[0] < 0 || r[1] > w) fail(`the tool picker runs off screen at ${w}px: ${r}`);
+  }
+  await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+  console.log("tool picker stays on screen at 375 and 320 px");
+
   // Increment 12: every page explains itself (C1, C2, C5, C8), at phone and desktop width, light and dark.
   await clarity(runId);
 
@@ -236,9 +317,8 @@ try {
     if (anim !== "none") fail("animations still run under prefers-reduced-motion");
     console.log(`screenshots in ${out}`);
   }
-  console.log("PASS");
+  await done(0);
 } catch (e) {
-  fail(e.message);
+  console.error(`FAIL: ${e.message}`);
+  await done(1);
 }
-ws.close();
-proc.kill();

@@ -132,7 +132,7 @@ export function RunDrawer({ id, onEvaluate, refresh = 0 }: { id: string; onEvalu
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate text-xs text-slate-500">{d ? `${d.run.prompt_id} · ${d.run.model.id}${d.run.agents?.mode === "pipeline" ? " · pipeline" : ""}` : id}</div>
-            <div className="mt-0.5 line-clamp-2 font-semibold" data-content>{d?.run.prompt ?? id}</div>
+            <h2 className="mt-0.5 line-clamp-2 font-semibold" data-content>{d?.run.prompt ?? id}</h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {d && <Pill tone={tone}>{status === "running" && <span className="h-1.5 w-1.5 rounded-full bg-sky-500" aria-hidden="true" />}{statusWord(status)}</Pill>}

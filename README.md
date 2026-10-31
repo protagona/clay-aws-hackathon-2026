@@ -75,7 +75,7 @@ cd web && npm ci
 npm run dev       # Vite on :5173, proxying /api to a running `foundry ui`
 npm test          # Vitest
 npm run build     # writes src/foundry/ui/web_dist/; commit it so `foundry ui` needs no Node
-node ../scripts/ui_e2e.mjs http://127.0.0.1:8765 /tmp/shots   # end-to-end check in headless Chromium
+node ../scripts/ui_e2e.mjs /tmp/shots   # end-to-end check in headless Chromium, on its own server and a copy of runs/
 ```
 
 The CLI below does the same things.

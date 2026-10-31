@@ -311,3 +311,7 @@ export interface PromptDetail {
   mean: number | null;
   runs: { run_id: string; model: string; started_at: string | null; overall: number | null; cost: number | null }[];
 }
+
+// Increment 15: the tool menu (every tool the servers offer, plus any seen in runs).
+export interface ToolInfo { name: string; server: string | null; description: string | null; runs: number }
+export interface ToolMenu { tools: ToolInfo[]; listed_at: string | null; errors: { server: string | null; error: string }[]; refreshing: boolean }

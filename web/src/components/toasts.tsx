@@ -53,7 +53,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 export function jobToasts(jobs: Job[], seen: Set<string>, since: number): Toast[] {
   const out: Toast[] = [];
   for (const j of jobs) {
-    if (j.alive || seen.has(j.id) || !j.finished_at || j.finished_at < since) continue;
+    if (j.alive || seen.has(j.id) || !j.finished_at || j.finished_at < since || j.kind === "tools") continue;  // background listing
     seen.add(j.id);
     const ok = j.exit_code === 0;
     const what = j.kind === "evaluate" ? "Scoring" : j.kind === "batch" ? "Batch" : "Run";

@@ -7,7 +7,7 @@ import { StepEditor } from "../components/StepEditor";
 import { useToast } from "../components/toasts";
 import { Empty, ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton } from "../components/ui";
 import { money, score, shortModel } from "../format";
-import type { PromptDetail, PromptsResponse } from "../types";
+import type { PromptDetail, PromptsResponse, ToolMenu } from "../types";
 import { usePoll } from "../usePoll";
 
 const back = <Link to="/prompts" className="text-sm text-sky-600">← All prompts</Link>;
@@ -55,7 +55,7 @@ function EditPrompt({ id }: { id: string }) {
   const navigate = useNavigate();
   const toast = useToast();
   const q = usePoll<PromptDetail>(`/api/prompts/${encodeURIComponent(id)}?task=adb`, () => null);
-  const tools = usePoll<{ tools: string[] }>("/api/prompts/tools?task=adb", () => null);
+  const tools = usePoll<ToolMenu>("/api/prompts/tools?task=adb", (m) => (m?.refreshing ? 2000 : null));  // poll while listing
   const [text, setText] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -118,7 +118,12 @@ function EditPrompt({ id }: { id: string }) {
       </Section>
       <Section n={2} title="Expected tool steps" caption="The order a good run calls tools in. Used for the workflow score's sequence check.">
         <Panel className="p-5">
-          <StepEditor stages={p.stages ?? []} tools={tools.data?.tools ?? []} error={stepError}
+          <StepEditor stages={p.stages ?? []} error={stepError}
+            menu={tools.data ?? (tools.error ? { tools: [], listed_at: null, refreshing: false, errors: [{ server: "*", error: `Couldn't load the tool list: ${tools.error}` }] } : undefined)}
+            onRefresh={async () => {
+              try { await post("/api/prompts/tools/refresh"); } catch (e) { if (err(e).status !== 409) toast({ tone: "bad", text: err(e).message }); }
+              tools.reload();
+            }}
             onSave={async (stages) => {
               setStepError(null);
               try {

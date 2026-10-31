@@ -70,10 +70,49 @@ def _build_parser() -> argparse.ArgumentParser:
 
     add_rubric_parser(sub)
 
+    tl = sub.add_parser("tools", help="list every tool of every MCP server the configs use, with descriptions (JSON)")
+    tl.add_argument("--out", help="write the JSON here (atomically) instead of printing it")
+
     ui = sub.add_parser("ui", help="serve the local UI on 127.0.0.1")
     ui.add_argument("--port", type=int, default=8765)
     ui.add_argument("--runs-dir", default="runs")
     return parser
+
+
+def _cmd_tools(args: argparse.Namespace) -> int:
+    import json
+    import os
+    import tempfile
+
+    from foundry.config import project_root
+    from foundry.harness.tools import list_tools
+
+    import signal
+
+    def give_up(*_):  # a server that hangs while listing must not leave the UI "refreshing" forever
+        raise SystemExit("foundry tools: gave up after 10 minutes")
+
+    signal.signal(signal.SIGALRM, give_up)
+    signal.alarm(600)
+    configs = sorted((project_root() / "config").glob("*.toml"))
+    with tempfile.TemporaryDirectory() as logs:
+        result = list_tools(configs, Path(logs))
+    text = json.dumps(result, indent=1)
+    listed = bool(result["servers"]) and any(not s["error"] for s in result["servers"])
+    if args.out and not listed:  # keep the last good list: an all-failed listing must not replace it (gate pass 3)
+        print("Couldn't list tools from any server; kept the previous list.", file=sys.stderr)
+        return 1
+    if args.out:
+        out = Path(args.out)
+        tmp = out.with_name(f"{out.name}.tmp-{os.getpid()}")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, out)
+    else:
+        print(text)
+    failed = [s["name"] for s in result["servers"] if s["error"]]
+    if failed:
+        print(f"Couldn't list tools from: {', '.join(failed)}", file=sys.stderr)
+    return 0 if result["servers"] and len(failed) < len(result["servers"]) else 1
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
@@ -220,6 +259,7 @@ COMMANDS = {
     "run": _cmd_run,
     "evaluate": _cmd_evaluate,
     "validate": _cmd_validate,
+    "tools": _cmd_tools,
 }
 
 

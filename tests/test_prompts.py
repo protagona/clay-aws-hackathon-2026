@@ -214,9 +214,10 @@ def test_scripted_config_without_script_refused(api):  # P10
 
 
 def test_steps_through_api_and_tools(api):  # P8, P9
-    _, c, h, _ = api
-    tools = c.get("/api/prompts/tools").json()["tools"]
-    assert "search_datasets" in tools and any(t.startswith("roda/") for t in tools)
+    app, c, h, _ = api
+    (app.state.ui.runs_dir / ".ui-tools.json").write_text('{"listed_at": "x", "servers": [], "tools": []}')  # no listing job
+    tools = c.get("/api/prompts/tools").json()["tools"]  # increment 15: objects, from traces here
+    assert any(t["name"] == "search_datasets" and t["server"] == "roda" and t["runs"] for t in tools)
     r = c.put("/api/prompts/adb-006/stages", headers=h, json={"stages": [["search_datasets"], ["roda/get_dataset_details"]]})
     assert r.status_code == 200 and len(r.json()["expected_sha256"]) == 64
     assert c.get("/api/prompts/adb-006").json()["prompt"]["stages"] == [["search_datasets"], ["roda/get_dataset_details"]]

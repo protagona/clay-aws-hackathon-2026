@@ -307,7 +307,7 @@ describe("prompts (increment 13)", () => {
     const { StepEditor } = await import("./components/StepEditor");
     const { fireEvent } = await import("@testing-library/react");
     const onSave = vi.fn(async () => {});
-    render(<StepEditor stages={[["search_datasets"], ["get_dataset_details"]]} tools={["stac/search_items"]} onSave={onSave} error={null} />);
+    render(<StepEditor stages={[["search_datasets"], ["get_dataset_details"]]} onSave={onSave} error={null} />);
     fireEvent.change(screen.getByLabelText("Add a tool to step 1"), { target: { value: "list_datasets" } });
     fireEvent.click(screen.getAllByRole("button", { name: "Add" })[0]);
     fireEvent.click(screen.getByRole("button", { name: "Move step 2 up" }));
@@ -323,7 +323,7 @@ describe("step editor keeps unsaved edits (increment 13, verify finding)", () =>
   it("survives the parent re-rendering with a fresh, equal array", async () => {
     const { StepEditor } = await import("./components/StepEditor");
     const { fireEvent } = await import("@testing-library/react");
-    const props = { tools: [], onSave: vi.fn(async () => {}), error: null };
+    const props = { onSave: vi.fn(async () => {}), error: null };
     const { rerender } = render(<StepEditor stages={[]} {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "+ Add step" }));
     fireEvent.change(screen.getByLabelText("Add a tool to step 1"), { target: { value: "search_datasets" } });
@@ -333,5 +333,100 @@ describe("step editor keeps unsaved edits (increment 13, verify finding)", () =>
     expect(screen.getByText("Unsaved changes")).toBeTruthy();
     rerender(<StepEditor stages={[["saved_tool"]]} {...props} />);  // a real change to the saved steps does reset
     expect(screen.getByText("saved_tool")).toBeTruthy();
+  });
+});
+
+describe("increment 15", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const menu = {
+    listed_at: "2026-10-31T17:00:00Z", refreshing: false,
+    errors: [{ server: "stac", error: "McpStartError: no network" }],
+    tools: [
+      { server: "roda", name: "search_datasets", description: "Search RODA datasets by keyword.", runs: 41 },
+      { server: "roda", name: "preview_dataset", description: "Show the S3 bucket structure for a public dataset.", runs: 0 },
+      { server: "stac", name: "search_items", description: "Find scenes (STAC items) in one collection.", runs: 12 },
+    ],
+  };
+
+  it("tool picker: every tool by server with descriptions, filters by description, picks or adds typed", async () => {
+    const { StepEditor } = await import("./components/StepEditor");
+    const { fireEvent } = await import("@testing-library/react");
+    const onSave = vi.fn(async () => {});
+    render(<StepEditor stages={[[]]} menu={menu} onSave={onSave} error={null} />);
+    const box = screen.getByRole("combobox", { name: "Add a tool to step 1" });
+    fireEvent.focus(box);
+    const list = screen.getByRole("listbox", { name: "Tools" });
+    expect(within(list).getByRole("group", { name: "roda" })).toBeTruthy();
+    expect(within(list).getByText("Show the S3 bucket structure for a public dataset.")).toBeTruthy();
+    expect(within(list).getByText("used in 41 runs")).toBeTruthy();
+    expect(within(list).getByText("not used yet")).toBeTruthy();
+    expect(screen.getByText("Couldn't list tools from stac: McpStartError: no network")).toBeTruthy();
+    expect(screen.getByText(/Listed 2026-10-31 17:00 UTC/)).toBeTruthy();
+    fireEvent.change(box, { target: { value: "bucket" } });  // matches the description, not the name
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([expect.stringContaining("preview_dataset")]);
+    fireEvent.keyDown(box, { key: "ArrowDown" });  // highlight it, then Enter picks it
+    expect(box.getAttribute("aria-activedescendant")).toBeTruthy();
+    fireEvent.keyDown(box, { key: "Enter" });
+    fireEvent.change(box, { target: { value: "items" } });  // a partial match is not swapped for a listed tool
+    fireEvent.keyDown(box, { key: "Enter" });
+    fireEvent.focus(box);
+    fireEvent.keyDown(box, { key: "ArrowDown" });  // keyboard only, no typing: arrow to the first tool and pick it
+    fireEvent.keyDown(box, { key: "Enter" });
+    fireEvent.change(box, { target: { value: "my_custom_tool" } });
+    expect(screen.getByText(/No tool matches/)).toBeTruthy();
+    fireEvent.keyDown(box, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Save steps" }));
+    expect(onSave).toHaveBeenCalledWith([["preview_dataset", "items", "search_datasets", "my_custom_tool"]]);  // search_datasets: the keyboard pick
+  });
+
+  it("tool picker: says when it is loading or listing", async () => {
+    const { StepEditor } = await import("./components/StepEditor");
+    const { fireEvent } = await import("@testing-library/react");
+    const { rerender } = render(<StepEditor stages={[[]]} onSave={vi.fn(async () => {})} error={null} />);
+    fireEvent.focus(screen.getByRole("combobox"));
+    expect(screen.getByText("Loading tools…")).toBeTruthy();
+    rerender(<StepEditor stages={[[]]} menu={{ ...menu, refreshing: true }} onSave={vi.fn(async () => {})} error={null} />);
+    expect(screen.getByText("Listing tools from the servers…")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Refresh tool list" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("run panel: the prompt is a level-2 heading", async () => {
+    const { RunDrawer } = await import("./pages/Runs");
+    const detail = {
+      run: { run_id: "r9", prompt_id: "adb-001", prompt: "Map cropland", model: { id: "m" }, status: "succeeded" },
+      scores: null, report_html: null, rubric_info: null, evaluating: false, interrupted: false,
+      m: { live: false, status: "succeeded", elapsed: "00:02", start_ms: null, gauges: [], cost: 0, tokens_out: "0",
+        tools_ok: 0, tools_err: 0, servers: [], rows: [], working: null, axis: [], feed: [], seen: 0 },
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(detail), { status: 200 })));
+    render(<MemoryRouter><RunDrawer id="r9" onEvaluate={() => {}} /></MemoryRouter>);
+    const panel = await screen.findByRole("complementary", { name: "Run details" });
+    expect(await within(panel).findByRole("heading", { level: 2, name: "Map cropland" })).toBeTruthy();
+  });
+
+  it("setup menu: opens by keyboard, arrows move, Escape returns focus; shows the active setup page", async () => {
+    const { Shell } = await import("./components/Shell");
+    const { fireEvent } = await import("@testing-library/react");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ csrf: "x", configs: [], prompts: [], models: [], tasks: [], rubric: null, aws_profile: null }), { status: 200 })));
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }));
+    render(<MemoryRouter initialEntries={["/prompts"]}><Shell><p>page</p></Shell></MemoryRouter>);
+    const [button] = screen.getAllByRole("button", { name: /Setup · Prompts/ });  // desktop and phone rows
+    expect(button.getAttribute("aria-haspopup")).toBe("menu");
+    expect(screen.getAllByRole("link", { name: "Runs" })[0]).toBeTruthy();
+    fireEvent.keyDown(button, { key: "ArrowDown" });
+    const menuEl = await screen.findByRole("menu", { name: "Setup" });
+    const items = within(menuEl).getAllByRole("menuitem");
+    expect(items.map((i) => i.textContent)).toEqual([expect.stringContaining("Prompts"), expect.stringContaining("Rubric"), expect.stringContaining("Import")]);
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(menuEl, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(menuEl, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(button);
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(button);  // opens by click; a click outside closes it
+    expect(await screen.findByRole("menu")).toBeTruthy();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 });

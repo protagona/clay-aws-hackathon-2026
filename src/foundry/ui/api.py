@@ -293,7 +293,12 @@ def make_router(st) -> APIRouter:
 
     @r.get("/prompts/tools")  # before /prompts/{prompt_id}; "tools" is a reserved prompt id
     def prompt_tools(task: str = "adb"):
-        return {"tools": act.tool_suggestions(st, task)}
+        return act.tool_menu(st, task)
+
+    @r.post("/prompts/tools/refresh", dependencies=write)
+    def refresh_tools():
+        act.refresh_tools(st)
+        return {"ok": True}
 
     @r.get("/prompts/{prompt_id}")
     def prompt(prompt_id: str, task: str = "adb"):
