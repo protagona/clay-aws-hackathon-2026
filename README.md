@@ -310,7 +310,14 @@ scripts/stage_samples.sh      # A-2: copies a small NAIP tile and a Vantor tile 
 scripts/verify_deploy.sh      # as the deployed role: one live run --evaluate, mirrored to S3, then checked
 ```
 
-To mirror your own runs, set `[storage] s3_uri = "s3://<RunsBucketName output>"`. Every run and evaluation then goes to `s3://<bucket>/runs/<run_id>/`. `verify_deploy.sh` does this on a temporary copy of the config.
+The `config/bedrock*.toml` configs mirror every run and evaluation to the team's deployed bucket, under `s3://<bucket>/runs/<run_id>/`. The offline configs don't mirror, so a fresh clone needs no AWS.
+
+- **Your own deploy:** set `[storage] s3_uri = "s3://<RunsBucketName output>"` in those three configs.
+- **Turn mirroring off:** set it to `""`.
+
+Mirroring is best-effort. A failed upload, such as missing credentials or another account's bucket, prints a warning and keeps the local files. `verify_deploy.sh` checks the mirror on a temporary copy of the config.
+
+The role can call only the Bedrock models named in `config/bedrock*.toml`: `[model]`, `[judge]`, `[summarizer]` and the `[prices]` keys. If you add a model to a config, redeploy before using it from the role. The runs bucket's access logs go to a separate bucket and expire after 90 days.
 
 **Pre-staged samples** (A-2): the agent reads data at the source through MCP. These copies are only a fallback, for when Requester Pays costs or latency matter.
 

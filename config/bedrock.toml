@@ -56,7 +56,7 @@ env = { STAC_API_URL = "https://earth-search.aws.element84.com/v1" }   # Earth S
 tracers = ["jsonl"]
 
 [storage]
-s3_uri = ""                  # set to "s3://<RunsBucket>" after cdk deploy to mirror runs
+s3_uri = "s3://clayfoundryevalsandbox-runsbucketf47f9fb8-qedlohtzrfqy"  # RunsBucketName output; "" turns mirroring off
 
 [scoring]
 workflow_weight = 0.5

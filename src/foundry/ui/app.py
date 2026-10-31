@@ -29,6 +29,7 @@ from foundry.contract import evaluation_interrupted
 from foundry.evaluate import lock
 from foundry.runstore import RunDir, is_valid_run_id, new_run_id
 from foundry.tasks import load_prompts
+from foundry.ui import dashboard
 from foundry.ui.monitor import monitor
 from foundry.ui.render import render
 
@@ -141,11 +142,33 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
         return path
 
     @app.get("/", response_class=HTMLResponse)
-    def index(request: Request):
+    def index(request: Request, model: str = ""):
         cards = _cards(st)
         busy = any(c.get("headline") in ("running", "evaluating") for c in cards) or st.receiver is not None
+        if model:  # the dashboard leaderboard links here
+            cards = [c for c in cards if not c["unreadable"] and c["model"] == model]
         return page(request, "index.html", cards=cards, configs=_configs(st), prompts=_prompt_ids(st),
-                    banners=[j for j in st.jobs.values() if j.failed_visibly], refresh=busy, nav="runs")
+                    banners=[j for j in st.jobs.values() if j.failed_visibly], refresh=busy, nav="runs",
+                    model_filter=model)
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    def dashboard_page(request: Request):
+        entries = []
+        for d in _run_dirs(st):
+            run = _read_run(d)
+            if run is None:
+                continue
+            scores = _scores(d)
+            if scores is not None and evaluation_interrupted(d):
+                scores = None
+            steps = []
+            try:
+                if _regular(d / "trace.jsonl"):
+                    steps = RunDir(d).read_steps(drop_truncated_last=True)
+            except ValueError:
+                pass
+            entries.append({"run_id": d.name, "run": run, "scores": scores, "steps": steps})
+        return page(request, "dashboard.html", nav="dashboard", d=dashboard.build(entries))
 
     def run_view(path: Path, seen: int | None = None) -> dict:
         """Context for run.html and its live fragment, from the run's own files."""
@@ -647,13 +670,16 @@ def _when(iso: str | None) -> str:
         return ""
 
 
+def _run_dirs(st: UiState) -> list[Path]:
+    if not st.runs_dir.is_dir():
+        return []
+    return [d for d in st.runs_dir.iterdir()
+            if not d.is_symlink() and d.is_dir() and not d.name.startswith(".") and is_valid_run_id(d.name)]
+
+
 def _cards(st: UiState) -> list[dict]:
     cards = []
-    if not st.runs_dir.is_dir():
-        return cards
-    for d in st.runs_dir.iterdir():
-        if d.is_symlink() or not d.is_dir() or d.name.startswith(".") or not is_valid_run_id(d.name):
-            continue
+    for d in _run_dirs(st):
         run = _read_run(d)
         if run is None:
             cards.append({"unreadable": True, "name": d.name, "started_at": ""})

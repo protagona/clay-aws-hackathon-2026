@@ -2,20 +2,62 @@
 
 from __future__ import annotations
 
-from aws_cdk import CfnOutput, RemovalPolicy, Stack, Tags
+import re
+import tomllib
+from pathlib import Path
+
+from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack, Tags
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_s3 as s3
 from constructs import Construct
 
 BEDROCK_ACTIONS = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]  # authorize Converse/ConverseStream
+CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
+# Regions the us. inference profiles route to (aws bedrock get-inference-profile, checked 2026-10-30). A policy that
+# names a profile must also allow its foundation model in each of them (Bedrock user guide, inference-profiles-prereq).
+PROFILE_REGIONS = ["us-east-1", "us-east-2", "us-west-2"]
+
+
+MODEL_ID_RE = re.compile(r"^[a-z0-9-]+\.[A-Za-z0-9.:-]+$")
+
+
+def bedrock_models(config_dir: Path = CONFIG_DIR) -> tuple[list[str], list[str]]:
+    """(us. inference profiles, in-region model ids) the Bedrock configs can call: agent, judge, summarizer and
+    priced (batch) models."""
+    ids: set[str] = set()
+    for f in sorted(config_dir.glob("bedrock*.toml")):
+        cfg = tomllib.loads(f.read_text())
+        ids.update(cfg[k]["id"] for k in ("model", "judge", "summarizer") if cfg.get(k, {}).get("provider") == "bedrock")
+        ids.update(cfg.get("prices", {}))
+    bad = sorted(i for i in ids if not MODEL_ID_RE.match(i) or i.startswith(("global.", "eu.", "apac.")))
+    if bad:
+        raise ValueError(f"Not a us. profile or in-region model id: {', '.join(bad)} (in {config_dir}/bedrock*.toml)")
+    return sorted(i for i in ids if i.startswith("us.")), sorted(i for i in ids if not i.startswith("us."))
 
 
 class FoundryStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
+        # Grant log delivery with a bucket policy, not the LogDeliveryWrite ACL (ACLs are off on both buckets).
+        self.node.set_context("@aws-cdk/aws-s3:serverAccessLogsUseBucketPolicy", True)
+
+        logs = s3.Bucket(
+            self, "AccessLogsBucket",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            enforce_ssl=True,
+            object_ownership=s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+            versioned=True,
+            lifecycle_rules=[s3.LifecycleRule(expiration=Duration.days(90),
+                                              noncurrent_version_expiration=Duration.days(90))],
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+        logs.policy.apply_removal_policy(RemovalPolicy.RETAIN)
 
         bucket = s3.Bucket(
             self, "RunsBucket",
+            server_access_logs_bucket=logs,
+            server_access_logs_prefix="runs-bucket/",  # F-010
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             encryption=s3.BucketEncryption.S3_MANAGED,
             versioned=True,
@@ -31,7 +73,18 @@ class FoundryStack(Stack):
             assumed_by=iam.AccountRootPrincipal(),
             description="Runs the Foundry eval sandbox: Bedrock inference, runs/ (read-write) and samples/ (read-only)",
         )
-        role.add_to_policy(iam.PolicyStatement(actions=BEDROCK_ACTIONS, resources=["*"]))
+        # F-012: only the inference profiles our configs name, and their models only when reached through them.
+        # In-region model ids (no profile) are allowed directly, in this region only.
+        profile_ids, regional_ids = bedrock_models()
+        profiles = [f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/{p}" for p in profile_ids]
+        role.add_to_policy(iam.PolicyStatement(
+            actions=BEDROCK_ACTIONS,
+            resources=profiles + [f"arn:aws:bedrock:{self.region}::foundation-model/{m}" for m in regional_ids]))
+        role.add_to_policy(iam.PolicyStatement(
+            actions=BEDROCK_ACTIONS,
+            resources=[f"arn:aws:bedrock:{r}::foundation-model/{p.removeprefix('us.')}"
+                       for p in profile_ids for r in PROFILE_REGIONS],
+            conditions={"StringLike": {"bedrock:InferenceProfileArn": profiles}}))
         role.add_to_policy(iam.PolicyStatement(
             actions=["s3:GetObject", "s3:PutObject"], resources=[bucket.arn_for_objects("runs/*")]))
         # Read-only, pre-staged imagery samples (A-2; scripts/stage_samples.sh): a fallback to reading at the source.

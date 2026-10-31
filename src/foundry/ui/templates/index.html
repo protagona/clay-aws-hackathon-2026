@@ -18,6 +18,7 @@
 </div>
 {% endfor %}
 
+{% if model_filter %}<p class="note">Showing runs of <strong>{{ model_filter }}</strong> only. <a href="/">Show all runs</a></p>{% endif %}
 {% if cards %}
 <div class="grid">
 {% for c in cards %}

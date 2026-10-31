@@ -256,14 +256,28 @@ See [increment-5.md](increment-5.md).
 - **Model text in the feed renders as Markdown.** It uses the same safe renderer as reports: no raw HTML, no images, and only http(s) or relative links. Each step is capped at 20k characters in a scrolling box.
 - **Suite:** 213 passed.
 
+## Increment 6 (2026-10-30): hardening, S3 mirror by default, dashboard
+
+See [increment-6.md](increment-6.md).
+
+- **F-012:** the role can invoke only the Bedrock models named in `config/bedrock*.toml`, which are read at synth time.
+- **F-010:** the runs bucket logs to a new access-log bucket, with 90-day expiry. **The deploy is pending; the user runs it.**
+- **Mirroring on by default:** the `bedrock*` configs mirror to the deployed bucket. It's best-effort, and the offline configs stay local.
+- **Dashboard tab:**
+  - KPIs
+  - a leaderboard with spread
+  - cost vs score
+  - where agents struggle: tool errors, missed stages and the weakest criteria
+- **Run monitor:** the status dot no longer pulses (user feedback).
+- **Suite:** 223 passed.
+
 ## Follow-ups
 
 - Deploy and verify: `cdk bootstrap`, `cdk deploy`, `scripts/stage_samples.sh`, then `scripts/verify_deploy.sh` (README, *Deploy*). Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.
 - Fix GitHub billing and re-run CI.
 - Bump `mcp` to 2.2 or later when Strands allows it (F-008/F-009, by 2026-11-30).
 - Pin GitHub Actions to commit SHAs (F-013). This needs approval for CI changes.
-- Scope `HarnessRole` Bedrock actions to model and inference-profile ARNs (F-012).
-- S3 access logging (F-010) before any non-sandbox use.
+- Deploy increment 6 (F-010, F-012), then run `verify_deploy.sh` and a denied-model probe.
 - Compare the judge against human scores (D-6's sanity check passes; human agreement is untested). Add more adversarial prompt-injection fixtures.
 - Screen-reader pass on the UI. Real-browser screenshots are done for the run page (increment 5).
 - Clay's real rubric and prompts once they arrive (K-1). Swapping them in is a data-only change.
