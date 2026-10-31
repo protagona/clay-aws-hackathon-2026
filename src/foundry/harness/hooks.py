@@ -57,6 +57,17 @@ class TraceHooks(HookProvider):
     _model_started: tuple[str, float] | None = None
     _tools: dict[str, _Pending] = field(default_factory=dict)
     _errored: dict[tuple, int] = field(default_factory=dict)
+    parent: int | None = None  # the running agent's agent_step in pipeline mode (increment 7)
+
+    def start_agent(self, step_no: int) -> None:
+        """Steps from here on belong to agent_step `step_no`; retries are tracked per agent (P4)."""
+        self.parent = step_no
+        self._errored.clear()
+
+    def _record(self, **fields: Any):
+        if self.parent is not None:
+            fields["parent"] = self.parent
+        return self.tracers.record(**fields)
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
         registry.add_callback(BeforeModelCallEvent, self.before_model)
@@ -67,6 +78,10 @@ class TraceHooks(HookProvider):
     # --- model calls -------------------------------------------------------------------------------
 
     def before_model(self, event: BeforeModelCallEvent) -> None:
+        if self.timed_out:  # nothing runs after a timeout, even an agent started as the run was cancelled (P3)
+            event.cancel = "run timed out"
+            self._cancelled_call = True
+            return
         projected = event.projected_input_tokens
         if projected is None:
             projected = self.last_tokens_in
@@ -79,7 +94,7 @@ class TraceHooks(HookProvider):
             event.cancel = reason
             self.limit_hit = reason
             self._cancelled_call = True
-            self.tracers.record(type="note", name="limit", text=reason)
+            self._record(type="note", name="limit", text=reason)
             return
         self.model_calls += 1
         self._model_started = (utc_now(), time.monotonic())
@@ -92,7 +107,7 @@ class TraceHooks(HookProvider):
         duration_ms = round((time.monotonic() - t0) * 1000, 1)
         if event.exception is not None or event.stop_response is None:
             exc = event.exception
-            self.tracers.record(type="llm_call", name="model", started_at=started_at, duration_ms=duration_ms,
+            self._record(type="llm_call", name="model", started_at=started_at, duration_ms=duration_ms,
                                 status="error", error=f"{type(exc).__name__}: {exc}"[:ERROR_CHARS])
             return
         message = event.stop_response.message
@@ -106,7 +121,7 @@ class TraceHooks(HookProvider):
         if not text and tool_uses:
             text = "(calls " + ", ".join(tool_uses) + ")"
         extra = {"tokens_in_cached": cached} if cached else {}
-        self.tracers.record(type="llm_call", name="model", started_at=started_at, duration_ms=duration_ms,
+        self._record(type="llm_call", name="model", started_at=started_at, duration_ms=duration_ms,
                             tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=self.cost(tokens_in, tokens_out, cached),
                             text=text[:PREVIEW_CHARS], **extra)
 
@@ -120,6 +135,9 @@ class TraceHooks(HookProvider):
 
     def before_tool(self, event: BeforeToolCallEvent) -> None:
         use = event.tool_use
+        if self.timed_out:
+            event.cancel_tool = "run timed out"
+            return
         pending = _Pending(utc_now(), time.monotonic())
         if event.selected_tool is None:
             pending.invalid = True
@@ -167,7 +185,7 @@ class TraceHooks(HookProvider):
             fields["invalid"] = True
         if key in self._errored:
             fields["retry_of"] = self._errored[key]
-        step = self.tracers.record(**fields)
+        step = self._record(**fields)
         if step is not None and error:
             self._errored[key] = step.step
 

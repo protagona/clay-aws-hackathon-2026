@@ -1,0 +1,48 @@
+[
+ {
+  "text": "1. Search the Registry of Open Data for candidate datasets.\n2. Confirm the best candidates with dataset details or a STAC search.\n3. Write the plan: datasets and why, access, processing steps, limitations."
+ },
+ {
+  "tool": "search_datasets",
+  "input": {
+   "query": "sentinel-2",
+   "limit": 3
+  }
+ },
+ {
+  "tool": "search_items",
+  "input": {
+   "collection": "sentinel-2-l2a",
+   "bbox": [
+    -120.0,
+    36.6,
+    -119.6,
+    36.9
+   ],
+   "datetime": "2022-06-01/2022-06-30",
+   "limit": 3,
+   "max_cloud_cover": 10
+  }
+ },
+ {
+  "text": "Plan: use Sentinel-2 L2A COGs from Earth Search (sentinel-cogs bucket, us-west-2, no Requester-Pays). Take the three lowest-cloud June 2022 scenes found by search_items, mask clouds with the SCL band, and take a per-pixel median of B02/B03/B04/B08 to build the composite. Limitations: summer haze, tile seams between MGRS tiles."
+ },
+ {
+  "tool": "search_items",
+  "input": {
+   "collection": "sentinel-2-l2a",
+   "bbox": [
+    -120.0,
+    36.6,
+    -119.6,
+    36.9
+   ],
+   "datetime": "2022-06-01/2022-06-30",
+   "limit": 3,
+   "max_cloud_cover": 10
+  }
+ },
+ {
+  "text": "VERDICT: approve\nThe datasets and access details match the tool results."
+ }
+]

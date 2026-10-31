@@ -127,6 +127,10 @@ class ScoringCfg(_Strict):
         return self
 
 
+class AgentsCfg(_Strict):
+    mode: Literal["single", "pipeline"] = "single"  # pipeline: planner -> executor -> checker (increment 7)
+
+
 class Price(_Strict):
     input: float = Field(ge=0)
     output: float = Field(ge=0)
@@ -156,6 +160,7 @@ class Config(EvalConfig):
     limits: LimitsCfg = Field(default_factory=LimitsCfg)
     mcp: McpCfg = Field(default_factory=McpCfg)
     tracing: TracingCfg = Field(default_factory=TracingCfg)
+    agents: AgentsCfg = Field(default_factory=AgentsCfg)
 
 
 def _read(path: str | Path) -> dict:
