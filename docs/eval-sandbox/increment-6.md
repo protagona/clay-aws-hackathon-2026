@@ -1,6 +1,6 @@
 # Increment 6: hardening, S3 mirroring by default, dashboard
 
-**Track:** Quick   **Status:** Built; deploy pending (H4)   **Date:** 2026-10-30
+**Track:** Quick   **Status:** Built and deployed (verified 2026-10-31)   **Date:** 2026-10-30
 
 ## Problem
 
@@ -82,7 +82,7 @@
 | H1 | `test_bedrock_scoped_to_configured_models` checks the exact profile and model ARNs, the `InferenceProfileArn` condition, and that no `*` remains. `test_bedrock_models_rejects_unknown_id_shapes` covers the id check. `cdk diff` against the live stack shows `*` replaced by 5 profiles plus `zai.glm-5`, and 15 foundation-model ARNs under the condition. |
 | H2 | `test_runs_bucket_access_logging`. The synthesized log bucket policy allows only `logging.s3.amazonaws.com` to write `runs-bucket/*`, with `aws:SourceArn` set to the runs bucket and `aws:SourceAccount` to the account. |
 | H3 | **Trivy 0.76.0:** only F-011 (CMK, accepted) and F-014 (the log bucket's own logging, accepted) remain. The log bucket's missing versioning (AWS-0090) was found and fixed. **Checkov 3.3.28:** 32 passed, 1 failed, which is F-014. |
-| H4 | **Pending:** the user runs `cdk deploy`, then `verify_deploy.sh` and a denied-model probe. |
+| H4 | **The user deployed on 2026-10-31** (`cdk deploy`, 65 s, no replacements). `scripts/verify_deploy.sh` then passed as the HarnessRole: a run plus evaluation, mirrored to `runs/`, samples readable, and writing outside `runs/` denied. **Denied-model probe** as the role: Converse on `us.amazon.nova-micro-v1:0` (not in the configs) gave `AccessDeniedException`, while `us.amazon.nova-2-lite-v1:0` (configured) answered. `get-bucket-logging` on the runs bucket shows `TargetBucket: clayfoundryevalsandbox-accesslogsbucket83982689-kyc6v2tiqnv1`, `TargetPrefix: runs-bucket/`. |
 | S1 | The three `bedrock*` configs carry the deployed bucket, and the offline configs stay empty. `test_storage.py`, unchanged, still proves failures are non-fatal. |
 | D1–D5 | `tests/test_dashboard.py` (7 tests): KPIs, leaderboard order and spread, scatter slots following the model with folding to "Other", ranked struggles, hostile scores skipped, and the page built from real fixture runs. |
 | D6 | Screenshots of the preview server with the 20 real runs: desktop light, and 375 px dark. The palette validator passes for 3 slots in both modes (all pairs); aqua is below 3:1 on white, so the relief comes from shapes, a legend and a table. |

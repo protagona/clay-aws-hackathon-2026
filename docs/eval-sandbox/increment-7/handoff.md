@@ -38,13 +38,19 @@
 | S3 | Both configs load (`test_repo` and V1 run them). The offline scripts exist for adb-001 to adb-006. |
 | S4 | `test_pipeline_run_page_compare_and_cards`: the compare header reads `· pipeline`, and the timelines have an Agent column. |
 | U1, U2 | `test_agent_bands`, `test_single_agent_rows_unchanged` (an imported or flat `agent_step` is skipped, as before), and `test_pipeline_run_page_compare_and_cards` through the real runner and app |
-| U3 | `test_live_band_extends_to_now_and_empty_agent_has_a_band` (fixed `now`) |
+| U3 | `test_live_band_extends_to_now_and_empty_agent_has_a_band` (fixed `now`). **Live, rendered:** a Bedrock pipeline run started from the UI on :8765 (`runs/2026-10-31T12-26-48Z_adb-005_dec3`, Kimi K3, adb-005) was captured by headless Chromium over CDP 25 s in, with `data-live="1"` and the clock at 00:26. The checker had just started ("0 calls · 0.8s"); its band reaches now, next to the striped "working…" bar. See [live-running](screenshots/live-running.jpg). That run then succeeded with `approve`. |
 | U4 | Screenshots in [`screenshots/`](screenshots/):
 - offline adb-002: [light desktop](screenshots/offline-light-desktop.jpg), [dark desktop](screenshots/offline-dark-desktop.jpg), [light 375 px](screenshots/offline-light-375.jpg), [dark 375 px](screenshots/offline-dark-375.jpg)
 - [live Kimi adb-001](screenshots/live-kimi-light-desktop.jpg)
 - [dashboard](screenshots/dashboard-light-desktop.jpg)
 
-Labels ellipsize at 375 px, and the waterfall scrolls inside its box. The `<details>` previews are native, so they're keyboard-reachable. Verdicts carry text as well as colour. `test_previews_show_what_each_agent_was_handed` covers the divider previews: the plan for the executor, the candidate for the checker, and the candidate plus feedback for the revision. |
+Labels ellipsize at 375 px, and the waterfall scrolls inside its box. The `<details>` previews are native, so they're keyboard-reachable. Verdicts carry text as well as colour. `test_previews_show_what_each_agent_was_handed` covers the divider previews: the plan for the executor, the candidate for the checker, and the start of the candidate for the revision. The 200-character preview rarely reaches the feedback.
+
+**Feed, rendered** (the same live run, every `<details>` opened over CDP):
+- [light desktop](screenshots/live-feed-light-desktop.jpg), [dark desktop](screenshots/live-feed-dark-desktop.jpg), [light 375 px](screenshots/live-feed-light-375.jpg), [dark 375 px](screenshots/live-feed-dark-375.jpg): agent pills, the ✓ approve verdict pill, Markdown model text, and the args and result previews.
+- [the checker's divider with its Input open](screenshots/live-divider.jpg): it shows `<candidate_answer>`.
+
+`live-kimi-light-desktop.jpg` predates the `513aa02` fixes: its struggles list "Step 32: revise", and its previews show the task. |
 | V1 | `foundry run --config config/offline-pipeline.toml --prompt adb-002 --evaluate`: exit 0, 5 agent steps, `revisions: 1`, valid, overall 0.81. Re-run after the review fixes (`runs/2026-10-31T12-15-06Z_adb-002_5c59`), with the same result. The independent verify reviewer also reproduced it. |
 | V2 | **Live Bedrock (Kimi K3):** the single run adb-001 succeeded with 0.92. It showed the checker's reasoning-first verdict, which prompted the parser change. **Batch `b-20261031-070518-a7e1`** (bedrock against bedrock-pipeline, adb-001 and adb-003, evaluated, $0.99 total): single scored 0.96 and 0.96; pipeline scored 0.93 (approve) and 0.91 (revise, then the revision checker was cut off by the budget). That run's run.json says `verdict: "revise"`. It was written before the rule changed so that a cut-off checker records `none`, as it would now. Every run mirrored to S3 by default (increment 6, S1, now proven live). |
 
@@ -73,4 +79,5 @@ Matches the approved structure: agent header rows (▾, name, verdict, call coun
 - **Compare page:** the agent column isn't gated on `agents.mode`. That's harmless, since only pipeline runs write `parent`.
 - **Batch variants table:** the "Model" column shows the same model for `bedrock` and `bedrock-pipeline`, since the variants are already split by config name. It could use `model_key`.
 - **The shared 12-call budget confounds the comparison:** the live revision check was cut off by it. Consider a `bedrock-pipeline` budget of about 20 calls for a fair test, or report both.
+- **Empty plan:** a planner returning empty text still hands an empty `<plan>` to the executor. That's accepted, since the executor works from the task.
 - **Result: in this tiny sample (2 prompts × 1 repeat), the pipeline cost 1.4–2× more and scored lower.** A real comparison needs more repeats; `--repeats 3` over all six prompts is about $8.

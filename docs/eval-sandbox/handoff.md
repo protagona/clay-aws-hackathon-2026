@@ -261,7 +261,7 @@ See [increment-5.md](increment-5.md).
 See [increment-6.md](increment-6.md).
 
 - **F-012:** the role can invoke only the Bedrock models named in `config/bedrock*.toml`, which are read at synth time.
-- **F-010:** the runs bucket logs to a new access-log bucket, with 90-day expiry. **The deploy is pending; the user runs it.**
+- **F-010:** the runs bucket logs to a new access-log bucket, with 90-day expiry. **Deployed by the user on 2026-10-31, and verified** with `verify_deploy.sh` and a denied-model probe.
 - **Mirroring on by default:** the `bedrock*` configs mirror to the deployed bucket. It's best-effort, and the offline configs stay local.
 - **Dashboard tab:**
   - KPIs
@@ -287,7 +287,6 @@ See [increment-7/handoff.md](increment-7/handoff.md).
 - Fix GitHub billing and re-run CI.
 - Bump `mcp` to 2.2 or later when Strands allows it (F-008/F-009, by 2026-11-30).
 - Pin GitHub Actions to commit SHAs (F-013). This needs approval for CI changes.
-- Deploy increment 6 (F-010, F-012), then run `verify_deploy.sh` and a denied-model probe.
 - Compare the judge against human scores (D-6's sanity check passes; human agreement is untested). Add more adversarial prompt-injection fixtures.
 - Screen-reader pass on the UI. Real-browser screenshots are done for the run page (increment 5).
 - Clay's real rubric and prompts once they arrive (K-1). Swapping them in is a data-only change.
