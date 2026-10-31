@@ -68,6 +68,22 @@ uv run foundry ui        # http://127.0.0.1:8765
 
 The CLI below does the same things.
 
+## Importing a rubric (any format)
+
+Clay's rubric might arrive as a PDF, a Word file, a multi-tab Excel workbook, Markdown, a URL, another tool's output, or a few sentences. The **Rubric** tab, or the CLI, turns any of these into the strict `rubric.json`.
+
+```bash
+uv run foundry rubric draft --task adb --file "Clay rubric.xlsx"      # or --text "...", --url https://..., --mcp roda/tool --args '{...}'
+uv run foundry rubric list --task adb                                 # active version, history (with run counts), drafts
+uv run foundry rubric activate --task adb <draft-id>                  # or a history file name to roll back
+```
+
+- **Drafting:** the config's judge (Opus 4.6 on Bedrock, `config/bedrock.toml`) drafts the criteria, and notes every interpretation it made. A source that isn't a rubric is refused rather than invented.
+- **Review:** you check and edit the draft before activating it.
+- **History:** activation keeps every earlier version under `tasks/<task>/rubrics/history/`.
+- **Tracking:** each run records the rubric that scored it, and the dashboard filters by rubric so scores from different rubrics aren't mixed.
+- **Git:** drafts and the original source files stay local (git-ignored). Commit `rubric.json` and the history.
+
 ## Multi-agent mode (planner → executor → checker)
 
 ```bash

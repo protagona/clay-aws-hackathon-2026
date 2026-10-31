@@ -18,7 +18,7 @@ from foundry.contract import Rubric
 from foundry.models.base import CompletionRequest, Provider
 from foundry.rubrics.sources import BINARY, Source
 
-PROMPT_ID = "draft-v1"
+PROMPT_ID = "draft-v2"  # v2: refuses sources that are not rubrics instead of inventing one (live finding)
 _PROMPT = Path(__file__).with_name("prompts") / f"{PROMPT_ID}.txt"
 MAX_TOKENS = 8192
 INSTRUCTION = "Convert the rubric in the attached source document into the JSON rubric described above."
@@ -95,6 +95,8 @@ def check(obj: dict, task_id: str) -> tuple[dict | None, str | None]:
 def _check(obj: dict | None, task_id: str) -> tuple[dict | None, list[str], str | None]:
     if obj is None:
         return None, [], "the reply contained no JSON object"
+    if isinstance(obj.get("error"), str) and not obj.get("criteria"):
+        return None, [], f"This doesn't look like a rubric ({obj['error'][:300]}). Try another source."
     notes = [str(n) for n in obj.pop("notes", []) or [] if isinstance(n, (str, int, float))][:20]
     rubric, error = check(obj, task_id)
     return rubric, notes, error
@@ -134,6 +136,8 @@ def draft(source: Source, task_id: str, provider: Provider) -> DraftResult:
         result.notes, result.error = notes, error
         if rubric is not None:
             result.rubric, result.partial = rubric, None
+            return result
+        if (obj or {}).get("error") and not (obj or {}).get("criteria"):  # a refusal is final: no repair attempt
             return result
         if attempt == 0:
             user = (f"{user}\n\nYour previous reply was not a valid rubric: {error}\n"

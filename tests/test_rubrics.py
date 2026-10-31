@@ -328,3 +328,9 @@ def test_hand_edited_rubric_is_archived_not_lost(task):  # R3 step 1 with an edi
     files = sorted(p.name for p in (task / "rubrics/history").iterdir())
     assert any(f.startswith("clay-adb@1.0-") for f in files) and "clay-adb@1.0.json" in files  # '+' sanitised
     assert "Edited by hand" in next((task / "rubrics/history").glob("clay-adb@1.0-*.json")).read_text()
+
+
+def test_non_rubric_source_is_refused_not_invented():  # live finding: the model invented rubrics from an RFC
+    p = FakeProvider(json.dumps({"error": "not a rubric: an IETF document defining requirement keywords"}))
+    r = draft(Source("url", "https://x/rfc2119.txt", "txt", b"MUST, SHOULD, MAY"), "adb", p)
+    assert r.rubric is None and "doesn't look like a rubric" in r.error and len(p.requests) == 1

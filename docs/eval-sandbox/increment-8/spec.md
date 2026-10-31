@@ -1,6 +1,6 @@
 # Increment 8: rubric import, versions and tracking — Spec
 
-**Track:** Standard   **Status:** Defined (design gate pass 1 applied)   **Date:** 2026-10-31   **Product stage:** Introduction (hackathon prototype)
+**Track:** Standard   **Status:** Built (verify review pending)   **Date:** 2026-10-31   **Product stage:** Introduction (hackathon prototype)
 
 ## Problem
 
@@ -58,7 +58,7 @@ Clay's rubric hasn't arrived, and nobody knows what form it will take: a PDF, Ma
   Extra fields and out-of-range levels are dropped, so nothing the reviewer can't see reaches the judge. `task_id` is forced to the target task. `rubric_id` must match `[A-Za-z0-9._-]{1,100}` and `version` must match `[A-Za-z0-9._-]{1,40}`; anything else is a validation error.
 - **D2:** The model returns JSON. The reply is validated against `Rubric` with the existing validators: unique ids, `max ≥ 2`, and levels describing 1 and `max`. If it's invalid, the model gets one repair attempt with the validation error. If it's still invalid, the draft is saved as `invalid`, and the review page shows the raw reply and the error, so the user can fix it by hand or discard it.
 - **D3:** The model also returns `notes`, a list of interpretation choices (for example "'double' weight → 2"), shown on the review page. Usage (tokens in and out) is recorded with the draft. Cost is added when the config's `[prices]` has the judge model.
-- **D4:** The drafting prompt is versioned: `src/foundry/rubrics/prompts/draft-v1.txt`, with its id recorded in the draft.
+- **D4:** The drafting prompt is versioned: `src/foundry/rubrics/prompts/draft-v2.txt`, with its id recorded in the draft. v2 replaced v1 after the live run: given a source that is not a rubric (an RFC, a dataset record), v1 invented a rubric. v2 replies `{"error": "not a rubric: …"}` instead, and that becomes an invalid draft saying so, with no repair attempt.
 
 **R: review and activation**
 - **R1:** Drafts live in `tasks/<task>/rubrics/drafts/<draft_id>/`:

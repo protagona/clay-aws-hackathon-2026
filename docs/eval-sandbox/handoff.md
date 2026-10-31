@@ -281,6 +281,16 @@ See [increment-7/handoff.md](increment-7/handoff.md).
 - **Live on Kimi K3:** single scored 0.96 and 0.96, pipeline 0.93 and 0.91, at 1.4–2× the cost. The sample is tiny, and the shared 12-call budget cut off one revision check.
 - **Suite:** 245 passed.
 
+## Increment 8 (2026-10-31): rubric import, versions and tracking
+
+See [increment-8/handoff.md](increment-8/handoff.md).
+
+- **Sources:** an upload, pasted text, a URL or an MCP tool.
+- **Drafting:** Opus 4.6 drafts the rubric (binary files go to it natively), then a person reviews and edits it in a form before activation.
+- **History:** every version is kept, and runs and the dashboard track which rubric scored what.
+- **Verified live on Bedrock** with PDF, DOCX, XLSX, text, URL and MCP sources. Non-rubrics are refused.
+- **Suite:** 282 passed.
+
 ## Follow-ups
 
 - Deploy and verify: `cdk bootstrap`, `cdk deploy`, `scripts/stage_samples.sh`, then `scripts/verify_deploy.sh` (README, *Deploy*). Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.
