@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass, field
 import json
 import os
 import re
@@ -22,8 +23,111 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from foundry.contract import Rubric
-from foundry.rubrics.draft import DraftResult, check, form_shape
-from foundry.rubrics.sources import Source
+
+# --- rubric records and validation (increment 16, ADR-3: moved down from rubrics/draft.py and sources.py, so the
+# store never imports the engine; drafting with a model stays in rubrics/draft.py) ---------------------------------
+
+@dataclass(frozen=True)
+class Source:
+    kind: str  # file | text | url | mcp
+    label: str  # file name, "pasted text", the URL, or server/tool
+    fmt: str  # a FORMATS value
+    data: bytes
+
+
+@dataclass
+class DraftResult:
+    rubric: dict | None  # the validated rubric (as JSON-ready dict), or None when the reply never validated
+    raw: str = ""  # the last model reply (or the source itself for the JSON shortcut)
+    error: str | None = None
+    notes: list[str] = field(default_factory=list)
+    model: str | None = None
+    prompt_id: str | None = None
+    tokens_in: int = 0
+    tokens_out: int = 0
+    partial: dict | None = None  # whatever JSON parsed from an invalid reply, to prefill the review form
+
+
+def validation_error(exc: ValidationError) -> str:
+    err = exc.errors()[0]
+    where = ".".join(str(p) for p in err["loc"]) or "(rubric)"
+    return f"{where}: {err['msg'].removeprefix('Value error, ')}"
+
+
+MAX_WEIGHT = 100  # finite and bounded: Infinity or 1e308 would break the weighted score
+MAX_LEVELS = 20  # the review form shows one field per level; wider scales are banded by the model (prompt v3)
+NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+VERSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,40}$")
+
+
+def canonical(obj: dict, task_id: str) -> dict:
+    """Only the fields the review form shows (so nothing unreviewed reaches the judge), levels 1..max only, and the
+    target task. Raises ValidationError/ValueError when the result is not a valid rubric."""
+    crits = obj.get("criteria") if isinstance(obj.get("criteria"), list) else []
+    out = {"rubric_id": obj.get("rubric_id"), "task_id": task_id, "version": obj.get("version"),
+           "description": obj.get("description") or "", "criteria": []}
+    for c in crits:
+        if not isinstance(c, dict):
+            continue
+        levels = c.get("levels") if isinstance(c.get("levels"), dict) else {}
+        mx = c.get("max")
+        keep = {str(i) for i in range(1, mx + 1)} if isinstance(mx, int) and not isinstance(mx, bool) and mx < 100 else set()
+        weight = c.get("weight", 1)
+        if isinstance(weight, bool):
+            raise ValueError(f"criteria.{len(out['criteria'])}.weight: must be a number")
+        try:
+            w = float(weight)
+        except (TypeError, ValueError, OverflowError):  # a 400-digit integer overflows float()
+            w = float("inf") if isinstance(weight, int) else None
+        if w is not None and not (0 < w <= MAX_WEIGHT):  # also "inf", "1e308"
+            raise ValueError(f"criteria.{len(out['criteria'])}.weight: must be above 0 and at most {MAX_WEIGHT}")
+        if isinstance(mx, int) and not isinstance(mx, bool) and mx > MAX_LEVELS:
+            raise ValueError(f"criteria.{len(out['criteria'])}.max: use a scale of 2 to {MAX_LEVELS} levels "
+                             "(map wider scales to bands)")
+        out["criteria"].append({"id": c.get("id"), "name": c.get("name"), "description": c.get("description"),
+                                "max": mx, "weight": weight,
+                                "levels": {k: v for k, v in levels.items() if k in keep}})
+    rubric = Rubric.model_validate(out)
+    if not NAME_RE.match(rubric.rubric_id):
+        raise ValueError("rubric_id: use letters, digits, '.', '_' or '-' only (max 100)")
+    if not VERSION_RE.match(rubric.version):
+        raise ValueError("version: use letters, digits, '.', '_' or '-' only (max 40)")
+    return rubric.model_dump(include={"rubric_id", "task_id", "version", "description", "criteria"})
+
+
+def form_shape(obj) -> dict:
+    """Any draft body (even a malformed model reply) reshaped so the review form can always render it."""
+    obj = obj if isinstance(obj, dict) else {}
+    crits = obj.get("criteria") if isinstance(obj.get("criteria"), list) else []
+
+    def s(v):
+        return v if isinstance(v, str) else "" if v is None else str(v)
+
+    out = []
+    for c in crits[:50]:
+        c = c if isinstance(c, dict) else {}
+        mx = c.get("max")
+        levels = c.get("levels")
+        if isinstance(levels, list):  # ["poor", "ok", "good"] -> {"1": "poor", ...}
+            levels = {str(i + 1): v for i, v in enumerate(levels)}
+        out.append({"id": s(c.get("id")), "name": s(c.get("name")), "description": s(c.get("description")),
+                    "max": mx if isinstance(mx, int) and not isinstance(mx, bool) and 2 <= mx <= MAX_LEVELS else 4,
+                    "weight": c.get("weight") if isinstance(c.get("weight"), (int, float)) else 1,
+                    "levels": {s(k): s(v) for k, v in levels.items()} if isinstance(levels, dict) else {}})
+    return {"rubric_id": s(obj.get("rubric_id")), "version": s(obj.get("version")),
+            "description": s(obj.get("description")), "criteria": out}
+
+
+def check(obj: dict, task_id: str) -> tuple[dict | None, str | None]:
+    """(canonical rubric, None) or (None, error message)."""
+    try:
+        return canonical(obj, task_id), None
+    except ValidationError as exc:
+        return None, validation_error(exc)
+    except (ValueError, OverflowError, RecursionError) as exc:
+        return None, str(exc)[:300] or type(exc).__name__
+
+
 
 DRAFT_ID_RE = re.compile(r"^[a-f0-9]{12}$")
 HISTORY_FILE_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}@[A-Za-z0-9._-]{1,40}\.json$")

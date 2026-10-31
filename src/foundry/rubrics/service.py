@@ -9,7 +9,7 @@ from foundry.rubrics import sources
 from foundry.rubrics.draft import MAX_TOKENS as DRAFT_MAX_TOKENS
 from foundry.rubrics.draft import draft
 from foundry.rubrics.sources import SourceError
-from foundry.rubrics.store import Store
+from foundry.data.rubrics import Store
 
 
 def acquire(kind: str, cfg, *, file_name: str = "", file_data: bytes = b"", text: str = "", url: str = "",

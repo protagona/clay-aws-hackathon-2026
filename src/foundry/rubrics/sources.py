@@ -13,8 +13,9 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
 from pathlib import Path
+
+from foundry.data.rubrics import Source  # the record lives in data (ADR-3); fetching sources stays here
 
 MAX_BYTES = 4_500_000  # our cap per source (Bedrock's per-document limit is not stated in its API reference)
 MAX_TEXT = 50_000
@@ -34,12 +35,6 @@ class SourceError(Exception):
     pass
 
 
-@dataclass(frozen=True)
-class Source:
-    kind: str  # file | text | url | mcp
-    label: str  # file name, "pasted text", the URL, or server/tool
-    fmt: str  # a FORMATS value
-    data: bytes
 
 
 def allowed_types() -> str:

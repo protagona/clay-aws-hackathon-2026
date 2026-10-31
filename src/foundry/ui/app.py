@@ -466,7 +466,7 @@ def _rubric_info(st: UiState, run: dict, scores: dict | None) -> dict | None:
     link = None
     task = run.get("task_id")
     if isinstance(task, str) and task in _task_ids(st) and isinstance(sha, str):
-        from foundry.rubrics.store import Store
+        from foundry.data.rubrics import Store
 
         for e in Store(st.root / "tasks" / task).history():
             if e.get("sha256") == sha:

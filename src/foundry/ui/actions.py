@@ -297,7 +297,7 @@ def receiver_stop(st) -> None:
 
 
 def rubric_store(st, task: str):
-    from foundry.rubrics.store import Store
+    from foundry.data.rubrics import Store
 
     if task not in _core()._task_ids(st):
         raise UiError(404, "Unknown task")
@@ -344,7 +344,7 @@ def rubric_create_draft(st, task: str, kind: str, config: str, *, file_name: str
 
 def rubric_draft(st, task: str, draft_id: str) -> dict:
     from foundry.rubrics.sources import BINARY
-    from foundry.rubrics.store import StoreError
+    from foundry.data.rubrics import StoreError
 
     store = rubric_store(st, task)
     try:
@@ -359,7 +359,7 @@ def rubric_draft(st, task: str, draft_id: str) -> dict:
 
 def rubric_update_draft(st, task: str, draft_id: str, body: dict, activate: bool = False) -> str | None:
     """Save an edited draft; returns its validation error (None when valid). With activate, also activates it."""
-    from foundry.rubrics.store import StoreError
+    from foundry.data.rubrics import StoreError
 
     store = rubric_store(st, task)
     try:
@@ -375,7 +375,7 @@ def rubric_update_draft(st, task: str, draft_id: str, body: dict, activate: bool
 
 
 def rubric_discard(st, task: str, draft_id: str) -> None:
-    from foundry.rubrics.store import StoreError
+    from foundry.data.rubrics import StoreError
 
     try:
         rubric_store(st, task).discard(draft_id)
@@ -384,7 +384,7 @@ def rubric_discard(st, task: str, draft_id: str) -> None:
 
 
 def rubric_source(st, task: str, draft_id: str) -> Path:
-    from foundry.rubrics.store import StoreError
+    from foundry.data.rubrics import StoreError
 
     try:
         _, _, src = rubric_store(st, task).load_draft(draft_id)
@@ -396,7 +396,7 @@ def rubric_source(st, task: str, draft_id: str) -> Path:
 
 
 def rubric_version(st, task: str, name: str) -> dict:
-    from foundry.rubrics.store import StoreError
+    from foundry.data.rubrics import StoreError
     from foundry.data.tasks import RubricError, load_rubric
 
     store = rubric_store(st, task)
@@ -438,7 +438,7 @@ def run_rubric(st, run_id: str) -> dict:
 
 
 def rubric_activate_version(st, task: str, name: str) -> None:
-    from foundry.rubrics.store import StoreError
+    from foundry.data.rubrics import StoreError
 
     try:
         rubric_store(st, task).activate_version(name)

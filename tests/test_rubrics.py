@@ -16,7 +16,7 @@ from foundry.models.offline import OfflineProvider
 from foundry.rubrics import sources
 from foundry.rubrics.draft import PROMPT_ID, draft
 from foundry.rubrics.sources import Source, SourceError, from_file, from_mcp, from_text, from_url
-from foundry.rubrics.store import Store, StoreError
+from foundry.data.rubrics import Store, StoreError
 
 GOOD = {"rubric_id": "clay-adb", "version": "1.0", "task_id": "adb", "description": "From Clay.",
         "criteria": [{"id": "accuracy", "name": "Accuracy", "description": "Faithful.", "max": 3, "weight": 2,
