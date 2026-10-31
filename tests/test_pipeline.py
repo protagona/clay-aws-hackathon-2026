@@ -29,7 +29,9 @@ def test_parse_verdict():  # P2
     assert parse_verdict("VERDICT: approve\nok") == "approve"
     assert parse_verdict("\n  **VERDICT: Revise**\n- fix") == "revise"
     assert parse_verdict("## verdict:approve") == "approve"
-    assert parse_verdict("Looks good.\nVERDICT: approve") is None  # first non-empty line only
+    assert parse_verdict("Spot-checks done.\n- bucket ok\n\n**VERDICT: revise**") == "revise"  # reasoning first
+    assert parse_verdict("VERDICT: revise\n...\nVERDICT: approve") == "approve"  # the last one is the conclusion
+    assert parse_verdict("Looks good; the VERDICT: approve line is below?") is None  # must start a line
     assert parse_verdict("VERDICT: approved") is None and parse_verdict("") is None
     assert parse_verdict("**VERDICT:** revise") == "revise" and parse_verdict("> **VERDICT:** _Approve_") == "approve"
 

@@ -44,6 +44,7 @@ runs/<run_id>/
 - `mode`: `live` or `replay`.
 - `rubric_id` and `reference_ids` record what the run is judged against: a rubric for ADB, or example captions and retrieval sets for captions. Together with `inputs`, `model` and the MCP server versions, they are the run's provenance.
 - `status`: `succeeded`, `failed`, or `timeout`.
+- `agents` (optional, pipeline runs only): `{"mode": "pipeline", "prompts": "roles-v1", "roles": [agent names started, in order], "revisions": 0|1, "verdict": "approve"|"revise"|"unparseable"|"none"}`. `verdict` is the last checker's, and `none` means no checker finished. It is written at start and final at the end. It is unrelated to the run-level `mode` (`live`/`replay`).
 
 ## trace.jsonl (one object per line)
 
@@ -56,6 +57,9 @@ runs/<run_id>/
 - The RODA tool names above are **illustrative**. Use the real ones once B-2 lists them.
 - `type`: `llm_call`, `tool_call`, `agent_step` (for multi-agent: planner, executor, checker), or `note`.
 - `status`: `ok` or `error`.
+- `parent`: optional, the number of an earlier step that this step belongs to. In multi-agent (pipeline) runs, every model call, tool call and note an agent produces carries `parent` = that agent's `agent_step`.
+- **`agent_step` in pipeline runs** (`run.json.agents.mode == "pipeline"`) is a **start marker**: it is written when the agent starts, with `duration_ms: 0` and `text` = a 200-character preview of the agent's input. Its extent is its descendants' extent (its own start time if it has none). Step numbers still increase in file order. Imported traces write `agent_step` with a real `duration_ms` and no children; that use is unchanged.
+- **Pipeline notes:** `note` `verdict` (`text`: `approve`, `revise` or `unparseable`, `parent` = the checker), and `note` `verdict_parse` (`checker verdict unparseable`) when the checker's first line has no verdict.
 - Optional `retry_of: <step>` marks a **retry** explicitly. Don't infer retries from repeated tool names, because agents legitimately call the same tool many times.
 - `result_preview` is capped at about 1 KB. Large results go to a file referenced as `result_uri`.
 

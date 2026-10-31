@@ -41,10 +41,11 @@ def _inert(text: str) -> str:
 
 
 def parse_verdict(text: str) -> str | None:
-    """'approve' | 'revise' from the first non-empty line, ignoring Markdown emphasis/heading marks; None otherwise."""
+    """'approve' | 'revise' from the last line that starts with "VERDICT:" (Markdown emphasis/heading marks ignored);
+    None if there is none. Asked to lead with it, Kimi K3 put its reasoning first (live run, 2026-10-31)."""
+    found = None
     for line in (text or "").splitlines():
-        line = line.translate(_MARKS).strip().lstrip("#> \t")
-        if line:
-            m = _VERDICT_RE.match(line)
-            return m.group(1).lower() if m else None
-    return None
+        m = _VERDICT_RE.match(line.translate(_MARKS).strip().lstrip("#> \t"))
+        if m:
+            found = m.group(1).lower()
+    return found

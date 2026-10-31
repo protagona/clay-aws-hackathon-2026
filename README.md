@@ -68,6 +68,29 @@ uv run foundry ui        # http://127.0.0.1:8765
 
 The CLI below does the same things.
 
+## Multi-agent mode (planner → executor → checker)
+
+```bash
+uv run foundry run --config config/offline-pipeline.toml --prompt adb-002 --evaluate   # offline, no AWS
+uv run foundry run --config config/bedrock-pipeline.toml --prompt adb-001 --evaluate   # Bedrock
+```
+
+`[agents] mode = "pipeline"` in any config runs the same task as three agents on the same model:
+
+1. **Planner:** has no tools and writes a plan.
+2. **Executor:** has the MCP tools and writes the answer.
+3. **Checker:** has the same read-only tools and replies `VERDICT: approve` or `VERDICT: revise`.
+
+On `revise`, the executor gets one revision and the checker one more look.
+
+- **Budget:** the limits are shared across all three agents, so a pipeline gets the same budget as a single run.
+- **Hitting a limit:** if the run hits a limit after the executor has answered, it still succeeds with that answer.
+- **Trace:** each agent writes an `agent_step`, and its calls carry `parent`. The run page shows them as agent bands.
+- **Comparing:**
+  - The dashboard lists `<model> · pipeline` as its own row.
+  - A batch over `bedrock` and `bedrock-pipeline` compares single and multi-agent directly.
+- **Role prompts:** they are versioned in `src/foundry/harness/roles/v1/`, and the version is recorded in `run.json.agents.prompts`.
+
 ## What gets written
 
 Each run gets its own directory, `runs/<run_id>/`:

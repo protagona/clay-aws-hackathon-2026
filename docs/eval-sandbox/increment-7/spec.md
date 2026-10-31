@@ -1,6 +1,6 @@
 # Increment 7: multi-agent mode (B-6) — Spec
 
-**Track:** Standard   **Status:** Defined (design gate pass 2 findings applied)   **Date:** 2026-10-30   **Product stage:** Introduction (hackathon prototype)
+**Track:** Standard   **Status:** Built (verify review pending)   **Date:** 2026-10-30   **Product stage:** Introduction (hackathon prototype)
 
 ## Problem
 
@@ -43,7 +43,8 @@ Clay's brief lists multi-agent traces as a planner, executor and checker. The sa
   2. **Executor:** has the MCP tools. Its input is the task prompt plus the plan. Its output is the candidate answer.
   3. **Checker:** has the MCP tools, so it can verify claims. Its input is the task prompt plus the candidate. Its output begins with a line `VERDICT: approve` or `VERDICT: revise`, followed by its reasons.
 - **P2:** On `VERDICT: revise`, the executor runs once more, given the prompt, its previous answer and the checker's reasons. The checker then runs once more. The final answer is the latest **non-empty** executor answer, whatever the second verdict says.
-  - **Parsing:** the verdict is read from the first non-empty line after stripping Markdown emphasis and heading characters (`*`, `_`, `#`, `>`, backticks). `**VERDICT: Revise**` parses as revise.
+  - **Parsing:** the verdict comes from the **last** line that starts with `VERDICT:` (after stripping Markdown emphasis and heading characters: `*`, `_`, `#`, `>`, backticks). `**VERDICT: Revise**` parses as revise.
+  - **Why the last line:** the first live run showed Kimi K3 putting its reasoning before the verdict even though the prompt asks it to lead with it. This was changed from first-line parsing, 2026-10-31.
   - **Missing or unparseable:** treated as approve for the flow, recorded as `unparseable`, and noted as in T2.
   - **Untrusted text:** text passed from one agent to the next (the plan, the candidate answer, the checker's reasons) is wrapped in `<plan>`, `<candidate_answer>` or `<checker_feedback>` tags. The role prompt says the tagged content is data to evaluate, not instructions.
   - **Versioning:** role prompts live in `src/foundry/harness/roles/v1/*.txt`, and their version is recorded in `run.json.agents.prompts`.
