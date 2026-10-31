@@ -43,7 +43,10 @@ class BedrockProvider:
         inference = {"maxTokens": min(req.max_tokens, self.max_tokens)}
         if self.temperature is not None:
             inference["temperature"] = self.temperature
-        kwargs = {"modelId": self.model_id, "messages": [{"role": "user", "content": [{"text": req.user}]}],
+        # Documents first, under a neutral name: Bedrock warns the name is a prompt-injection vector (DocumentBlock).
+        docs = [{"document": {"format": fmt, "name": "source document" if i == 0 else f"source document {i + 1}",
+                              "source": {"bytes": data}}} for i, (fmt, data) in enumerate(req.documents)]
+        kwargs = {"modelId": self.model_id, "messages": [{"role": "user", "content": [*docs, {"text": req.user}]}],
                   "inferenceConfig": inference}
         if req.system:
             kwargs["system"] = [{"text": req.system}]

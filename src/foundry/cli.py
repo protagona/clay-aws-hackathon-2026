@@ -66,6 +66,10 @@ def _build_parser() -> argparse.ArgumentParser:
     va = sub.add_parser("validate", help="check a run directory against the trace contract")
     va.add_argument("run_dir")
 
+    from foundry.rubrics.cli import add_parser as add_rubric_parser
+
+    add_rubric_parser(sub)
+
     ui = sub.add_parser("ui", help="serve the local UI on 127.0.0.1")
     ui.add_argument("--port", type=int, default=8765)
     ui.add_argument("--runs-dir", default="runs")
@@ -200,7 +204,14 @@ def _cmd_receive(args: argparse.Namespace) -> int:
     return receive_main(args)
 
 
+def _cmd_rubric(args: argparse.Namespace) -> int:
+    from foundry.rubrics.cli import main as rubric_main
+
+    return rubric_main(args)
+
+
 COMMANDS = {
+    "rubric": _cmd_rubric,
     "import": _cmd_import,
     "receive": _cmd_receive,
     "external": _cmd_external,

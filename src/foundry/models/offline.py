@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 
-from foundry.models.base import Completion, CompletionRequest
+from foundry.models.base import Completion, CompletionRequest, ProviderError
 
 STEP_LINE = re.compile(r"^#\d+ ", re.MULTILINE)
 
@@ -23,6 +23,8 @@ class OfflineProvider:
         raise ValueError("provider 'offline' only serves the judge and summarizer; use 'scripted' or 'bedrock' for [model]")
 
     def complete(self, req: CompletionRequest) -> Completion:
+        if req.purpose == "rubric":
+            raise ProviderError("Drafting a rubric needs a Bedrock judge model: use config bedrock")
         if req.purpose == "judge":
             if req.rubric is None:
                 raise ValueError("offline judge needs the rubric on the request")

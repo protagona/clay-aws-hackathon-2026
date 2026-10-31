@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Rubric draft · Foundry Eval Sandbox{% endblock %}
+{% block body %}
+<div class="runhead"><a href="/rubric?task={{ task }}">&lt; Rubric</a> &nbsp; <strong>Review draft</strong> · from {{ meta.source.label }}</div>
+{% if message %}<p class="note">{{ message }}</p>{% endif %}
+{% if meta.valid %}<p class="ok"><strong>✓ Valid</strong>: ready to activate.</p>
+{% else %}<p class="bad"><strong>✗ Invalid</strong>: {{ meta.error }}</p>{% endif %}
+{% if meta.notes %}<div class="note"><strong>Model notes</strong><ul>{% for n in meta.notes %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endif %}
+
+<div class="review">
+<form method="post" action="/rubric/drafts/{{ draft_id }}" class="review-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="task" value="{{ task }}">
+  <div class="inline">
+    <div class="field"><label class="label" for="f-id">Rubric id</label><input id="f-id" type="text" name="rubric_id" value="{{ body.rubric_id or '' }}" size="28"></div>
+    <div class="field"><label class="label" for="f-ver">Version</label><input id="f-ver" type="text" name="version" value="{{ body.version or '' }}" size="8"></div>
+  </div>
+  <div class="field"><label class="label" for="f-desc">Description</label><textarea id="f-desc" name="description" rows="2">{{ body.description or '' }}</textarea></div>
+  {% for c in body.criteria or [] %}{% set i = loop.index0 %}
+  <fieldset class="crit">
+    <legend>Criterion {{ loop.index }}</legend>
+    <div class="inline">
+      <div class="field"><label class="label" for="c{{ i }}-id">Id</label><input id="c{{ i }}-id" type="text" name="c{{ i }}-id" value="{{ c.id or '' }}" size="16"></div>
+      <div class="field"><label class="label" for="c{{ i }}-name">Name</label><input id="c{{ i }}-name" type="text" name="c{{ i }}-name" value="{{ c.name or '' }}" size="22"></div>
+      <div class="field"><label class="label" for="c{{ i }}-max">Max</label><input id="c{{ i }}-max" type="number" min="2" max="20" name="c{{ i }}-max" value="{{ c.max or 4 }}"></div>
+      <div class="field"><label class="label" for="c{{ i }}-w">Weight</label><input id="c{{ i }}-w" type="number" min="0.01" step="any" name="c{{ i }}-weight" value="{{ c.weight if c.weight is not none else 1 }}"></div>
+    </div>
+    <div class="field"><label class="label" for="c{{ i }}-desc">Description</label><textarea id="c{{ i }}-desc" name="c{{ i }}-description" rows="2">{{ c.description or '' }}</textarea></div>
+    {% set mx = c.max if c.max is number and c.max >= 2 and c.max <= 20 else 4 %}
+    {% for lvl in range(1, mx + 1) %}
+    <div class="field"><label class="label" for="c{{ i }}-l{{ lvl }}">Level {{ lvl }}{% if lvl == 1 or lvl == mx %} (required){% endif %}</label>
+      <input id="c{{ i }}-l{{ lvl }}" type="text" name="c{{ i }}-level-{{ lvl }}" value="{{ (c.levels or {}).get(lvl|string, '') }}" size="70"></div>
+    {% endfor %}
+    <button type="submit" name="action" value="remove-{{ i }}" class="secondary">Remove criterion {{ loop.index }}</button>
+  </fieldset>
+  {% endfor %}
+  <input type="hidden" name="count" value="{{ (body.criteria or []) | length }}">
+  <p><button type="submit" name="action" value="add" class="secondary">Add criterion</button>
+     <button type="submit" name="action" value="save" class="secondary">Save</button></p>
+  <p class="muted">Approve and activate: future evaluations use this rubric. Past runs keep the rubric they were scored with.
+    Saving with a changed Max shows that many level fields.</p>
+  <p><button type="submit" name="action" value="activate">Approve and activate</button>
+     <button type="submit" name="action" value="discard" class="danger">Discard draft</button></p>
+</form>
+
+<aside class="panel source">
+  <h2>Source</h2>
+  <p class="wrap">{{ meta.source.kind }} · {{ meta.source.label }}<br>
+    <span class="muted">{{ meta.source.format }} · {{ "{:,}".format(meta.source.bytes) }} bytes · sha256 {{ meta.source.sha256[:12] }}…</span></p>
+  {% if source_text is not none %}<pre class="wrap">{{ source_text }}</pre>
+  {% else %}<p><a href="/rubric/drafts/{{ draft_id }}/source?task={{ task }}">Open source</a> <span class="muted">(read by the model directly; not shown here)</span></p>{% endif %}
+  <p class="muted">Drafted by {{ meta.model or "— (already a rubric)" }}{% if meta.prompt_id %} · prompt {{ meta.prompt_id }}{% endif %}
+    {% if meta.usage %} · {{ meta.usage.tokens_in }} in / {{ meta.usage.tokens_out }} out{% if meta.usage.cost_usd is defined %} · ${{ "%.3f"|format(meta.usage.cost_usd) }}{% endif %}{% endif %}</p>
+  {% if meta.raw_reply %}<details><summary>Raw model reply</summary><pre class="wrap">{{ meta.raw_reply[:8000] }}</pre></details>{% endif %}
+</aside>
+</div>
+{% endblock %}

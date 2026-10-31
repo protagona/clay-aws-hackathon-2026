@@ -152,7 +152,7 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
                     model_filter=model)
 
     @app.get("/dashboard", response_class=HTMLResponse)
-    def dashboard_page(request: Request):
+    def dashboard_page(request: Request, rubric: str = "active"):
         entries = []
         for d in _run_dirs(st):
             run = _read_run(d)
@@ -168,7 +168,16 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
             except ValueError:
                 pass
             entries.append({"run_id": d.name, "run": run, "scores": scores, "steps": steps})
-        return page(request, "dashboard.html", nav="dashboard", d=dashboard.build(entries))
+        # T3: scores from different rubrics are not comparable, so the default is the active rubric(s) only.
+        options, active = _rubric_options(st, entries)
+        chosen = active if rubric == "active" else (None if rubric == "all" else
+                                                     ({rubric} if any(o["sha"] == rubric for o in options) else active))
+        shown = entries if chosen is None else [e for e in entries
+                                                 if (e["scores"] or {}).get("rubric_sha256") in chosen]
+        mixed = chosen is None and len({(e["scores"] or {}).get("rubric_sha256") for e in entries if e["scores"]}) > 1
+        return page(request, "dashboard.html", nav="dashboard", d=dashboard.build(shown), rubric_options=options,
+                    rubric_choice=rubric if rubric in ("active", "all") or chosen is not active else "active",
+                    mixed=mixed, total_runs=len(entries))
 
     def run_view(path: Path, seen: int | None = None) -> dict:
         """Context for run.html and its live fragment, from the run's own files."""
@@ -187,7 +196,9 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
             pass
         evaluating = lock.is_locked(path)
         live = evaluating or run.get("status") == "running"
+        rubric_info = _rubric_info(st, run, scores)
         return {"run": run, "scores": None if interrupted else scores, "report_html": report_html,
+                "rubric_info": None if interrupted else rubric_info,
                 "interrupted": interrupted, "evaluating": evaluating,
                 "m": monitor(run, steps, live=live, seen=seen)}
 
@@ -392,6 +403,169 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
                 st.receiver = None
         return RedirectResponse("/import", status_code=303)
 
+    # --- rubric import (increment 8) ------------------------------------------------------------------------
+
+    def rubric_store(task: str):
+        from foundry.rubrics.store import Store
+
+        if task not in _task_ids(st):
+            return None
+        return Store(st.root / "tasks" / task)
+
+    @app.get("/rubric", response_class=HTMLResponse)
+    def rubric_page(request: Request, task: str = "adb"):
+        from foundry.tasks import RubricError, load_rubric
+
+        store = rubric_store(task)
+        if store is None:
+            return error(request, 404, "Unknown task")
+        try:
+            active, _ = load_rubric(store.task / "rubric.json")
+        except RubricError:
+            active = None
+        versions = store.versions(st.runs_dir)
+        return page(request, "rubric.html", nav="rubric", task=task, active=active, versions=versions,
+                    active_entry=next((v for v in versions if v["active"]), None), drafts=store.drafts(),
+                    configs=_configs(st))
+
+    @app.post("/rubric/draft")
+    async def rubric_draft(request: Request, csrf: str = Form(""), task: str = Form("adb"), kind: str = Form("file"),
+                           text: str = Form(""), url: str = Form(""), mcp: str = Form(""), args: str = Form(""),
+                           config: str = Form("bedrock"), file: UploadFile | None = File(None)):
+        from starlette.concurrency import run_in_threadpool
+
+        from foundry.models.base import ProviderError
+        from foundry.rubrics.service import acquire, create_draft
+        from foundry.rubrics.sources import MAX_BYTES, SourceError
+
+        if (denied := check_csrf(csrf)) is not None:
+            return denied
+        store = rubric_store(task)
+        if store is None or config not in _configs(st) or kind not in ("file", "text", "url", "mcp"):
+            return error(request, 400, "Pick a task, a known config and a source.")
+        data, name = b"", ""
+        if kind == "file":
+            if file is None or not file.filename:
+                return error(request, 400, "Choose a file to upload.")
+            name, chunks, size = file.filename, [], 0
+            while chunk := await file.read(1 << 20):
+                size += len(chunk)
+                if size > MAX_BYTES:
+                    return error(request, 413, f"The file is over the {MAX_BYTES / 1e6:.1f} MB limit.")
+                chunks.append(chunk)
+            data = b"".join(chunks)
+        try:
+            cfg = load_config(st.root / "config" / f"{config}.toml")
+            source = await run_in_threadpool(acquire, kind, cfg, file_name=name, file_data=data, text=text, url=url,
+                                             mcp=mcp, args=args)
+            draft_id, _ = await run_in_threadpool(create_draft, store.task, source, cfg)
+        except (SourceError, ConfigError) as exc:
+            return error(request, 400, str(exc))
+        except ProviderError as exc:
+            return error(request, 502, f"The model could not draft the rubric: {exc}")
+        return RedirectResponse(f"/rubric/drafts/{draft_id}?task={task}", status_code=303)
+
+    def draft_view(request: Request, task: str, draft_id: str, message: str | None = None, status: int = 200):
+        from foundry.rubrics.sources import BINARY
+        from foundry.rubrics.store import StoreError
+
+        store = rubric_store(task)
+        if store is None:
+            return error(request, 404, "Unknown task")
+        try:
+            meta, body, src = store.load_draft(draft_id)
+        except StoreError as exc:
+            return error(request, 404, str(exc))
+        text = None
+        if src is not None and meta["source"]["format"] not in BINARY:
+            text = src.read_bytes()[:50_000].decode("utf-8", "replace")
+        return page(request, "rubric_draft.html", status=status, nav="rubric", task=task, draft_id=draft_id,
+                    meta=meta, body=body, source_text=text, message=message)
+
+    @app.get("/rubric/drafts/{draft_id}", response_class=HTMLResponse)
+    def rubric_draft_page(request: Request, draft_id: str, task: str = "adb"):
+        return draft_view(request, task, draft_id)
+
+    @app.post("/rubric/drafts/{draft_id}")
+    async def rubric_draft_post(request: Request, draft_id: str):
+        from foundry.rubrics.store import StoreError
+
+        form = await request.form()
+        if (denied := check_csrf(str(form.get("csrf", "")))) is not None:
+            return denied
+        task, action = str(form.get("task", "adb")), str(form.get("action", "save"))
+        store = rubric_store(task)
+        if store is None:
+            return error(request, 404, "Unknown task")
+        try:
+            store.load_draft(draft_id)
+            if action == "discard":
+                store.discard(draft_id)
+                return RedirectResponse(f"/rubric?task={task}", status_code=303)
+            body = _draft_from_form(form)
+            if action == "add":
+                body["criteria"].append({"id": "", "name": "", "description": "", "max": 4, "weight": 1, "levels": {}})
+            elif action.startswith("remove-") and action[7:].isdigit() and int(action[7:]) < len(body["criteria"]):
+                body["criteria"].pop(int(action[7:]))
+            err = store.update_draft(draft_id, body)
+            if action == "activate":
+                if err:
+                    return draft_view(request, task, draft_id, f"Not activated: {err}", status=400)
+                store.activate_draft(draft_id)
+                return RedirectResponse(f"/rubric?task={task}", status_code=303)
+        except StoreError as exc:
+            return draft_view(request, task, draft_id, str(exc), status=409) if "Unknown draft" not in str(exc) \
+                else error(request, 404, str(exc))
+        return draft_view(request, task, draft_id, "Saved." if not err else None)
+
+    @app.get("/rubric/drafts/{draft_id}/source")
+    def rubric_draft_source(draft_id: str, task: str = "adb"):
+        from foundry.rubrics.store import StoreError
+
+        store = rubric_store(task)
+        try:
+            _, _, src = store.load_draft(draft_id) if store else (None, None, None)
+        except StoreError:
+            src = None
+        if src is None:
+            return PlainTextResponse("Not found", status_code=404)
+        return Response(src.read_bytes(), media_type="application/octet-stream",
+                        headers={"Content-Disposition": f'attachment; filename="rubric-source{src.suffix}"'})
+
+    @app.get("/rubric/history/{name}", response_class=HTMLResponse)
+    def rubric_version_page(request: Request, name: str, task: str = "adb"):
+        from foundry.rubrics.store import StoreError
+        from foundry.tasks import RubricError, load_rubric
+
+        store = rubric_store(task)
+        try:
+            path = store.history_file(name) if store else None
+            rubric, raw = load_rubric(path) if path else (None, b"")
+        except (StoreError, RubricError):
+            rubric = None
+        if rubric is None:
+            return error(request, 404, "Unknown rubric version")
+        import hashlib
+
+        return page(request, "rubric_version.html", nav="rubric", task=task, rubric=rubric,
+                    active=hashlib.sha256(raw).hexdigest() == store.active_sha())
+
+    @app.post("/rubric/history/activate")
+    def rubric_history_activate(request: Request, csrf: str = Form(""), task: str = Form("adb"),
+                                file: str = Form("")):
+        from foundry.rubrics.store import StoreError
+
+        if (denied := check_csrf(csrf)) is not None:
+            return denied
+        store = rubric_store(task)
+        if store is None:
+            return error(request, 404, "Unknown task")
+        try:
+            store.activate_version(file)
+        except StoreError as exc:
+            return error(request, 409 if "progress" in str(exc) else 404, str(exc))
+        return RedirectResponse(f"/rubric?task={task}", status_code=303)
+
     @app.get("/jobs/{job_id}/log", response_class=PlainTextResponse)
     def job_log(job_id: str):
         job = st.jobs.get(job_id) if JOB_ID_RE.match(job_id) else None
@@ -409,6 +583,68 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
         return RedirectResponse("/", status_code=303)
 
     return app
+
+
+def _rubric_options(st: UiState, entries: list[dict]) -> tuple[list[dict], set]:
+    """Rubrics that scored runs (label, sha, count), and the shas of every task's active rubric."""
+    import hashlib
+
+    active = set()
+    for task in _task_ids(st):
+        f = st.root / "tasks" / task / "rubric.json"
+        if _regular(f):
+            active.add(hashlib.sha256(f.read_bytes()).hexdigest())
+    seen: dict[str, dict] = {}
+    for e in entries:
+        sc = e["scores"] or {}
+        sha = sc.get("rubric_sha256")
+        if isinstance(sha, str) and re.fullmatch(r"[a-f0-9]{64}", sha):
+            o = seen.setdefault(sha, {"sha": sha, "label": f"{sc.get('rubric_id_loaded') or sc.get('rubric_id') or '?'}"
+                                                           f" v{sc.get('rubric_version') or '?'}", "runs": 0})
+            o["runs"] += 1
+    for o in seen.values():
+        o["active"] = o["sha"] in active
+    return sorted(seen.values(), key=lambda o: (not o["active"], o["label"])), active
+
+
+def _rubric_info(st: UiState, run: dict, scores: dict | None) -> dict | None:
+    """T1: the rubric that actually scored this run (rubric_id_loaded), linked to its history version if present."""
+    if not scores:
+        return None
+    rid = scores.get("rubric_id_loaded") or scores.get("rubric_id")
+    sha = scores.get("rubric_sha256")
+    if not isinstance(rid, str):
+        return None
+    link = None
+    task = run.get("task_id")
+    if isinstance(task, str) and task in _task_ids(st) and isinstance(sha, str):
+        from foundry.rubrics.store import Store
+
+        for e in Store(st.root / "tasks" / task).history():
+            if e.get("sha256") == sha:
+                link = f"/rubric/history/{e['file']}?task={task}"
+    return {"id": rid, "version": str(scores.get("rubric_version") or "?"), "link": link}
+
+
+def _draft_from_form(form) -> dict:
+    """The review form back into a rubric dict (untrusted; the store validates and canonicalises it)."""
+    def num(v, cast, default):
+        try:
+            return cast(v)
+        except (TypeError, ValueError):
+            return default
+
+    count = min(num(form.get("count"), int, 0), 50)
+    crits = []
+    for i in range(count):
+        mx = num(form.get(f"c{i}-max"), int, 4)
+        levels = {str(k): str(form.get(f"c{i}-level-{k}", "")).strip() for k in range(1, min(max(mx, 2), 20) + 1)}
+        crits.append({"id": str(form.get(f"c{i}-id", "")).strip(), "name": str(form.get(f"c{i}-name", "")).strip(),
+                      "description": str(form.get(f"c{i}-description", "")).strip(), "max": mx,
+                      "weight": num(form.get(f"c{i}-weight"), float, 1.0),
+                      "levels": {k: v for k, v in levels.items() if v}})
+    return {"rubric_id": str(form.get("rubric_id", "")).strip(), "version": str(form.get("version", "")).strip(),
+            "description": str(form.get("description", "")).strip(), "criteria": crits}
 
 
 def _spawn(st: UiState, kind: str, run_id: str, label: str, args: list[str], lock_token: str | None = None,

@@ -95,7 +95,7 @@ def test_page_from_real_runs(tmp_path):  # D1, D6
     _seed(runs, "recovered", model="other-model")
     _seed(runs, "failed")
     evaluate(clean, load(eval_config(tmp_path / "e")))
-    html = _client(runs).get("/dashboard").text
+    html = _client(runs).get("/dashboard?rubric=all").text  # all runs, incl. unscored (T3 default is active-only)
     assert 'aria-current="page">Dashboard' in html
     assert '<span class="kpi-num">3</span><span class="muted">runs' in html
     assert '<span class="kpi-num">1</span><span class="muted">scored' in html
@@ -124,7 +124,7 @@ def test_empty_and_hostile_runs(tmp_path):  # D7
     _seed(runs, "hostile", model="<img src=x onerror=alert(1)>")
     (runs / "broken").mkdir()
     (runs / "broken" / "run.json").write_text("{not json")
-    r = c.get("/dashboard")
+    r = c.get("/dashboard?rubric=all")
     assert r.status_code == 200 and "<img" not in r.text and "&lt;img src=x" in r.text
     assert 'href="/?model=%3Cimg' in r.text
 
@@ -136,3 +136,32 @@ def test_pipeline_is_its_own_row():  # increment 7, S2
     d = build([single, pipe])
     assert [m["model"] for m in d["leaderboard"]] == ["kimi", "kimi · pipeline"]
     assert {p["model"] for p in d["scatter"]["dots"]} == {"kimi", "kimi · pipeline"}
+
+
+def test_filter_by_rubric(tmp_path):  # increment 8, T3
+    import hashlib
+
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    for name in ("clean", "recovered"):
+        evaluate(_seed(runs, name), load(eval_config(tmp_path / f"e-{name}")))
+    # The recovered run was scored with another rubric: its own rubric.json copy and the sha in scores.json agree.
+    rec = runs / "fixture-recovered"
+    other_rubric = json.loads((rec / "rubric.json").read_text()) | {"rubric_id": "clay-adb", "version": "1.0"}
+    (rec / "rubric.json").write_text(json.dumps(other_rubric))
+    other_sha = hashlib.sha256((rec / "rubric.json").read_bytes()).hexdigest()
+    sc = json.loads((rec / "scores.json").read_text())
+    sc.update(rubric_sha256=other_sha, rubric_id_loaded="clay-adb", rubric_version="1.0")
+    (rec / "scores.json").write_text(json.dumps(sc))
+    _seed(runs, "failed")  # unscored
+    c = _client(runs)
+    active = hashlib.sha256((ROOT / "tasks/adb/rubric.json").read_bytes()).hexdigest()
+    default = c.get("/dashboard").text
+    assert '<span class="kpi-num">1</span><span class="muted">runs' in default  # only the active rubric's run
+    assert 'clay-adb v1.0 (1 runs)' in default and "different rubrics" not in default
+    assert '<span class="kpi-num">1</span><span class="muted">runs' in c.get(f"/dashboard?rubric={other_sha}").text
+    every = c.get("/dashboard?rubric=all").text
+    assert '<span class="kpi-num">3</span><span class="muted">runs' in every and "different rubrics" in every
+    assert f'value="{active}"' in default
+    junk = c.get("/dashboard?rubric=../../etc").text  # unknown choice falls back to the active rubric
+    assert '<span class="kpi-num">1</span><span class="muted">runs' in junk

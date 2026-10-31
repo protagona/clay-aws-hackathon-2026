@@ -1,8 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Dashboard · Foundry Eval Sandbox{% endblock %}
 {% block body %}
-{% if not d.kpis.runs %}
+{% if total_runs %}
+<form class="inline" method="get" action="/dashboard" style="margin-bottom:12px">
+  <div class="field"><label class="label" for="rubric-filter">Scored with</label>
+    <select id="rubric-filter" name="rubric">
+      <option value="active"{% if rubric_choice == "active" %} selected{% endif %}>Active rubric</option>
+      {% for o in rubric_options %}<option value="{{ o.sha }}"{% if rubric_choice == o.sha %} selected{% endif %}>{{ o.label }} ({{ o.runs }} runs){% if o.active %} · active{% endif %}</option>{% endfor %}
+      <option value="all"{% if rubric_choice == "all" %} selected{% endif %}>All runs (any rubric, incl. unscored)</option>
+    </select></div>
+  <div class="field"><button type="submit">Show</button></div>
+</form>
+{% if mixed %}<p class="note">These runs were scored with different rubrics, so their scores are not directly comparable.</p>{% endif %}
+{% endif %}
+{% if not total_runs %}
 <p class="empty">No runs yet. Start one on the <a href="/">Runs</a> tab, and the dashboard fills in as runs are scored.</p>
+{% elif not d.kpis.runs %}
+<p class="empty">No runs have been scored with this rubric yet. Evaluate runs from their pages, or <a href="/dashboard?rubric=all">show all runs</a>.</p>
 {% else %}
 <div class="kpis">
   <div class="kpi"><span class="kpi-num">{{ d.kpis.runs }}</span><span class="muted">runs</span></div>

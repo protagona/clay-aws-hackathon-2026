@@ -16,8 +16,9 @@ class CompletionRequest:
     system: str
     user: str
     max_tokens: int
-    purpose: Literal["judge", "summary"]
+    purpose: Literal["judge", "summary", "rubric"]
     rubric: Rubric | None = None
+    documents: tuple[tuple[str, bytes], ...] = ()  # (format, bytes): pdf/docx/xlsx/csv for Converse document blocks
 
 
 @dataclass

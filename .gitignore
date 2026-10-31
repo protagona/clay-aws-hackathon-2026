@@ -7,3 +7,8 @@ node_modules/
 .pytest_cache/
 dist/
 batches/
+
+# rubric import (increment 8): drafts and original source documents stay local; history is tracked
+tasks/*/rubrics/drafts/
+tasks/*/rubrics/sources/
+tasks/*/rubrics/.rubric.lock

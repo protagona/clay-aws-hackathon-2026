@@ -4,7 +4,8 @@
 {% block body %}
 <div class="runhead">
   <div><a href="/">&lt; Runs</a> &nbsp; <strong>{{ run.prompt_id }}</strong> · {{ run.model.id }}</div>
-  <div class="wrap" style="color:var(--muted);font-size:13px">{{ run.run_id }}</div>
+  <div class="wrap" style="color:var(--muted);font-size:13px">{{ run.run_id }}{% if rubric_info %} · Rubric:
+    {% if rubric_info.link %}<a href="{{ rubric_info.link }}">{{ rubric_info.id }} v{{ rubric_info.version }}</a>{% else %}{{ rubric_info.id }} v{{ rubric_info.version }}{% endif %}{% endif %}</div>
   {% if others %}
   <form class="compare" method="get" action="/compare">
     <input type="hidden" name="a" value="{{ run.run_id }}">

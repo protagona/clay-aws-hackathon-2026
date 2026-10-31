@@ -624,3 +624,98 @@ def test_pipeline_run_page_compare_and_cards(tmp_path):  # increment 7: U1, U2, 
     index = c.get("/").text
     assert "scripted-test · pipeline" in index
     assert pipe_dir.name in c.get("/?model=scripted-test · pipeline").text
+
+
+# --- increment 8: rubric import, review, activation, tracking ----------------------------------------------------
+
+RUBRIC = {"rubric_id": "clay-adb", "version": "1.0", "task_id": "adb", "description": "From <b>Clay</b>.",
+          "criteria": [{"id": "accuracy", "name": "Accuracy <script>x</script>", "description": "Faithful.", "max": 3,
+                        "weight": 2, "levels": {"1": "Wrong", "3": "Right"}}]}
+
+
+def _rubric_project(tmp_path):
+    root = tmp_path / "proj"
+    shutil.copytree(ROOT / "tasks", root / "tasks")
+    shutil.copytree(ROOT / "config", root / "config")
+    return root
+
+
+def _upload(c, app, name, data, **form):
+    return c.post("/rubric/draft", data={"csrf": _csrf(app), "task": "adb", "kind": "file", "config": "offline", **form},
+                  files={"file": (name, data)})
+
+
+def test_rubric_import_review_activate_rollback(tmp_path):  # R1-R5, T2 through the real app
+    root = _rubric_project(tmp_path)
+    app, c = _client(tmp_path / "runs", root=root)
+    assert 'aria-current="page">Rubric' in c.get("/rubric").text
+    r = _upload(c, app, "clay.json", json.dumps(RUBRIC).encode())  # I5: already a rubric, no model needed
+    assert r.status_code == 303 and "/rubric/drafts/" in r.headers["location"]
+    draft_url = r.headers["location"].split("?")[0]
+    page = c.get(r.headers["location"]).text
+    assert "✓ Valid" in page and "Accuracy &lt;script&gt;x&lt;/script&gt;" in page and "<script>x" not in page
+    form = {"csrf": _csrf(app), "task": "adb", "rubric_id": "clay-adb", "version": "1.0", "description": "d",
+            "count": "1", "c0-id": "accuracy", "c0-name": "Accuracy", "c0-description": "Faithful.", "c0-max": "3",
+            "c0-weight": "2", "c0-level-1": "Wrong", "c0-level-3": "Right"}
+    page = c.post(draft_url, data={**form, "action": "add"}).text
+    assert "Criterion 2" in page and "✗ Invalid" in page  # the empty new card fails validation, in text
+    page = c.post(draft_url, data={**form, "count": "2", "action": "remove-1"}).text
+    assert "Criterion 2" not in page and "✓ Valid" in page
+    r = c.post(draft_url, data={**form, "action": "activate"})
+    assert r.status_code == 303
+    assert json.loads((root / "tasks/adb/rubric.json").read_text())["rubric_id"] == "clay-adb"
+    tab = c.get("/rubric").text
+    assert "clay-adb" in tab and "✓ active" in tab and "adb-rubric-v0" in tab and "clay.json" in tab
+    r = c.post("/rubric/history/activate", data={"csrf": _csrf(app), "task": "adb", "file": "adb-rubric-v0@0.1.json"})
+    assert r.status_code == 303
+    assert json.loads((root / "tasks/adb/rubric.json").read_text())["rubric_id"] == "adb-rubric-v0"
+    assert c.get("/rubric/history/clay-adb@1.0.json?task=adb").status_code == 200
+
+
+def test_rubric_routes_deny(tmp_path):  # S1, S1b
+    root = _rubric_project(tmp_path)
+    app, c = _client(tmp_path / "runs", root=root)
+    assert c.post("/rubric/draft", data={"csrf": "nope", "task": "adb", "kind": "text", "text": "x"}).status_code == 403
+    assert _upload(c, app, "evil.exe", b"MZ").status_code == 400
+    assert _upload(c, app, "big.pdf", b"x" * 4_600_000).status_code == 413  # enforced while streaming
+    assert "needs a Bedrock judge model" in c.post("/rubric/draft", data={
+        "csrf": _csrf(app), "task": "adb", "kind": "text", "text": "accuracy 0-3", "config": "offline"}).text
+    assert c.post("/rubric/draft", data={"csrf": _csrf(app), "task": "../etc", "kind": "text", "text": "x",
+                                         "config": "offline"}).status_code == 400
+    r = c.post("/rubric/draft", data={"csrf": _csrf(app), "task": "adb", "kind": "url",
+                                      "url": "https://169.254.169.254/latest", "config": "offline"})
+    assert r.status_code == 400 and "non-public" in r.text
+    for bad in ("../rubric.json", "x.json", "a@b.json%2F..%2F..%2Fc"):
+        assert c.post("/rubric/history/activate", data={"csrf": _csrf(app), "task": "adb", "file": bad}).status_code == 404
+        assert c.get(f"/rubric/history/{bad}?task=adb").status_code == 404
+    for bad in ("../../etc", "ABCDEF123456", "0" * 13):
+        assert c.get(f"/rubric/drafts/{bad}?task=adb").status_code == 404
+        assert c.get(f"/rubric/drafts/{bad}/source?task=adb").status_code == 404
+    r = _upload(c, app, "clay.json", json.dumps({**RUBRIC, "rubric_id": "../escape"}).encode())
+    assert r.status_code == 502  # not a valid rubric, so it needs the model; offline can't draft
+    draft_url = _upload(c, app, "ok.json", json.dumps(RUBRIC).encode()).headers["location"].split("?")[0]
+    r = c.post(draft_url, data={"csrf": _csrf(app), "task": "adb", "action": "activate", "rubric_id": "../escape",
+                                "version": "1.0", "description": "d", "count": "1", "c0-id": "a", "c0-name": "A",
+                                "c0-description": "d", "c0-max": "3", "c0-weight": "1", "c0-level-1": "x",
+                                "c0-level-3": "y"})
+    assert r.status_code == 400 and "Not activated" in r.text and "letters, digits" in r.text
+    assert not list((root / "tasks").rglob("escape*"))
+    import os
+
+    good = _upload(c, app, "ok.json", json.dumps(RUBRIC).encode()).headers["location"].split("?")[0]
+    (root / "tasks/adb/rubrics/.rubric.lock").write_text(str(os.getpid()))  # a live activation in progress
+    form = {"csrf": _csrf(app), "task": "adb", "action": "activate", "rubric_id": "clay-adb", "version": "1.0",
+            "description": "d", "count": "1", "c0-id": "a", "c0-name": "A", "c0-description": "d", "c0-max": "3",
+            "c0-weight": "1", "c0-level-1": "x", "c0-level-3": "y"}
+    r = c.post(good, data=form)
+    assert r.status_code == 409 and "in progress" in r.text
+    src = c.get(good + "/source?task=adb")
+    assert src.headers["content-disposition"].startswith("attachment") and src.headers["x-content-type-options"] == "nosniff"
+
+
+def test_run_page_names_the_rubric_that_scored_it(tmp_path):  # T1
+    runs = tmp_path / "runs"
+    d = _seed(runs, "clean")
+    evaluate(d["clean"], load(eval_config(tmp_path / "e")))
+    _, c = _client(runs)
+    assert "Rubric:\n    adb-rubric-v0 v0.1" in c.get("/runs/fixture-clean").text

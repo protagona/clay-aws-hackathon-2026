@@ -163,6 +163,17 @@ svg.scatter .sv-tick { fill:var(--muted); font-size:12px; }
 .feed-divider { list-style:none; padding:6px 2px 2px; border-top:2px solid var(--line); font-size:14px; }
 .feed-divider details { margin-top:4px; font-size:13px; } .feed-divider summary { cursor:pointer; color:var(--accent); }
 .feed-divider pre { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; white-space:pre-wrap; font-size:12px; margin:6px 0 0; }
+ /* rubric (increment 8) */
+textarea { font:inherit; width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }
+fieldset.field { border:none; padding:0; margin:0 0 12px; } fieldset.field legend { padding:0; }
+.review { display:grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap:18px; align-items:start; }
+@media (max-width: 800px) { .review { grid-template-columns: 1fr; } }
+fieldset.crit { border:1px solid var(--line); border-radius:10px; background:var(--card); padding:10px 14px; margin:0 0 12px; }
+fieldset.crit legend { font-weight:600; padding:0 4px; }
+.source pre { max-height:480px; overflow:auto; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:12px; white-space:pre-wrap; }
+button.secondary { background:var(--card); color:var(--accent); }
+button.danger { background:var(--card); color:var(--bad); border-color:var(--bad); }
+input[type=text] { max-width:100%; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
 </style>
 </head>
@@ -172,6 +183,7 @@ svg.scatter .sv-tick { fill:var(--muted); font-size:12px; }
   <a href="/batches"{% if nav == "batches" %} aria-current="page"{% endif %}>Batches</a>
   <a href="/import"{% if nav == "import" %} aria-current="page"{% endif %}>Import</a>
   <a href="/dashboard"{% if nav == "dashboard" %} aria-current="page"{% endif %}>Dashboard</a>
+  <a href="/rubric"{% if nav == "rubric" %} aria-current="page"{% endif %}>Rubric</a>
 </nav>
 {% block body %}{% endblock %}</main></body>
 </html>
