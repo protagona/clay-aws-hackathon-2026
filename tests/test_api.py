@@ -292,3 +292,75 @@ def test_must_deny_paths_continued(tmp_path, monkeypatch):  # A3: the rest of th
     r = c.post("/api/rubric/drafts", headers=h, data={"task": "adb", "kind": "url", "config": "offline",
                                                       "url": "https://metadata.example/latest"})
     assert r.status_code == 400 and "non-public address" in r.json()["error"]
+
+
+def test_must_deny_paths_classic_parity(tmp_path):  # A3: the remaining classic must-deny cases, ported (verify 2)
+    import os
+
+    from foundry.evaluate import lock
+
+    runs = tmp_path / "runs"
+    _seed(runs, "clean", "hostile", "recovered")
+    evaluate(runs / "fixture-clean", load(eval_config(tmp_path / "e")))
+    evaluate(runs / "fixture-hostile", load(eval_config(tmp_path / "e2")))
+    (tmp_path / "secret.md").write_text("# TOP SECRET")  # F1: a symlinked report.md is never read
+    (runs / "fixture-clean" / "report.md").unlink()
+    (runs / "fixture-clean" / "report.md").symlink_to(tmp_path / "secret.md")
+    rj = json.loads((runs / "fixture-recovered" / "run.json").read_text())  # F3: ids come from the directory name
+    rj["run_id"] = "../../jobs/0000000000000000/dismiss?"
+    (runs / "fixture-recovered" / "run.json").write_text(json.dumps(rj))
+    (runs / "bad-list").mkdir()  # F4: a run.json that isn't an object
+    (runs / "bad-list" / "run.json").write_text("[1, 2]")
+    root = _project(tmp_path)
+    _, c, csrf = _client(tmp_path, root=root)
+    h = {"x-csrf-token": csrf}
+
+    assert "TOP SECRET" not in c.get("/api/runs/fixture-clean").text and "TOP SECRET" not in c.get("/api/runs").text
+    ids = [x["run_id"] for x in c.get("/api/runs").json()["runs"]]
+    assert "fixture-recovered" in ids and not any("dismiss" in i for i in ids)
+    assert c.get("/api/runs/bad-list").status_code == 404
+    assert c.post("/api/runs/bad-list/evaluate", headers=h).status_code == 404
+    hostile = c.get("/api/runs/fixture-hostile").json()
+    html = hostile["report_html"] + "".join(f["s"].get("text_html") or "" for f in hostile["m"]["feed"])
+    assert "<script" not in html
+    assert "<img" not in html
+    assert 'href="javascript' not in html.lower()  # rendered as inert text, never as a link
+    assert "<b>bold</b>" not in html
+
+    r = c.post("/api/runs", headers=h, json={"prompt_id": "adb-999", "config": "offline"})
+    assert r.status_code == 400 and "Unknown prompt id 'adb-999'" in r.json()["error"]
+    token = lock.acquire(runs / "fixture-hostile", owner="test")  # an evaluation already in progress
+    try:
+        assert c.post("/api/runs/fixture-hostile/evaluate", headers=h).status_code == 409
+    finally:
+        lock.release(runs / "fixture-hostile", token)
+
+    did = c.post("/api/rubric/drafts", headers=h, data={"task": "adb", "kind": "file", "config": "offline"},
+                 files={"file": ("ok.json", json.dumps(RUBRIC).encode())}).json()["draft_id"]
+    r = c.put(f"/api/rubric/drafts/{did}", headers=h, json={"task": "adb", "body": {**RUBRIC, "rubric_id": "../escape"},
+                                                             "activate": True})
+    assert r.status_code == 400 and not list((root / "tasks").rglob("escape*"))
+    (root / "tasks/adb/rubrics/.rubric.lock").write_text(str(os.getpid()))  # a live activation in progress
+    r = c.put(f"/api/rubric/drafts/{did}", headers=h, json={"task": "adb", "body": RUBRIC, "activate": True})
+    assert r.status_code == 409 and "in progress" in r.json()["error"]
+    src = c.get(f"/api/rubric/drafts/{did}/source?task=adb")
+    assert src.headers["content-disposition"].startswith("attachment") and src.headers["x-content-type-options"] == "nosniff"
+
+    assert c.post("/api/runs", data={"prompt_id": "adb-001", "config": "offline"}).status_code == 403  # a "simple" form post
+    assert c.post("/api/jobs/0123456789abcdef/dismiss", headers={"origin": "null", "x-csrf-token": csrf}).status_code == 403
+    assert c.get("/api/session", headers={"origin": "http://evil.example"}).headers.get("access-control-allow-origin") is None
+    pre = c.options("/api/runs", headers={"origin": "http://evil.example", "access-control-request-method": "POST",
+                                          "access-control-request-headers": "x-csrf-token"})
+    assert "access-control-allow-origin" not in pre.headers  # no CORS is ever granted
+
+
+def test_second_run_while_one_is_running_is_409(tmp_path, monkeypatch):  # A3: one UI-started run at a time
+    _, c, csrf = _client(tmp_path)
+    app_state = c.app.state.ui
+
+    class Alive:
+        kind, alive, run_id = "run", True, "busy-run"
+
+    app_state.jobs["0" * 16] = Alive()
+    r = c.post("/api/runs", headers={"x-csrf-token": csrf}, json={"prompt_id": "adb-001", "config": "offline"})
+    assert r.status_code == 409 and "already in progress: busy-run" in r.json()["error"]

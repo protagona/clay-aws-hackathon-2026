@@ -38,12 +38,12 @@
 
 ## Verification
 
-**Python suite:** 318 passed; ruff and gitleaks clean. **UI unit tests (Vitest):** 7 passed. **`npm audit`:** 0 vulnerabilities, for both the shipped and the dev dependencies.
+**Python suite:** 320 passed; ruff and gitleaks clean. **UI unit tests (Vitest):** 8 passed. **`npm audit`:** 0 vulnerabilities, for both the shipped and the dev dependencies.
 
 | AC | How it was proven |
 |---|---|
 | A1, A2 | `tests/test_api.py` has 13 tests through the real app. They cover session, runs and KPIs, run detail, compare, dashboard, batches, receiver, import, the full rubric flow (draft by JSON shortcut, update with field errors, activate, roll back, source, discard), and jobs. `test_start_run_and_evaluate_through_api` runs a real offline run plus evaluation as subprocesses. The classic routes call the same `actions` functions: the existing 67 classic tests pass through `classic_client`. |
-| A3 | `test_must_deny_paths_continued` (evaluate while running → 409, symlinked run dir and `run.json` → 404, rubric upload of a wrong type → 400, rubric URL to a non-public address → 400), `test_writes_need_csrf_header_and_json` (403 without the header or with a bad one; 415 for a non-JSON body; multipart required on upload routes), `test_origin_and_host_checked_on_every_write` (POST, PUT and DELETE refused cross-origin; bad Host refused), `test_must_deny_paths` (bad run ids, traversal, unknown task, bad draft ids and history names, an over-cap import returning 413, no server paths in errors) |
+| A3 | `test_must_deny_paths_classic_parity` (ported from the second verify pass):<br>• a symlinked `report.md` is never read<br>• run ids come from the directory name, not `run.json`<br>• a `run.json` that is a list gives 404 on detail and evaluate<br>• hostile Markdown renders inert (no `<script>`, `<img>` or `javascript:` links)<br>• an unknown prompt gives 400<br>• evaluating during an evaluation gives 409<br>• an unsafe `rubric_id` gives 400 and writes no file<br>• a live rubric lock gives 409<br>• the source download is `attachment` and `nosniff`<br>• a "simple" form post and `Origin: null` are refused<br>• no CORS headers on a cross-site GET or preflight<br>`test_second_run_while_one_is_running_is_409`, `test_must_deny_paths_continued` (evaluate while running → 409, symlinked run dir and `run.json` → 404, rubric upload of a wrong type → 400, rubric URL to a non-public address → 400), `test_writes_need_csrf_header_and_json` (403 without the header or with a bad one; 415 for a non-JSON body; multipart required on upload routes), `test_origin_and_host_checked_on_every_write` (POST, PUT and DELETE refused cross-origin; bad Host refused), `test_must_deny_paths` (bad run ids, traversal, unknown task, bad draft ids and history names, an over-cap import returning 413, no server paths in errors) |
 | A4 | `test_errors_are_json`: the 422 rewrite `{"error": "config: Field required"}`, an unknown endpoint, 400s, and the guard's JSON 400 and 403 |
 | A5 | `test_runs_kpis_and_columns` (columns: scored, running, attention, and unreadable to attention), `test_spent_counts_every_run_mean_only_active_rubric`, and jobs with `finished_at` in the run-and-evaluate test. **`GET /api/runs` takes 17 ms on the 29 real runs**, measured on 2026-10-31. |
 | B1, B3, B5 | `test_spa_served_and_fallback`: the SPA routes and `index.html` fallback, `/classic` 307 to `/classic/`, assets served as immutable files. The classic tests assert the `/classic` links, redirects, `monitor.js` path and rubric link. |
@@ -72,6 +72,12 @@ All are fixed and proven above. It also flagged:
 - test names in the design that don't exist
 
 All of these are fixed. The design's traceability now names the real tests (`test_csp_and_bundle`, the jobs assertions in `test_start_run_and_evaluate_through_api`).
+
+The **second pass** confirmed all four fixes by reproducing them: the e2e on its own server, an Evaluate started from the drawer at 375 px, and widths from 320 to 1024 px. It also confirmed `npm run build` reproduces the committed bundle byte for byte. It found:
+- the A3 parity tests still incomplete (now ported, above)
+- a polling race, where a response arriving after the drawer closed kept the poll running: `usePoll` now drops late responses and stops (Vitest `usePoll` test)
+
+The three-pass limit wasn't reached, and no blockers remain.
 
 ## Deferred and follow-ups
 

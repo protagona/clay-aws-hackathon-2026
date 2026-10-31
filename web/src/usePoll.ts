@@ -11,31 +11,36 @@ export function usePoll<T>(url: string | null, interval: (data: T | null) => num
   const intervalRef = useRef(interval);
   intervalRef.current = interval;
 
+  const active = useRef(true);  // false once the url changes or the component unmounts: late responses are dropped
+
   const load = useCallback(async () => {
     if (!url) return;
     window.clearTimeout(timer.current);
     let next: number | null;
     try {
       const d = await get<T>(url);
+      if (!active.current) return;  // a response for a closed drawer or a previous run: ignore it, and stop
       setData(d);
       setError(null);
       backoff.current = 0;
       next = intervalRef.current(d);
     } catch (e) {
+      if (!active.current) return;
       setError(e instanceof Error ? e.message : String(e));
       backoff.current = Math.min((backoff.current || 1000) * 2, 8000);
       next = backoff.current;
     } finally {
       setLoading(false);
     }
-    if (next !== null) timer.current = window.setTimeout(load, document.hidden ? Math.max(next, 5000) : next);
+    if (next !== null && active.current) timer.current = window.setTimeout(load, document.hidden ? Math.max(next, 5000) : next);
   }, [url]);
 
   useEffect(() => {
+    active.current = true;
     setLoading(true);
     setData(null);
     load();
-    return () => window.clearTimeout(timer.current);
+    return () => { active.current = false; window.clearTimeout(timer.current); };
   }, [load]);
 
   return { data, error, loading, reload: load };

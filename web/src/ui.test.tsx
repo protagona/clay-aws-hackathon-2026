@@ -101,3 +101,21 @@ describe("run drawer", () => {  // T2: the drawer's tabs show the monitor's view
     vi.unstubAllGlobals();
   });
 });
+
+describe("usePoll", () => {  // verify 2: a response that arrives after the drawer closed must not keep polling
+  it("drops late responses and stops after unmount", async () => {
+    const { renderHook } = await import("@testing-library/react");
+    const { usePoll } = await import("./usePoll");
+    let resolve: (r: Response) => void = () => {};
+    const fetchMock = vi.fn(() => new Promise<Response>((r) => { resolve = r; }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+    const { unmount } = renderHook(() => usePoll<{ n: number }>("/api/runs/x", () => 1000));
+    unmount();  // the drawer closes while the first request is still in flight
+    resolve(new Response(JSON.stringify({ n: 1 }), { status: 200 }));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);  // no further polls
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+});
