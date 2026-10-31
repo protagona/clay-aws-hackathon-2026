@@ -387,3 +387,21 @@ def test_rubric_contents_viewable(tmp_path):  # increment 10: R1, R2, R4
     assert c.get("/api/runs/fixture-clean/rubric").status_code == 404
     assert c.get("/api/rubric/active?task=nope").status_code == 404
     assert c.get("/api/dashboard?rubric=all").json()["scored_by"][a["sha256"]] in ("fixture-clean", "fixture-recovered")
+
+
+def test_card_kpi_shares_add_up_to_the_totals(tmp_path):  # increment 11, K3: the board totals filtered cards from these
+    runs = tmp_path / "runs"
+    _seed(runs, "clean", "failed", "recovered")
+    evaluate(runs / "fixture-clean", load(eval_config(tmp_path / "e")))
+    trace = runs / "fixture-failed" / "trace.jsonl"  # offline fixtures cost nothing; give one run a real cost
+    trace.write_text(trace.read_text().replace('"cost_usd":null', '"cost_usd":0.25', 1))
+    (runs / "broken").mkdir()
+    (runs / "broken" / "run.json").write_text("{nope")
+    _, c, _ = _client(tmp_path)
+    body = c.get("/api/runs").json()
+    k, shares = body["kpis"], {r["run_id"]: r["kpi"] for r in body["runs"]}
+    assert set(shares) == {"fixture-clean", "fixture-failed", "fixture-recovered", "broken"}
+    assert sum(s["spent"] for s in shares.values()) == pytest.approx(k["spent"]) and k["spent"] > 0
+    counted = [s["overall"] for s in shares.values() if s["overall"] is not None]
+    assert len(counted) == k["scored"] == 1 and sum(counted) / len(counted) == pytest.approx(k["mean"])
+    assert shares["fixture-failed"]["spent"] == pytest.approx(0.25) and shares["broken"] == {"spent": 0.0, "overall": None}

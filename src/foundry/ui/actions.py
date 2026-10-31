@@ -149,7 +149,13 @@ def board_kpis(st, entries: list[dict] | None = None) -> dict:
     _, active = core._rubric_options(st, entries)
     every = dashboard.build(entries)["kpis"]
     scored = dashboard.build([e for e in entries if (e["scores"] or {}).get("rubric_sha256") in active])["kpis"]
-    return {"spent": every["spent"], "mean": scored["mean"], "scored": scored["scored"]}
+    # Each run's share (increment 11), so the board can total just the runs its filters show.
+    shares = {}
+    for e in entries:
+        overall = (e["scores"] or {}).get("overall") if (e["scores"] or {}).get("rubric_sha256") in active else None
+        shares[e["run_id"]] = {"spent": sum(dashboard.costs(e)),
+                               "overall": float(overall) if isinstance(overall, (int, float)) and not isinstance(overall, bool) else None}
+    return {"spent": every["spent"], "mean": scored["mean"], "scored": scored["scored"], "shares": shares}
 
 
 def _entries(st) -> list[dict]:

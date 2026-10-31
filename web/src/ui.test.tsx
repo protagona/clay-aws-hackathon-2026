@@ -134,3 +134,30 @@ describe("RubricView", () => {  // increment 10, R3/R5: every level shown; the r
     expect(screen.getByText("Desc <b>x</b>")).toBeTruthy();  // text, never HTML
   });
 });
+
+describe("key numbers", () => {  // increment 11, K1/K2: the KPI cards describe only the runs the filters show
+  it("follow the model filter", async () => {
+    const { default: Runs } = await import("./pages/Runs");
+    const { fireEvent, findByText } = await import("@testing-library/react");
+    const today = new Date().toISOString();
+    const runs = [
+      card("k1", "scored", { started_at: today, kpi: { spent: 0.1, overall: 0.9 } }),
+      card("k2", "running", { started_at: "2026-01-01T00:00:00Z", kpi: { spent: 0.05, overall: null } }),
+      card("g1", "scored", { model: "zai.glm-5", started_at: today, kpi: { spent: 1, overall: 0.5 } }),
+    ];
+    const kpis = { runs: 3, today: 2, mean: 0.7, scored: 2, spent: 1.15, live: 1, running: 1, evaluating: 0 };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ runs, live: 1, kpis }), { status: 200 })));
+    render(<MemoryRouter><Runs /></MemoryRouter>);
+    const box = await screen.findByRole("region", { name: "Key numbers" });
+    expect(await findByText(box, "$1.15")).toBeTruthy();  // unfiltered: the server's totals
+    expect(within(box).getByText("0.70")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "us.moonshotai.kimi-k3" } });
+    expect(within(box).getByText("$0.15")).toBeTruthy();
+    expect(within(box).getByText("0.90")).toBeTruthy();
+    expect(within(box).getByText(/of 3/)).toBeTruthy();
+    expect(within(box).getByText("+1 today")).toBeTruthy();
+    expect(within(box).getByText("1 running · 0 evaluating")).toBeTruthy();
+    expect(within(box).getByText("active rubric · 1 scored")).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+});

@@ -29,6 +29,7 @@ export interface Card {
   cost?: number | null;
   agents_mode?: string | null;
   agents_started?: string[];  // live pipeline runs: agents started so far (from the trace)
+  kpi?: { spent: number; overall: number | null };  // this run's share of the board's KPIs (increment 11)
 }
 
 export interface Kpis {

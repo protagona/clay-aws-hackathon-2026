@@ -115,14 +115,16 @@ def make_router(st) -> APIRouter:
     @r.get("/runs")
     def runs():
         cards = core._cards(st)
+        k = act.board_kpis(st)
         out = []
         for c in cards:
             if c["unreadable"]:
                 out.append({"run_id": c["name"], "unreadable": True, "column": "attention", "prompt_id": "?",
-                            "model": "unreadable run.json", "status": "?", "headline": "unreadable"})
+                            "model": "unreadable run.json", "status": "?", "headline": "unreadable",
+                            "kpi": {"spent": 0.0, "overall": None}})
                 continue
-            out.append({**c, "column": act.board_column(c), **_card_extras(st, c["run_id"])})
-        k = act.board_kpis(st)
+            out.append({**c, "column": act.board_column(c), **_card_extras(st, c["run_id"]),
+                        "kpi": k["shares"].get(c["run_id"], {"spent": 0.0, "overall": None})})
         live = sum(c["column"] in ("running", "evaluating") for c in out)
         today = time.strftime("%Y-%m-%d", time.gmtime())
         return {"runs": out, "live": live + (1 if st.receiver is not None else 0),

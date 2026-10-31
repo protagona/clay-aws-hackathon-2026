@@ -39,17 +39,21 @@ def _nice_axis(v: float) -> tuple[float, float]:
     return v, v
 
 
+def costs(e: dict) -> tuple[float, float]:
+    """(the run's own calls, its evaluation) in USD; together they are its share of the "Spent" KPI."""
+    ev = (e["scores"] or {}).get("evaluation")
+    return sum(_n(s.cost_usd) or 0 for s in e["steps"]), (_n(ev.get("cost_usd")) if isinstance(ev, dict) else None) or 0.0
+
+
 def build(entries: list[dict]) -> dict:
     """entries: {"run_id", "run", "scores" (or None), "steps"} per readable run, as the run page reads them."""
     rows = []
     for e in entries:
-        run, scores, steps = e["run"], e["scores"], e["steps"]
-        run_cost = sum(_n(s.cost_usd) or 0 for s in steps)
-        ev = (scores or {}).get("evaluation")
-        eval_cost = _n(ev.get("cost_usd")) if isinstance(ev, dict) else None
+        run, scores = e["run"], e["scores"]
+        run_cost, eval_cost = costs(e)
         rows.append({"run_id": e["run_id"], "model": model_key(run), "prompt": run["prompt_id"],
-                     "status": run["status"], "cost": run_cost, "eval_cost": eval_cost or 0.0,
-                     "overall": _n((scores or {}).get("overall")), "scores": scores, "steps": steps})
+                     "status": run["status"], "cost": run_cost, "eval_cost": eval_cost,
+                     "overall": _n((scores or {}).get("overall")), "scores": scores, "steps": e["steps"]})
     scored = [r for r in rows if r["overall"] is not None]
     kpis = {"runs": len(rows), "scored": len(scored),
             "mean": sum(r["overall"] for r in scored) / len(scored) if scored else None,

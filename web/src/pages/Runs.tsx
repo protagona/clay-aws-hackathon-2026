@@ -7,7 +7,7 @@ import { useToast } from "../components/toasts";
 import { Empty, ErrorBanner, Kpi, Pill, ScoreRing, Skeleton, Spinner, Tabs } from "../components/ui";
 import { clock, money, score, shortModel } from "../format";
 import { RubricView } from "../components/RubricView";
-import type { Criterion, RunDetail, Rubric, RunsResponse } from "../types";
+import type { Card, Criterion, Kpis, RunDetail, Rubric, RunsResponse } from "../types";
 import { boardInterval, runInterval, usePoll } from "../usePoll";
 
 export default function Runs() {
@@ -36,13 +36,15 @@ export default function Runs() {
     }
   }
 
-  const k = board.data?.kpis;
+  const filtered = !!(model || prompt || q);
+  const k = useMemo(() => board.data && (filtered ? totals(runs) : board.data.kpis), [board.data, filtered, runs]);
+  const all = board.data?.kpis.runs ?? 0;
   return (
     <main className={`space-y-6 px-4 py-6 sm:px-8 ${id ? "min-[900px]:mr-[540px]" : ""}`}>
       {board.error && <ErrorBanner message={`Reconnecting… (${board.error})`} onRetry={board.reload} />}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Key numbers">
         {k ? (<>
-          <Kpi label="Runs" value={k.runs} sub={k.today ? <span className="text-emerald-600">+{k.today} today</span> : "none today"} />
+          <Kpi label="Runs" value={k.runs} sub={<>{filtered && `of ${all} · `}{k.today ? <span className="text-emerald-600">+{k.today} today</span> : "none today"}</>} />
           <Kpi label="Mean overall" value={score(k.mean)} sub={`active rubric · ${k.scored} scored`} />
           <Kpi label="Live now" value={k.live} accent sub={`${k.running} running · ${k.evaluating} evaluating`} />
           <Kpi label="Spent" value={money(k.spent, 2)} sub="runs + evaluations" />
@@ -67,6 +69,19 @@ export default function Runs() {
       {id && <RunDrawer id={id} onEvaluate={evaluate} refresh={evalTick} />}
     </main>
   );
+}
+
+/** The KPIs of just the cards the filters show (increment 11), from each card's share as the server counts it. */
+export function totals(cards: Card[]): Kpis {
+  const today = new Date().toISOString().slice(0, 10);  // UTC, like the server
+  const scored = cards.map((c) => c.kpi?.overall).filter((v): v is number => typeof v === "number");
+  const running = cards.filter((c) => c.column === "running").length;
+  const evaluating = cards.filter((c) => c.column === "evaluating").length;
+  return {
+    runs: cards.length, today: cards.filter((c) => (c.started_at ?? "").startsWith(today)).length,
+    scored: scored.length, mean: scored.length ? scored.reduce((a, b) => a + b, 0) / scored.length : null,
+    spent: cards.reduce((a, c) => a + (c.kpi?.spent ?? 0), 0), live: running + evaluating, running, evaluating,
+  };
 }
 
 type Tab = "overview" | "timeline" | "steps" | "report" | "rubric";
