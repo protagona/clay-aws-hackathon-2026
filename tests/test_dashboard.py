@@ -165,3 +165,15 @@ def test_filter_by_rubric(tmp_path):  # increment 8, T3
     assert f'value="{active}"' in default
     junk = c.get("/dashboard?rubric=../../etc").text  # unknown choice falls back to the active rubric
     assert '<span class="kpi-num">1</span><span class="muted">runs' in junk
+
+
+def test_empty_state_right_after_an_activation(tmp_path):  # T3: the active rubric has scored nothing yet
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    evaluate(_seed(runs, "clean"), load(eval_config(tmp_path / "e")))
+    root = tmp_path / "proj"
+    shutil.copytree(ROOT / "tasks", root / "tasks")
+    shutil.copytree(ROOT / "config", root / "config")
+    (root / "tasks/adb/rubric.json").write_text((root / "tasks/adb/rubric.json").read_text().replace("0.1", "0.2"))
+    html = TestClient(create_app(runs, root, port=8765), base_url=BASE).get("/dashboard").text
+    assert "No runs have been scored with this rubric yet" in html and 'href="/dashboard?rubric=all"' in html

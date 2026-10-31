@@ -441,6 +441,8 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
         if (denied := check_csrf(csrf)) is not None:
             return denied
         store = rubric_store(task)
+        if kind == "file" and (file is None or not file.filename):  # filled another field without switching the radio
+            kind = "text" if text.strip() else "url" if url.strip() else "mcp" if mcp.strip() else kind
         if store is None or config not in _configs(st) or kind not in ("file", "text", "url", "mcp"):
             return error(request, 400, "Pick a task, a known config and a source.")
         data, name = b"", ""

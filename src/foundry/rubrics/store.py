@@ -176,7 +176,12 @@ class Store:
             return
         try:
             r = Rubric.model_validate_json(data)
-        except ValidationError:
+        except ValidationError:  # broken by hand: keep its bytes anyway (it can't be re-activated until fixed)
+            name = f"invalid@{sha[:8]}.json"
+            if not (self.base / "history" / name).exists():
+                _write(self.base / "history" / name, data)
+            self._append({"rubric_id": "invalid", "version": sha[:8], "sha256": sha, "activated_at": None,
+                          "draft_id": None, "source": None, "file": name, "note": "archived invalid rubric.json"})
             return
         name = history_name(r.rubric_id, r.version)
         target = self.base / "history" / name

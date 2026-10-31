@@ -55,6 +55,7 @@ def _first_object(text: str) -> dict | None:
     return None
 
 
+MAX_WEIGHT = 100  # finite and bounded: Infinity or 1e308 would break the weighted score
 NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 VERSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,40}$")
 
@@ -71,8 +72,11 @@ def canonical(obj: dict, task_id: str) -> dict:
         levels = c.get("levels") if isinstance(c.get("levels"), dict) else {}
         mx = c.get("max")
         keep = {str(i) for i in range(1, mx + 1)} if isinstance(mx, int) and not isinstance(mx, bool) and mx < 100 else set()
+        weight = c.get("weight", 1)
+        if isinstance(weight, (int, float)) and not isinstance(weight, bool) and not (0 < weight <= MAX_WEIGHT):
+            raise ValueError(f"criteria.{len(out['criteria'])}.weight: must be above 0 and at most {MAX_WEIGHT}")
         out["criteria"].append({"id": c.get("id"), "name": c.get("name"), "description": c.get("description"),
-                                "max": mx, "weight": c.get("weight", 1),
+                                "max": mx, "weight": weight,
                                 "levels": {k: v for k, v in levels.items() if k in keep}})
     rubric = Rubric.model_validate(out)
     if not NAME_RE.match(rubric.rubric_id):
@@ -97,7 +101,9 @@ def _check(obj: dict | None, task_id: str) -> tuple[dict | None, list[str], str 
         return None, [], "the reply contained no JSON object"
     if isinstance(obj.get("error"), str) and not obj.get("criteria"):
         return None, [], f"This doesn't look like a rubric ({obj['error'][:300]}). Try another source."
-    notes = [str(n) for n in obj.pop("notes", []) or [] if isinstance(n, (str, int, float))][:20]
+    raw_notes = obj.pop("notes", None)
+    notes = [str(n)[:500] for n in (raw_notes if isinstance(raw_notes, list) else [raw_notes] if isinstance(raw_notes, str)
+                                    else []) if isinstance(n, (str, int, float)) and not isinstance(n, bool)][:20]
     rubric, error = check(obj, task_id)
     return rubric, notes, error
 
@@ -122,7 +128,8 @@ def draft(source: Source, task_id: str, provider: Provider) -> DraftResult:
     if source.fmt in BINARY:
         user, docs = INSTRUCTION, ((source.fmt, source.data),)
     else:
-        user, docs = f"<source>\n{source.data.decode('utf-8', 'replace')}\n</source>\n\n{INSTRUCTION.replace('attached source document', 'source above')}", ()
+        text = re.sub(r"<\s*/?\s*source\s*>", "<SOURCE-TAG>", source.data.decode("utf-8", "replace"), flags=re.IGNORECASE)
+        user, docs = f"<source>\n{text}\n</source>\n\n{INSTRUCTION.replace('attached source document', 'source above')}", ()
     result = DraftResult(None, model=provider.model_id, prompt_id=PROMPT_ID)
     for attempt in range(2):
         req = CompletionRequest(system=system, user=user, max_tokens=MAX_TOKENS, purpose="rubric", documents=docs)

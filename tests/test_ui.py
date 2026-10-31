@@ -680,6 +680,9 @@ def test_rubric_routes_deny(tmp_path):  # S1, S1b
     assert _upload(c, app, "big.pdf", b"x" * 4_600_000).status_code == 413  # enforced while streaming
     assert "needs a Bedrock judge model" in c.post("/rubric/draft", data={
         "csrf": _csrf(app), "task": "adb", "kind": "text", "text": "accuracy 0-3", "config": "offline"}).text
+    # Filled the text box but left the radio on File: the kind is inferred instead of "Choose a file".
+    assert "needs a Bedrock judge model" in c.post("/rubric/draft", data={
+        "csrf": _csrf(app), "task": "adb", "kind": "file", "text": "accuracy 0-3", "config": "offline"}).text
     assert c.post("/rubric/draft", data={"csrf": _csrf(app), "task": "../etc", "kind": "text", "text": "x",
                                          "config": "offline"}).status_code == 400
     r = c.post("/rubric/draft", data={"csrf": _csrf(app), "task": "adb", "kind": "url",

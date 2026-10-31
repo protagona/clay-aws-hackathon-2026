@@ -168,6 +168,8 @@ textarea { font:inherit; width:100%; padding:6px 8px; border:1px solid var(--lin
 fieldset.field { border:none; padding:0; margin:0 0 12px; } fieldset.field legend { padding:0; }
 .review { display:grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap:18px; align-items:start; }
 @media (max-width: 800px) { .review { grid-template-columns: 1fr; } }
+fieldset.crit, .review-form, .review > * { min-width:0; }
+.review-form input[type=text], .review-form textarea { width:100%; box-sizing:border-box; }
 fieldset.crit { border:1px solid var(--line); border-radius:10px; background:var(--card); padding:10px 14px; margin:0 0 12px; }
 fieldset.crit legend { font-weight:600; padding:0 4px; }
 .source pre { max-height:480px; overflow:auto; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:12px; white-space:pre-wrap; }
