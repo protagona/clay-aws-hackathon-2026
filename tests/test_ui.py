@@ -599,3 +599,28 @@ def test_feed_renders_model_markdown_safely(tmp_path):  # increment 5 follow-up:
     assert "<h2>Plan</h2>" in feed and "<table>" in feed and "<strong>NAIP</strong>" in feed
     assert "<script" not in feed and "&lt;script&gt;" in feed
     assert 'href="javascript' not in feed.lower() and "<img" not in feed
+
+
+def test_pipeline_run_page_compare_and_cards(tmp_path):  # increment 7: U1, U2, S4 through the real runner
+    from harness_helpers import PROMPT
+    from harness_helpers import load as load_cfg
+
+    from foundry.harness.runner import run as run_agent
+
+    turns = [{"text": "1. Search."}, {"tool": "echo", "input": {"text": "hi"}}, {"text": "## Plan\nUse NAIP."},
+             {"text": "VERDICT: approve"}]
+    cfg = load_cfg(write_config(tmp_path / "cfg", turns, extra='\n[agents]\nmode = "pipeline"\n'))
+    runs = tmp_path / "runs"
+    pipe_dir, status = run_agent(cfg, PROMPT, runs)
+    assert status == "succeeded"
+    _seed(runs, "clean")
+    _, c = _client(runs)
+    html = c.get(f"/runs/{pipe_dir.name}").text
+    assert html.count('class="wf-row agent') == 3 and "<strong>executor</strong>" in html and "✓ approve" in html
+    assert 'class="pill agent-pill">executor</span>' in html and "<strong>▸ checker</strong>" in html
+    assert 'class="wf-row indent' in html
+    cmp = c.get(f"/compare?a={pipe_dir.name}&b=fixture-clean").text
+    assert "scripted-test · pipeline" in cmp and "<th>Agent</th>" in cmp and "<td>executor</td>" in cmp
+    index = c.get("/").text
+    assert "scripted-test · pipeline" in index
+    assert pipe_dir.name in c.get("/?model=scripted-test · pipeline").text

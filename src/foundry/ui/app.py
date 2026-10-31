@@ -538,7 +538,9 @@ def _compare_side(path: Path) -> dict:
                     - datetime.strptime(run["started_at"].replace("Z", "+0000"), fmt)).total_seconds()
     except (KeyError, AttributeError, TypeError, ValueError):
         pass
+    markers = {s.step: s.name for s in steps if s.type == "agent_step"}
     return {"run": run, "scores": scores, "steps": steps, "cost": sum(costs) if costs else None,
+            "label": dashboard.model_key(run), "agent_of": {s.step: markers[s.parent] for s in steps if s.parent in markers},
             "model_calls": sum(s.type == "llm_call" for s in steps), "tool_calls": len(tools),
             "tool_errors": sum(s.status == "error" for s in tools), "duration": duration}
 
@@ -701,7 +703,7 @@ def _cards(st: UiState) -> list[dict]:
             sub = f"W{_short(scores['workflow']['score'])} O{_short(scores['output']['score'])}"
         started = run.get("started_at") if isinstance(run.get("started_at"), str) else ""
         cards.append({"unreadable": False, "run_id": d.name, "prompt_id": run["prompt_id"],
-                      "model": str(run["model"].get("id", "?")), "headline": headline, "sub": sub, "status": status,
+                      "model": dashboard.model_key(run), "headline": headline, "sub": sub, "status": status,
                       "when": _when(started), "footer": f"{run.get('task_id', '?')} · …{d.name[-4:]}",
                       "started_at": started})
     return sorted(cards, key=lambda c: c["started_at"], reverse=True)

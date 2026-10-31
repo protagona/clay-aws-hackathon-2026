@@ -48,8 +48,8 @@ Clay's brief lists multi-agent traces as a planner, executor and checker. The sa
   - **Untrusted text:** text passed from one agent to the next (the plan, the candidate answer, the checker's reasons) is wrapped in `<plan>`, `<candidate_answer>` or `<checker_feedback>` tags. The role prompt says the tagged content is data to evaluate, not instructions.
   - **Versioning:** role prompts live in `src/foundry/harness/roles/v1/*.txt`, and their version is recorded in `run.json.agents.prompts`.
 - **P3:** `max_model_calls`, `max_input_tokens` and `max_seconds` apply to the whole pipeline (the sum across agents), not per agent. A limit hit stops the pipeline: the run fails on a model or token limit and times out on time, exactly like single mode. Before each agent starts, the pipeline checks for a timeout, a limit hit and a cancel, and starts nothing further once one is set. A cancelled agent that returns normally (`stop_reason` `cancelled`) also stops it. After a timeout, the hooks refuse every model and tool call, which closes the race where an agent starts just as `_drive` cancels the previous one. No model call is made after the run is finalized. Status rules:
-  - **`succeeded`:** a non-empty final answer exists, and no limit was hit.
-  - **`failed`:** a limit was hit, an agent errored, or the final answer is empty. If the planner or checker errors, the run fails. Their errors are not swallowed: the `agent_error` note carries `parent` = the failing agent's step.
+  - **`succeeded`:** a non-empty final answer exists, and either no limit was hit or the limit was hit after the executor answered. In that case the last executor answer is kept and scored, and the `limit` note marks where it stopped (**user decision, 2026-10-31**, after the design gate).
+  - **`failed`:** a limit was hit before the executor answered, an agent errored, or the final answer is empty. If the planner or checker errors, the run fails. Their errors are not swallowed: the `agent_error` note carries `parent` = the failing agent's step.
 - **P4:** Retries (`retry_of`) are tracked per agent. The failed-call map resets when each agent starts, so a checker repeating an executor's failed call is not a retry.
 
 **T: trace**
@@ -66,7 +66,7 @@ Clay's brief lists multi-agent traces as a planner, executor and checker. The sa
 
 **S: scoring and comparison**
 - **S1:** `foundry evaluate` scores pipeline runs with no scorer changes. Steps are counted across all agents. The sequence check matches ok tool calls in file order across agents. The judge sees the final answer only.
-- **S4:** The compare page shows each side's model as `model · pipeline` for pipeline runs, and its timelines use the agent bands.
+- **S4:** The compare page shows each side's model as `model · pipeline` for pipeline runs. Its timeline tables gain an "Agent" column naming each step's agent; the compare timelines are tables, not waterfalls (increment 4).
 - **S2:** The dashboard leaderboard and scatter group runs by model and mode: `us.moonshotai.kimi-k3` and `us.moonshotai.kimi-k3 · pipeline` (the full model id plus ` · pipeline`) are separate rows and series, and the `?model=` filter matches that exact string. The key reads `run.json.agents.mode`, never the run-level `mode` (live or replay). Batch variants already come from configs, so `bedrock` and `bedrock-pipeline` are separate variants.
 - **S3:** `config/bedrock-pipeline.toml` and `config/offline-pipeline.toml` exist. The offline one uses a scripted model with scripts for adb-001 to adb-006, each with one revision on adb-002. CDK's model list is unchanged, since the configs reuse its models.
 

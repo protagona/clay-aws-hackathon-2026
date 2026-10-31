@@ -82,14 +82,25 @@ def monitor(run: dict, steps: list, *, live: bool, now: datetime | None = None, 
     if t0:
         elapsed = ((end or now) - t0).total_seconds() if (end or live) else last_end
     span = max(elapsed or 0, last_end, 1.0)
-    rows = []
-    for b in bars:
-        s = b["s"]
-        rows.append({"step": s.step, "kind": "model" if s.type == "llm_call" else "tool",
-                     "label": "model" if s.type == "llm_call" else (f"{s.server}/" if s.server else "") + s.name,
-                     "error": s.status == "error", "ms": _n(s.duration_ms), "new": seen is not None and s.step > seen,
-                     "left": round(b["off"] / span * 100, 2),
-                     "width": round(max(b["dur"] / span * 100, MIN_BAR_PCT), 2)})
+
+    def bar(s, off: float, dur: float, indent: bool = False) -> dict:
+        return {"step": s.step, "kind": "model" if s.type == "llm_call" else "tool",
+                "label": "model" if s.type == "llm_call" else (f"{s.server}/" if s.server else "") + s.name,
+                "error": s.status == "error", "ms": _n(s.duration_ms), "new": seen is not None and s.step > seen,
+                "left": round(off / span * 100, 2), "width": round(max(dur / span * 100, MIN_BAR_PCT), 2),
+                "indent": indent}
+
+    agents = run.get("agents") if isinstance(run.get("agents"), dict) else {}
+    pipeline = agents.get("mode") == "pipeline"
+    markers = {s.step: s for s in steps if s.type == "agent_step"} if pipeline else {}
+    agent_of = {s.step: markers[s.parent].name for s in steps if s.parent in markers}
+    if markers:
+        starts = {n: max(0.0, (_ts(m.started_at) - t0).total_seconds()) if _ts(m.started_at) and t0 else last_end
+                  for n, m in markers.items()}
+        rows = _bands(steps, bars, markers, starts, bar, span, elapsed if live and run.get("status") == "running"
+                      else None, seen)
+    else:
+        rows = [bar(b["s"], b["off"], b["dur"]) for b in bars]
     working = None
     if live and run.get("status") == "running":
         working = {"left": round(last_end / span * 100, 2),
@@ -113,6 +124,38 @@ def monitor(run: dict, steps: list, *, live: bool, now: datetime | None = None, 
         "tools_ok": len(tools) - errors, "tools_err": errors,
         "servers": sorted(per_server.items(), key=lambda kv: (-kv[1], kv[0])),
         "rows": rows, "working": working, "axis": _axis(span),
-        "feed": [{"s": s, "new": seen is not None and s.step > seen} for s in reversed(steps)],
+        "feed": [{"s": s, "new": seen is not None and s.step > seen, "agent": agent_of.get(s.step),
+                  "divider": s.step in markers} for s in reversed(steps)],
         "seen": top,
     }
+
+
+def _bands(steps, bars, markers, starts: dict, bar, span: float, now_s: float | None, seen) -> list[dict]:
+    """Pipeline waterfall (increment 7, U1): each agent_step is a header row spanning its descendants, which follow
+    it indented, in step order. Parentless calls keep their own position."""
+    geo = {b["s"].step: b for b in bars}
+    kids: dict[int, list] = {}
+    for s in steps:
+        if s.parent in markers:
+            kids.setdefault(s.parent, []).append(s)
+    last_marker = max(markers) if markers else None
+    rows = []
+    for s in steps:
+        if s.step in markers:
+            own = [geo[c.step] for c in kids.get(s.step, []) if c.step in geo]
+            if own:
+                lo, hi = min(b["off"] for b in own), max(b["off"] + b["dur"] for b in own)
+            else:  # no calls yet (or ever): a minimum-width band at the agent's start
+                lo = hi = starts[s.step]
+            if now_s is not None and s.step == last_marker:  # the running agent's band reaches now (U3)
+                hi = max(hi, now_s)
+            verdict = next((c.text for c in kids.get(s.step, []) if c.type == "note" and c.name == "verdict"), None)
+            rows.append({"step": s.step, "kind": "agent", "label": s.name, "calls": len(own),
+                         "secs": round(hi - lo, 1), "verdict": verdict, "error": False, "ms": None,
+                         "new": seen is not None and s.step > seen,
+                         "left": round(lo / span * 100, 2), "width": round(max((hi - lo) / span * 100, MIN_BAR_PCT), 2)})
+            rows += [bar(c, geo[c.step]["off"], geo[c.step]["dur"], indent=True)
+                     for c in kids.get(s.step, []) if c.step in geo]
+        elif s.parent not in markers and s.step in geo:
+            rows.append(bar(s, geo[s.step]["off"], geo[s.step]["dur"]))
+    return rows

@@ -81,6 +81,7 @@ class OtelTracer:
         self.root = None
         self.ctx = None
         self.model_id = None
+        self.agents: dict[int, list] = {}  # agent_step number -> [span, context, end_ns] (pipeline mode)
 
     def start_run(self, run: RunRecord) -> None:
         self.model_id = run.model.id
@@ -111,15 +112,31 @@ class OtelTracer:
                 attrs["foundry.retry_of"] = step.retry_of
             if step.invalid:
                 attrs["foundry.invalid"] = True
+        elif step.type == "agent_step":  # a start marker: the span ends at its last child's end (T3)
+            agent = self.tracer.start_span(f"invoke_agent {step.name}", context=self.ctx, start_time=start,
+                                           attributes={**attrs, GEN_AI_OPERATION_NAME: "invoke_agent",
+                                                       "gen_ai.agent.name": step.name})
+            self.agents[step.step] = [agent, trace.set_span_in_context(agent), start]
+            return
         else:
             name, op = f"{step.type} {step.name}", step.type
         attrs[GEN_AI_OPERATION_NAME] = op
-        span = self.tracer.start_span(name, context=self.ctx, start_time=start, attributes=attrs)
+        if step.parent is not None:
+            attrs["foundry.parent"] = step.parent
+        owner = self.agents.get(step.parent) if step.parent is not None else None
+        span = self.tracer.start_span(name, context=owner[1] if owner else self.ctx, start_time=start,
+                                      attributes=attrs)
         if step.status == "error":
             span.set_status(Status(StatusCode.ERROR, (step.error or "")[:200]))
-        span.end(end_time=start + int(step.duration_ms * 1e6))
+        end = start + int(step.duration_ms * 1e6)
+        span.end(end_time=end)
+        if owner:
+            owner[2] = max(owner[2], end)
 
     def end_run(self, run: RunRecord) -> None:
+        for agent, _, end in self.agents.values():
+            agent.end(end_time=end)
+        self.agents.clear()
         if self.root is not None:
             self.root.set_attribute("foundry.status", run.status)
             if run.status != "succeeded":

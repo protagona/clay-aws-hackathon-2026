@@ -38,11 +38,19 @@
   <div class="waterfall">
     <div class="wf-axis"><span class="wf-label"></span><span class="wf-track">{% for t in m.axis %}<span class="tick" style="left:{{ t.pct }}%">{{ t.label }}</span>{% endfor %}</span></div>
     {% for r in m.rows %}
-    <div class="wf-row{% if r.error %} error{% endif %}{% if r.new %} new{% endif %}">
+    {% if r.kind == "agent" %}
+    <div class="wf-row agent{% if r.new %} new{% endif %}">
+      <span class="wf-label wrap"><span aria-hidden="true">▾</span> <strong>{{ r.label }}</strong>{% if r.verdict == "approve" %} <span class="ok">✓ approve</span>{% elif r.verdict == "revise" %} <span class="bad">✗ revise</span>{% elif r.verdict %} <span class="muted">? {{ r.verdict }}</span>{% endif %}
+        <span class="muted">· {{ r.calls }} call{{ "" if r.calls == 1 else "s" }} · {{ r.secs }}s</span></span>
+      <span class="wf-track"><span class="wf-bar band" style="left:{{ r.left }}%;width:{{ r.width }}%" title="{{ r.label }} · {{ r.calls }} calls · {{ r.secs }} s"></span></span>
+    </div>
+    {% else %}
+    <div class="wf-row{% if r.error %} error{% endif %}{% if r.new %} new{% endif %}{% if r.indent %} indent{% endif %}">
       <span class="wf-label wrap"><span class="step-no">{{ r.step }}</span> {{ r.label }}{% if r.error %} <span class="bad">✗</span>{% endif %}</span>
       <span class="wf-track"><span class="wf-bar {{ r.kind }}{% if r.error %} error{% endif %}" style="left:{{ r.left }}%;width:{{ r.width }}%"
             title="{{ r.label }} · {{ 'error' if r.error else 'ok' }} · {{ '%.0f'|format(r.ms or 0) }} ms"></span></span>
     </div>
+    {% endif %}
     {% endfor %}
     {% if m.working %}
     <div class="wf-row">

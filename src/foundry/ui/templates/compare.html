@@ -4,7 +4,7 @@
 <div class="runhead">
   <div><a href="/">&lt; Runs</a> &nbsp; <strong>Compare two runs</strong></div>
   {% for label, s in (("A", a), ("B", b)) %}
-  <div class="wrap"><strong>{{ label }}</strong> &nbsp; {{ s.run.prompt_id }} · {{ s.run.model.id }} ·
+  <div class="wrap"><strong>{{ label }}</strong> &nbsp; {{ s.run.prompt_id }} · {{ s.label }} ·
     <span class="status-{{ s.run.status }}">{{ s.run.status }}</span> · <a href="/runs/{{ s.run.run_id }}">report</a></div>
   {% endfor %}
 </div>
@@ -19,13 +19,13 @@
 {% if a.scores is none or b.scores is none %}<p class="note">"—": not evaluated yet. Evaluate the run from its page to fill in its scores.</p>{% endif %}
 
 {% for label, s in (("A", a), ("B", b)) %}
-<h2 style="font-size:17px">{{ label }} timeline — {{ s.run.model.id }} · {{ s.run.prompt_id }}</h2>
+<h2 style="font-size:17px">{{ label }} timeline — {{ s.label }} · {{ s.run.prompt_id }}</h2>
 {% if s.steps %}
 <table>
-  <thead><tr><th>Step</th><th>Type</th><th>Name</th><th>Status</th><th>Duration (ms)</th><th>Detail</th></tr></thead>
+  <thead><tr><th>Step</th>{% if s.agent_of %}<th>Agent</th>{% endif %}<th>Type</th><th>Name</th><th>Status</th><th>Duration (ms)</th><th>Detail</th></tr></thead>
   <tbody>
   {% for st in s.steps %}
-  <tr><td>{{ st.step }}</td><td>{{ st.type }}</td><td>{{ st.server ~ "/" if st.server else "" }}{{ st.name }}</td>
+  <tr><td>{{ st.step }}</td>{% if s.agent_of %}<td>{{ s.agent_of.get(st.step, "") }}</td>{% endif %}<td>{{ st.type }}</td><td>{{ st.server ~ "/" if st.server else "" }}{{ st.name }}</td>
       <td>{{ st.status }}{% if st.retry_of is not none %} (retry of {{ st.retry_of }}){% endif %}{% if st.invalid %} (invalid){% endif %}</td>
       <td>{{ st.duration_ms }}</td><td class="wrap">{{ (st.error or st.text or st.result_preview or "")[:160] }}</td></tr>
   {% endfor %}

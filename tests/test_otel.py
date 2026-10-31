@@ -77,3 +77,26 @@ def test_unreachable_endpoint_warns_once_and_is_bounded(tmp_path):  # AC16b
         assert json.loads((run_dir / "run.json").read_text())["status"] == "succeeded"
     finally:
         hole.close()
+
+
+def test_pipeline_children_nest_under_agent_spans(tmp_path):  # increment 7, T3
+    rec = Recorder()
+    try:
+        turns = [{"text": "plan"}, *TURNS, {"text": "VERDICT: approve"}]
+        extra = (f'\n[tracing]\ntracers = ["jsonl", "otel"]\n[tracing.otel]\nendpoint = "{rec.endpoint}"\n'
+                 'export_timeout_s = 10\n[agents]\nmode = "pipeline"\n')
+        cfg = write_config(tmp_path, turns, extra=extra)
+        proc = foundry("run", "--config", str(cfg), "--prompt", "adb-001", "--runs-dir", str(tmp_path / "runs"))
+        assert proc.returncode == 0, proc.stderr
+        spans = rec.spans()
+        root = next(s for s in spans if s.name == "invoke_agent foundry")
+        agents = {s.name: s for s in spans if s.name.startswith("invoke_agent ") and s is not root}
+        assert set(agents) == {"invoke_agent planner", "invoke_agent executor", "invoke_agent checker"}
+        assert all(a.parent_span_id == root.span_id for a in agents.values())
+        executor = agents["invoke_agent executor"]
+        kids = [s for s in spans if s.parent_span_id == executor.span_id]
+        assert sorted(s.name for s in kids) == ["chat scripted-test", "chat scripted-test", "execute_tool echo"]
+        assert executor.end_time_unix_nano == max(s.end_time_unix_nano for s in kids)  # ends with its last child
+        assert attrs(executor)["gen_ai.agent.name"] == "executor"
+    finally:
+        rec.close()

@@ -106,6 +106,15 @@ def test_limits_are_pipeline_wide(tmp_path):  # P3
     assert limit["parent"] == _agents(s)[1][0]
 
 
+def test_limit_after_answer_keeps_the_answer(tmp_path):  # P3 (user decision 2026-10-31)
+    turns = [PLAN, ANSWER, {"tool": "echo", "input": {"text": "check"}}, {"text": "VERDICT: approve"}]
+    run_dir, status = _run(tmp_path, turns, limits="max_model_calls = 3")
+    s = steps(run_dir)
+    assert status == "succeeded" and output_json(run_dir)["text"] == "Final plan v1."
+    assert any(x["type"] == "note" and x["name"] == "limit" for x in s)
+    assert run_json(run_dir)["agents"]["verdict"] == "none"
+
+
 def test_planner_error_fails_run(tmp_path):  # P3: the script is empty, so the planner's model call raises
     run_dir, status = _run(tmp_path, [])
     s = steps(run_dir)

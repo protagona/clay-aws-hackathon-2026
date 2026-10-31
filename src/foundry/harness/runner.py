@@ -84,7 +84,9 @@ def run(cfg: Config, prompt: Prompt, runs_dir: str | Path, run_id: str | None = 
         else:
             def work() -> str:
                 return _pipeline(model, servers.tools, task_system, prompt.prompt, hooks, tracers, current, pipeline)
-        status, final_text = _drive(work, hooks, tracers, cfg.limits.max_seconds, t_start, current)
+        # Pipeline: a limit hit after the executor answered keeps that answer (user decision, 2026-10-31).
+        status, final_text = _drive(work, hooks, tracers, cfg.limits.max_seconds, t_start, current,
+                                    keep_answer_on_limit=pipeline is not None)
 
     # Finalize: close the tracer first so a late worker thread can't append after run.json is final.
     tracers.close()
@@ -99,7 +101,7 @@ def run(cfg: Config, prompt: Prompt, runs_dir: str | Path, run_id: str | None = 
 
 
 def _drive(work, hooks: TraceHooks, tracers, max_seconds: float, t_start: float,
-           current: list) -> tuple[str, str]:
+           current: list, keep_answer_on_limit: bool = False) -> tuple[str, str]:
     """Run work() (one agent, or the pipeline) on a worker thread under max_seconds; derive the run status."""
     outcome = _Outcome()
 
@@ -129,9 +131,9 @@ def _drive(work, hooks: TraceHooks, tracers, max_seconds: float, t_start: float,
             tracers.record(type="note", name="agent_error", status="error", parent=hooks.parent,
                            error=f"{type(outcome.error).__name__}: {outcome.error}"[:500])
         return "failed", ""
-    if hooks.limit_hit:
-        return "failed", ""
     text = outcome.result or ""
+    if hooks.limit_hit and not (keep_answer_on_limit and text):
+        return "failed", ""
     return ("succeeded", text) if text else ("failed", "")
 
 

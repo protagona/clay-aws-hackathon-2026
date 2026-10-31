@@ -127,3 +127,12 @@ def test_empty_and_hostile_runs(tmp_path):  # D7
     r = c.get("/dashboard")
     assert r.status_code == 200 and "<img" not in r.text and "&lt;img src=x" in r.text
     assert 'href="/?model=%3Cimg' in r.text
+
+
+def test_pipeline_is_its_own_row():  # increment 7, S2
+    single = _entry("a", "kimi", 0.9, 0.1)
+    pipe = _entry("b", "kimi", 0.8, 0.2)
+    pipe["run"]["agents"] = {"mode": "pipeline"}
+    d = build([single, pipe])
+    assert [m["model"] for m in d["leaderboard"]] == ["kimi", "kimi · pipeline"]
+    assert {p["model"] for p in d["scatter"]["dots"]} == {"kimi", "kimi · pipeline"}

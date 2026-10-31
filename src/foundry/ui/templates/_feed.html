@@ -1,9 +1,14 @@
 {# The step feed, newest first. `m` is the monitor context. #}
 <ol class="feed">
 {% for item in m.feed %}{% set s = item.s %}
+  {% if item.divider %}
+  <li class="feed-divider{% if item.new %} new{% endif %}"><span class="step-no">{{ s.step }}</span> <strong>▸ {{ s.name }}</strong> <span class="muted">started</span>
+    {% if s.text %}<details data-step="{{ s.step }}"><summary>Input</summary><pre class="wrap">{{ s.text }}</pre></details>{% endif %}</li>
+  {% else %}
   <li class="feed-item {{ 'model' if s.type == 'llm_call' else 'tool' if s.type == 'tool_call' else 'note' }}{% if s.status == 'error' %} error{% endif %}{% if item.new %} new{% endif %}">
     <div class="feed-head">
       <span class="step-no">{{ s.step }}</span>
+      {% if item.agent %}<span class="pill agent-pill">{{ item.agent }}</span>{% endif %}
       {% if s.type == "llm_call" %}
         <strong>model</strong>
         <span class="muted">{{ "%.1f"|format(s.duration_ms / 1000) }}s · {{ s.tokens_in or 0 }} in → {{ s.tokens_out or 0 }} out{% if s.cost_usd is not none %} · ${{ "%.4f"|format(s.cost_usd) }}{% endif %}</span>
@@ -19,6 +24,7 @@
     </div>
     {% if s.error %}<div class="feed-error wrap">{{ s.error[:400] }}</div>{% endif %}
     {% if s.type == "llm_call" and s.text %}<div class="feed-md wrap">{{ s.text | markdown }}</div>
+    {% elif s.type == "note" and s.name == "verdict" %}<div class="feed-text"><span class="pill {{ 'ok' if s.text == 'approve' else 'bad' if s.text == 'revise' else 'warn' }}">{{ "✓ approve" if s.text == "approve" else "✗ revise" if s.text == "revise" else "? " ~ s.text }}</span></div>
     {% elif s.type != "tool_call" and s.text %}<div class="feed-text wrap">{{ s.text[:400] }}</div>{% endif %}
     {% if s.type == "tool_call" and (s.args or s.result_preview) %}
     <details data-step="{{ s.step }}"><summary>Arguments and result</summary>
@@ -27,6 +33,7 @@
     </details>
     {% endif %}
   </li>
+  {% endif %}
 {% else %}
   <li class="empty">No steps recorded yet.</li>
 {% endfor %}

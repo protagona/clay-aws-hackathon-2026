@@ -69,3 +69,56 @@ def test_untrusted_run_fields_do_not_crash():
     m = monitor({"status": "running", "started_at": 5, "limits": "nope"}, STEPS, live=True)
     assert m["start_ms"] is None and all(g["pct"] is None for g in m["gauges"])
     assert monitor({}, [], live=False)["rows"] == []
+
+
+# --- increment 7: agent bands -----------------------------------------------------------------------
+
+PIPE = {"mode": "pipeline"}
+
+
+def _agent(n, at_s, name):
+    return Step(step=n, type="agent_step", name=name, started_at=f"2026-10-30T10:00:{at_s:06.3f}Z", duration_ms=0,
+                status="ok")
+
+
+BAND_STEPS = [
+    _agent(1, 0, "planner"),
+    _step(2, "llm_call", 0, 1000, parent=1),
+    _agent(3, 1, "executor"),
+    _step(4, "llm_call", 1, 2000, parent=3),
+    _step(5, "tool_call", 3, 1000, parent=3, server="roda"),
+    _agent(6, 4, "checker"),
+    _step(7, "llm_call", 4, 1000, parent=6),
+    Step(step=8, type="note", name="verdict", text="revise", started_at="2026-10-30T10:00:05.000Z", duration_ms=0,
+         status="ok", parent=6),
+]
+
+
+def test_agent_bands():  # U1, U2
+    m = monitor(_run(agents=PIPE), BAND_STEPS, live=False)
+    rows = [(r["kind"], r["label"], r.get("indent", False)) for r in m["rows"]]
+    assert rows == [("agent", "planner", False), ("model", "model", True), ("agent", "executor", False),
+                    ("model", "model", True), ("tool", "roda/search", True), ("agent", "checker", False),
+                    ("model", "model", True)]
+    executor = m["rows"][2]
+    assert (executor["calls"], executor["secs"], executor["left"]) == (2, 3.0, 10.0)  # 1 s .. 4 s on a 10 s axis
+    assert m["rows"][5]["verdict"] == "revise"
+    agents = {f["s"].step: f["agent"] for f in m["feed"]}
+    assert agents[5] == "executor" and agents[8] == "checker" and agents[1] is None
+    assert [f["s"].step for f in m["feed"] if f["divider"]] == [6, 3, 1]
+
+
+def test_single_agent_rows_unchanged():  # U1: no agents.mode -> flat rows, agent_steps (e.g. imported) skipped
+    flat = monitor(_run(), BAND_STEPS, live=False)
+    assert all(r["kind"] in ("model", "tool") and not r["indent"] for r in flat["rows"]) and len(flat["rows"]) == 4
+    assert not any(f["divider"] or f["agent"] for f in flat["feed"])
+
+
+def test_live_band_extends_to_now_and_empty_agent_has_a_band():  # U3
+    now = datetime(2026, 10, 30, 10, 0, 20, tzinfo=timezone.utc)
+    run = _run(status="running", agents=PIPE)
+    run.pop("ended_at")
+    m = monitor(run, BAND_STEPS[:6], live=True, now=now)  # the checker has just started, no calls yet
+    checker = m["rows"][-1]
+    assert checker["kind"] == "agent" and checker["calls"] == 0 and checker["left"] == 20.0  # its own start: 4 s / 20 s
+    assert checker["width"] == 80.0  # reaches now (20 s)

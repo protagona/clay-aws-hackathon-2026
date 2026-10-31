@@ -20,6 +20,13 @@ W, H = 960, 320
 PAD_L, PAD_R, PAD_T, PAD_B = 52, 16, 14, 40
 
 
+def model_key(run: dict) -> str:
+    """The model as compared across runs: its id, plus " · pipeline" for multi-agent runs (increment 7, S2)."""
+    model = run.get("model") if isinstance(run.get("model"), dict) else {}
+    agents = run.get("agents") if isinstance(run.get("agents"), dict) else {}
+    return str(model.get("id", "?")) + (" · pipeline" if agents.get("mode") == "pipeline" else "")
+
+
 def _n(v) -> float | None:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
@@ -40,7 +47,7 @@ def build(entries: list[dict]) -> dict:
         run_cost = sum(_n(s.cost_usd) or 0 for s in steps)
         ev = (scores or {}).get("evaluation")
         eval_cost = _n(ev.get("cost_usd")) if isinstance(ev, dict) else None
-        rows.append({"run_id": e["run_id"], "model": str(run["model"].get("id", "?")), "prompt": run["prompt_id"],
+        rows.append({"run_id": e["run_id"], "model": model_key(run), "prompt": run["prompt_id"],
                      "status": run["status"], "cost": run_cost, "eval_cost": eval_cost or 0.0,
                      "overall": _n((scores or {}).get("overall")), "scores": scores, "steps": steps})
     scored = [r for r in rows if r["overall"] is not None]

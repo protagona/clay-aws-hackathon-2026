@@ -127,6 +127,11 @@ The run's final text is the latest non-empty executor text: an empty revision fa
 - **Reversibility:** costly. They're additive and optional, so old readers ignore them, but once pipeline runs are mirrored to S3, renaming them needs a reader that accepts both.
 - **Decision:** freeze them as written here. The trace contract documents them (T4), and the contract version is unchanged because the change is additive.
 
+### ADR-3a: A limit hit after an answer keeps the answer (user decision, 2026-10-31)
+- **Context:** the design gate's third pass asked whether a checker or revision that hits the shared limit should fail a run that already has an answer.
+- **Decision:** the user chose to keep it: status `succeeded` with the last executor answer. `_drive(…, keep_answer_on_limit=True)` applies in pipeline mode only. Single mode is unchanged, and any limit there fails the run.
+- **Reversibility:** easy.
+
 ### ADR-4: Retries are tracked per agent
 - **Context:** `retry_of` feeds the recovery and retries scoring. A checker re-running the executor's failed call is verification, not a retry.
 - **Decision:** reset the failed-call map at each agent's start (P4).
