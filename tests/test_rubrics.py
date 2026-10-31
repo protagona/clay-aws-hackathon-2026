@@ -364,3 +364,21 @@ def test_broken_rubric_json_is_archived_not_lost(task):
     s.activate_draft(_draft(s))
     archived = next((task / "rubrics/history").glob("invalid@*.json"))
     assert archived.read_text() == "{broken by hand" and s.history()[0]["note"] == "archived invalid rubric.json"
+
+
+def test_verify_pass3_hostile_inputs_never_crash(task):  # verify pass 3
+    huge = json.dumps({**GOOD, "criteria": [{**GOOD["criteria"][0], "weight": 10 ** 400}]})
+    for reply in (huge, "[" * 40000, json.dumps({**GOOD, "criteria": [{**GOOD["criteria"][0], "weight": True}]})):
+        r = draft(Source("text", "t", "txt", reply.encode()), "adb", FakeProvider(reply, reply))
+        assert r.rubric is None and r.error
+    s = Store(task)
+    (task / "rubrics").mkdir(exist_ok=True)
+    (task / "rubrics/history.jsonl").write_text('{"file": "x@1.json"}\n{"file": "y@1.json", "sha256": 5}\n')
+    assert s.versions(task) == []  # malformed history lines are skipped, not a crash
+    did = _draft(s)
+    (task / "rubrics/drafts" / did / "draft.json").write_text(json.dumps({**GOOD, "criteria": [
+        {**GOOD["criteria"][0], "levels": ["a", "b", "c"]}]}))  # a valid draft hand-edited into a bad shape
+    assert s.load_draft(did)[1]["criteria"][0]["levels"] == {"1": "a", "2": "b", "3": "c"}
+    (task / "rubrics/drafts" / did / "meta.json").unlink()  # unreadable: still discardable
+    s.discard(did)
+    assert not (task / "rubrics/drafts" / did).exists()

@@ -118,7 +118,8 @@ class Store:
         except (OSError, ValueError):
             raise StoreError("This draft is unreadable; discard it") from None
         src = next((p for p in d.iterdir() if p.name.startswith("source.")), None)
-        return meta, body if isinstance(body, dict) and not meta.get("error") else form_shape(body), src
+        shaped = body if isinstance(body, dict) and check(dict(body), self.task.name)[0] is not None else form_shape(body)
+        return meta, shaped, src
 
     def update_draft(self, draft_id: str, body: dict) -> str | None:
         """Save an edited draft; returns the validation error (or None when it is a valid rubric)."""
@@ -143,7 +144,7 @@ class Store:
                 e = json.loads(line)
             except ValueError:
                 continue
-            if isinstance(e, dict) and HISTORY_FILE_RE.match(str(e.get("file", ""))):
+            if isinstance(e, dict) and HISTORY_FILE_RE.match(str(e.get("file", ""))) and isinstance(e.get("sha256"), str):
                 out.append(e)
         return out
 

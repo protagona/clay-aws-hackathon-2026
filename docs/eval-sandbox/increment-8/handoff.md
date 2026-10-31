@@ -41,7 +41,7 @@
 
 ## Verification
 
-**Suite:** 303 passed after both verify passes. Ruff and gitleaks are clean, and there are no new dependencies.
+**Suite:** 304 passed after all three verify passes. Ruff and gitleaks are clean, and there are no new dependencies.
 
 | AC | How it was proven |
 |---|---|
@@ -89,6 +89,14 @@
   - The file input fits at 375 px, and pending drafts have "Review" links.
 
   Regression tests: `test_malformed_model_drafts_open_and_can_be_discarded` (5 cases, through the real routes with only the model faked) and the weight test (8 cases).
+- **Third and final verify pass (gate limit reached):** one blocker. An integer weight too large for a float, from a model reply or from pasted or uploaded JSON, raised `OverflowError` and gave a 500. It's fixed and tested, and the reviewer's 8 probes pass against the fix. The pass's minor findings were fixed too:
+  - deeply nested JSON (`RecursionError`)
+  - a `history.jsonl` line without `sha256`
+  - a hand-edited valid draft reshaped into a bad form
+  - an unreadable draft can be discarded from the UI
+  - a weight of `true` is rejected
+
+  Test: `test_verify_pass3_hostile_inputs_never_crash`. The gate ran 3 passes; no further pass was taken.
 - **Accepted:** the URL timeout applies per socket operation, so a slow-drip server can hold a fetch past 10 s. Uploads are spooled by Starlette before the size check, as in the existing trace import.
 - **Rulings:**
   - **Identical bytes:** re-activating byte-identical content under an existing id@version is allowed. It's idempotent and appends a history line. Different bytes under the same id@version are refused.

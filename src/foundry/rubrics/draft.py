@@ -48,7 +48,7 @@ def _first_object(text: str) -> dict | None:
     start = text.find("{")
     while start != -1:
         try:
-            obj, _ = json.JSONDecoder().raw_decode(text[start:])
+            obj, _ = json.JSONDecoder().raw_decode(text[start:])  # RecursionError is handled by the caller
             return obj if isinstance(obj, dict) else None
         except ValueError:
             start = text.find("{", start + 1)
@@ -74,11 +74,13 @@ def canonical(obj: dict, task_id: str) -> dict:
         mx = c.get("max")
         keep = {str(i) for i in range(1, mx + 1)} if isinstance(mx, int) and not isinstance(mx, bool) and mx < 100 else set()
         weight = c.get("weight", 1)
+        if isinstance(weight, bool):
+            raise ValueError(f"criteria.{len(out['criteria'])}.weight: must be a number")
         try:
             w = float(weight)
-        except (TypeError, ValueError):
-            w = None
-        if w is not None and not isinstance(weight, bool) and not (0 < w <= MAX_WEIGHT):  # also "inf", "1e308"
+        except (TypeError, ValueError, OverflowError):  # a 400-digit integer overflows float()
+            w = float("inf") if isinstance(weight, int) else None
+        if w is not None and not (0 < w <= MAX_WEIGHT):  # also "inf", "1e308"
             raise ValueError(f"criteria.{len(out['criteria'])}.weight: must be above 0 and at most {MAX_WEIGHT}")
         if isinstance(mx, int) and not isinstance(mx, bool) and mx > MAX_LEVELS:
             raise ValueError(f"criteria.{len(out['criteria'])}.max: use a scale of 2 to {MAX_LEVELS} levels "
@@ -123,8 +125,8 @@ def check(obj: dict, task_id: str) -> tuple[dict | None, str | None]:
         return canonical(obj, task_id), None
     except ValidationError as exc:
         return None, validation_error(exc)
-    except ValueError as exc:
-        return None, str(exc)
+    except (ValueError, OverflowError, RecursionError) as exc:
+        return None, str(exc)[:300] or type(exc).__name__
 
 
 def _check(obj: dict | None, task_id: str) -> tuple[dict | None, list[str], str | None]:
@@ -145,7 +147,7 @@ def as_rubric_json(source: Source, task_id: str) -> dict | None:
         return None
     try:
         obj = json.loads(source.data)
-    except ValueError:
+    except (ValueError, RecursionError):  # RecursionError: "[" * 40000
         return None
     return check(obj, task_id)[0] if isinstance(obj, dict) else None
 
@@ -168,7 +170,10 @@ def draft(source: Source, task_id: str, provider: Provider) -> DraftResult:
         result.tokens_in += done.tokens_in
         result.tokens_out += done.tokens_out
         result.raw = done.text
-        obj = _first_object(done.text)
+        try:
+            obj = _first_object(done.text)
+        except RecursionError:
+            obj = None
         result.partial = dict(obj) if obj else None
         rubric, notes, error = _check(obj, task_id)
         result.notes, result.error = notes, error

@@ -500,10 +500,10 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
         if store is None:
             return error(request, 404, "Unknown task")
         try:
-            store.load_draft(draft_id)
-            if action == "discard":
+            if action == "discard":  # before load_draft: an unreadable draft must still be discardable
                 store.discard(draft_id)
                 return RedirectResponse(f"/rubric?task={task}", status_code=303)
+            store.load_draft(draft_id)
             body = _draft_from_form(form)
             if action == "add":
                 body["criteria"].append({"id": "", "name": "", "description": "", "max": 4, "weight": 1, "levels": {}})

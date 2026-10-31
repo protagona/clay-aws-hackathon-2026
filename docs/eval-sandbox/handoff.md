@@ -289,7 +289,7 @@ See [increment-8/handoff.md](increment-8/handoff.md).
 - **Drafting:** Opus 4.6 drafts the rubric (binary files go to it natively), then a person reviews and edits it in a form before activation.
 - **History:** every version is kept, and runs and the dashboard track which rubric scored what.
 - **Verified live on Bedrock** with PDF, DOCX, XLSX, text, URL and MCP sources. Non-rubrics are refused.
-- **Suite:** 303 passed.
+- **Suite:** 304 passed.
 
 ## Follow-ups
 
