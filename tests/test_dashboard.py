@@ -5,7 +5,8 @@ import shutil
 
 import pytest
 
-from conftest import FIXTURES, ROOT, classic_client
+from conftest import FIXTURES, ROOT
+from fastapi.testclient import TestClient
 from eval_helpers import eval_config, load
 
 from foundry.contract import Step
@@ -17,7 +18,7 @@ BASE = "http://127.0.0.1:8765"
 
 
 def _client(runs):
-    return classic_client(create_app(runs, ROOT, port=8765), base_url=BASE, follow_redirects=False)
+    return TestClient(create_app(runs, ROOT, port=8765), base_url=BASE, follow_redirects=False)
 
 
 def _seed(runs, name, as_=None, model=None, prompt=None):
@@ -87,45 +88,34 @@ def test_hostile_scores_are_skipped_not_fatal():  # D7
     assert d["criteria"] == [] and d["missed"] == [] and d["kpis"]["spent"] == 0.1
 
 
-def test_page_from_real_runs(tmp_path):  # D1, D6
+def test_dashboard_from_real_runs(tmp_path):  # D1, D6 (increment 16: through /api, was the classic page)
     runs = tmp_path / "runs"
     runs.mkdir()
     clean = _seed(runs, "clean")
     _seed(runs, "recovered", model="other-model")
     _seed(runs, "failed")
     evaluate(clean, load(eval_config(tmp_path / "e")))
-    html = _client(runs).get("/dashboard?rubric=all").text  # all runs, incl. unscored (T3 default is active-only)
-    assert 'aria-current="page">Dashboard' in html
-    assert '<span class="kpi-num">3</span><span class="muted">runs' in html
-    assert '<span class="kpi-num">1</span><span class="muted">scored' in html
-    assert 'href="/classic/?model=scripted-a"' in html and 'href="/classic/?model=other-model"' in html
-    assert 'href="/classic/runs/fixture-clean"' in html and "<summary>Table</summary>" in html
-    assert "<script" not in html
+    body = _client(runs).get("/api/dashboard?rubric=all").json()  # all runs, incl. unscored (default: active only)
+    assert body["d"]["kpis"]["runs"] == 3 and body["d"]["kpis"]["scored"] == 1
+    assert {m["model"] for m in body["d"]["leaderboard"]} == {"scripted-a", "other-model"}
+    assert any(p["run_id"] == "fixture-clean" for p in body["d"]["scatter"]["dots"])
 
 
-def test_model_filter_on_runs_tab(tmp_path):  # D3's link target
-    runs = tmp_path / "runs"
-    runs.mkdir()
-    _seed(runs, "clean")
-    _seed(runs, "recovered", model="other-model")
-    c = _client(runs)
-    html = c.get("/?model=other-model").text
-    assert 'href="/classic/runs/fixture-recovered"' in html and 'href="/classic/runs/fixture-clean"' not in html
-    assert "Showing runs of <strong>other-model</strong>" in html
-    assert 'href="/classic/runs/fixture-clean"' in c.get("/").text
+# test_model_filter_on_runs_tab (classic) was dropped in increment 16: the board filters on the client now
+# (Vitest "key numbers follow the model filter"); /api/runs returns every run.
 
 
 def test_empty_and_hostile_runs(tmp_path):  # D7
     runs = tmp_path / "runs"
     c = _client(runs)
-    assert "No runs yet" in c.get("/dashboard").text
+    assert c.get("/api/dashboard").json()["total_runs"] == 0
     runs.mkdir()
     _seed(runs, "hostile", model="<img src=x onerror=alert(1)>")
     (runs / "broken").mkdir()
     (runs / "broken" / "run.json").write_text("{not json")
-    r = c.get("/dashboard?rubric=all")
-    assert r.status_code == 200 and "<img" not in r.text and "&lt;img src=x" in r.text
-    assert 'href="/classic/?model=%3Cimg' in r.text
+    r = c.get("/api/dashboard?rubric=all")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/json"  # the name is data, never HTML
+    assert r.json()["d"]["leaderboard"][0]["model"] == "<img src=x onerror=alert(1)>"
 
 
 def test_pipeline_is_its_own_row():  # increment 7, S2
@@ -155,15 +145,15 @@ def test_filter_by_rubric(tmp_path):  # increment 8, T3
     _seed(runs, "failed")  # unscored
     c = _client(runs)
     active = hashlib.sha256((ROOT / "tasks/adb/rubric.json").read_bytes()).hexdigest()
-    default = c.get("/dashboard").text
-    assert '<span class="kpi-num">1</span><span class="muted">runs' in default  # only the active rubric's run
-    assert 'clay-adb v1.0 (1 runs)' in default and "different rubrics" not in default
-    assert '<span class="kpi-num">1</span><span class="muted">runs' in c.get(f"/dashboard?rubric={other_sha}").text
-    every = c.get("/dashboard?rubric=all").text
-    assert '<span class="kpi-num">3</span><span class="muted">runs' in every and "different rubrics" in every
-    assert f'value="{active}"' in default
-    junk = c.get("/dashboard?rubric=../../etc").text  # unknown choice falls back to the active rubric
-    assert '<span class="kpi-num">1</span><span class="muted">runs' in junk
+    default = c.get("/api/dashboard").json()
+    assert default["d"]["kpis"]["runs"] == 1 and default["mixed"] is False  # only the active rubric's run
+    assert any(o["label"] == "clay-adb v1.0" and o["runs"] == 1 for o in default["rubric_options"])
+    assert any(o["sha"] == active and o["active"] for o in default["rubric_options"])
+    assert c.get(f"/api/dashboard?rubric={other_sha}").json()["d"]["kpis"]["runs"] == 1
+    every = c.get("/api/dashboard?rubric=all").json()
+    assert every["d"]["kpis"]["runs"] == 3 and every["mixed"] is True
+    junk = c.get("/api/dashboard?rubric=../../etc").json()  # unknown choice falls back to the active rubric
+    assert junk["d"]["kpis"]["runs"] == 1 and junk["rubric_choice"] == "active"
 
 
 def test_empty_state_right_after_an_activation(tmp_path):  # T3: the active rubric has scored nothing yet
@@ -174,5 +164,5 @@ def test_empty_state_right_after_an_activation(tmp_path):  # T3: the active rubr
     shutil.copytree(ROOT / "tasks", root / "tasks")
     shutil.copytree(ROOT / "config", root / "config")
     (root / "tasks/adb/rubric.json").write_text((root / "tasks/adb/rubric.json").read_text().replace("0.1", "0.2"))
-    html = classic_client(create_app(runs, root, port=8765), base_url=BASE).get("/dashboard").text
-    assert "No runs have been scored with this rubric yet" in html and 'href="/classic/dashboard?rubric=all"' in html
+    body = TestClient(create_app(runs, root, port=8765), base_url=BASE).get("/api/dashboard").json()
+    assert body["d"]["kpis"]["runs"] == 0 and body["total_runs"] == 1  # the page shows its "Show all runs" state

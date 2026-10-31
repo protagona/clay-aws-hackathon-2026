@@ -216,8 +216,8 @@ def make_router(st) -> APIRouter:
     @r.get("/receiver")
     def receiver():
         rec = st.receiver
-        return {"running": rec is not None, "port": st.receiver_port,
-                "endpoint": f"http://127.0.0.1:{st.receiver_port}",
+        port = getattr(rec, "port", None) or st.receiver_port  # the port it actually bound (port 0 = any free one)
+        return {"running": rec is not None, "port": port, "endpoint": f"http://127.0.0.1:{port}",
                 "count": len(getattr(rec, "written", [])),
                 "received": [p.name for p in getattr(rec, "written", [])][-20:]}
 
