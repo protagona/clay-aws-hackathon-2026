@@ -4,7 +4,7 @@
 <h1>Batches</h1>
 <p class="muted">Run several models on several prompts, side by side. Every run also appears on the Runs page.</p>
 
-<form class="panel" method="post" action="/batches">
+<form class="panel" method="post" action="{{ P }}/batches">
   <h2>New batch</h2>
   <div class="field">
     <label class="label" for="config">Base config</label>
@@ -35,7 +35,7 @@
   <thead><tr><th>Batch</th><th>Status</th><th>Progress</th><th>Spent</th><th>Models / configs</th></tr></thead>
   <tbody>
   {% for b in batches %}
-  <tr><td><a href="/batches/{{ b.id }}">{{ b.id }}</a></td><td>{{ b.status }}</td><td>{{ b.done }}/{{ b.jobs }}</td>
+  <tr><td><a href="{{ P }}/batches/{{ b.id }}">{{ b.id }}</a></td><td>{{ b.status }}</td><td>{{ b.done }}/{{ b.jobs }}</td>
       <td>${{ "%.3f"|format(b.spent) }}{% if b.max_cost %} of ${{ "%.2f"|format(b.max_cost) }}{% endif %}</td>
       <td class="wrap">{{ b.models|join(", ") }}</td></tr>
   {% endfor %}

@@ -181,11 +181,11 @@ input[type=text], input[type=file] { max-width:100%; }
 </head>
 <body><main>
 <nav class="tabs" aria-label="Sections">
-  <a href="/"{% if nav == "runs" %} aria-current="page"{% endif %}>Runs</a>
-  <a href="/batches"{% if nav == "batches" %} aria-current="page"{% endif %}>Batches</a>
-  <a href="/import"{% if nav == "import" %} aria-current="page"{% endif %}>Import</a>
-  <a href="/dashboard"{% if nav == "dashboard" %} aria-current="page"{% endif %}>Dashboard</a>
-  <a href="/rubric"{% if nav == "rubric" %} aria-current="page"{% endif %}>Rubric</a>
+  <a href="{{ P }}/"{% if nav == "runs" %} aria-current="page"{% endif %}>Runs</a>
+  <a href="{{ P }}/batches"{% if nav == "batches" %} aria-current="page"{% endif %}>Batches</a>
+  <a href="{{ P }}/import"{% if nav == "import" %} aria-current="page"{% endif %}>Import</a>
+  <a href="{{ P }}/dashboard"{% if nav == "dashboard" %} aria-current="page"{% endif %}>Dashboard</a>
+  <a href="{{ P }}/rubric"{% if nav == "rubric" %} aria-current="page"{% endif %}>Rubric</a>
 </nav>
 {% block body %}{% endblock %}</main></body>
 </html>

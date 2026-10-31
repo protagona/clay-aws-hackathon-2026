@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ rubric.rubric_id }} v{{ rubric.version }} · Foundry Eval Sandbox{% endblock %}
 {% block body %}
-<div class="runhead"><a href="/rubric?task={{ task }}">&lt; Rubric</a> &nbsp; <strong>{{ rubric.rubric_id }}</strong> v{{ rubric.version }}{% if active %} · <span class="ok">✓ active</span>{% endif %}</div>
+<div class="runhead"><a href="{{ P }}/rubric?task={{ task }}">&lt; Rubric</a> &nbsp; <strong>{{ rubric.rubric_id }}</strong> v{{ rubric.version }}{% if active %} · <span class="ok">✓ active</span>{% endif %}</div>
 <p>{{ rubric.description }}</p>
 <table><thead><tr><th>Criterion</th><th>Max</th><th>Weight</th><th>Description</th><th>Levels</th></tr></thead><tbody>
 {% for c in rubric.criteria %}

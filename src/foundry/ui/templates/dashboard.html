@@ -2,7 +2,7 @@
 {% block title %}Dashboard · Foundry Eval Sandbox{% endblock %}
 {% block body %}
 {% if total_runs %}
-<form class="inline" method="get" action="/dashboard" style="margin-bottom:12px">
+<form class="inline" method="get" action="{{ P }}/dashboard" style="margin-bottom:12px">
   <div class="field"><label class="label" for="rubric-filter">Scored with</label>
     <select id="rubric-filter" name="rubric">
       <option value="active"{% if rubric_choice == "active" %} selected{% endif %}>Active rubric</option>
@@ -14,9 +14,9 @@
 {% if mixed %}<p class="note">These runs were scored with different rubrics, so their scores are not directly comparable.</p>{% endif %}
 {% endif %}
 {% if not total_runs %}
-<p class="empty">No runs yet. Start one on the <a href="/">Runs</a> tab, and the dashboard fills in as runs are scored.</p>
+<p class="empty">No runs yet. Start one on the <a href="{{ P }}/">Runs</a> tab, and the dashboard fills in as runs are scored.</p>
 {% elif not d.kpis.runs %}
-<p class="empty">No runs have been scored with this rubric yet. Evaluate runs from their pages, or <a href="/dashboard?rubric=all">show all runs</a>.</p>
+<p class="empty">No runs have been scored with this rubric yet. Evaluate runs from their pages, or <a href="{{ P }}/dashboard?rubric=all">show all runs</a>.</p>
 {% else %}
 <div class="kpis">
   <div class="kpi"><span class="kpi-num">{{ d.kpis.runs }}</span><span class="muted">runs</span></div>
@@ -32,7 +32,7 @@
     <div class="lb-row lb-head muted"><span>Model</span><span>Runs</span><span>Overall</span><span>Cost/run</span><span>Succeeded</span></div>
     {% for m in d.leaderboard %}
     <div class="lb-row">
-      <a class="wrap" href="/?model={{ m.model | urlencode }}">{{ m.model }}</a>
+      <a class="wrap" href="{{ P }}/?model={{ m.model | urlencode }}">{{ m.model }}</a>
       <span class="num">{{ m.runs }}{% if m.scored != m.runs %} <span class="muted">({{ m.scored }} scored)</span>{% endif %}</span>
       <span class="lb-score">
         {% if m.overall.mean is not none %}
@@ -71,13 +71,13 @@
     <line class="sv-axis" x1="{{ sc.x0 }}" x2="{{ sc.x1 }}" y1="{{ sc.y1 }}" y2="{{ sc.y1 }}"/>
     <text class="sv-tick" x="{{ (sc.x0 + sc.x1) / 2 }}" y="{{ sc.h - 4 }}" text-anchor="middle">cost per run (USD)</text>
     {% for p in sc.dots %}
-    <a href="/runs/{{ p.run_id }}"><g class="dot"><title>{{ p.model }} · {{ p.prompt }} · overall {{ "%.2f"|format(p.overall) }} · ${{ "%.3f"|format(p.cost) }}</title>
+    <a href="{{ P }}/runs/{{ p.run_id }}"><g class="dot"><title>{{ p.model }} · {{ p.prompt }} · overall {{ "%.2f"|format(p.overall) }} · ${{ "%.3f"|format(p.cost) }}</title>
       <circle class="hit" cx="{{ p.x }}" cy="{{ p.y }}" r="11"/>{% with shape=p.shape, series=p.series, x=p.x, y=p.y %}{% include "_mark.html" %}{% endwith %}</g></a>
     {% endfor %}
   </svg></div>
   <details><summary>Table</summary>
     <table><thead><tr><th>Run</th><th>Model</th><th>Prompt</th><th>Overall</th><th>Cost</th></tr></thead><tbody>
-    {% for p in sc.dots | sort(attribute="overall", reverse=true) %}<tr><td><a href="/runs/{{ p.run_id }}">…{{ p.run_id[-4:] }}</a></td><td class="wrap">{{ p.model }}</td><td>{{ p.prompt }}</td><td>{{ "%.2f"|format(p.overall) }}</td><td>${{ "%.3f"|format(p.cost) }}</td></tr>{% endfor %}
+    {% for p in sc.dots | sort(attribute="overall", reverse=true) %}<tr><td><a href="{{ P }}/runs/{{ p.run_id }}">…{{ p.run_id[-4:] }}</a></td><td class="wrap">{{ p.model }}</td><td>{{ p.prompt }}</td><td>{{ "%.2f"|format(p.overall) }}</td><td>${{ "%.3f"|format(p.cost) }}</td></tr>{% endfor %}
     </tbody></table>
   </details>
   {% else %}<p class="empty">No scored runs yet. Evaluate a run to place it here.</p>{% endif %}

@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Rubric draft · Foundry Eval Sandbox{% endblock %}
 {% block body %}
-<div class="runhead"><a href="/rubric?task={{ task }}">&lt; Rubric</a> &nbsp; <strong>Review draft</strong> · from {{ meta.source.label }}</div>
+<div class="runhead"><a href="{{ P }}/rubric?task={{ task }}">&lt; Rubric</a> &nbsp; <strong>Review draft</strong> · from {{ meta.source.label }}</div>
 {% if message %}<p class="note">{{ message }}</p>{% endif %}
 {% if meta.valid %}<p class="ok"><strong>✓ Valid</strong>: ready to activate.</p>
 {% else %}<p class="bad"><strong>✗ Invalid</strong>: {{ meta.error }}</p>{% endif %}
 {% if meta.notes %}<div class="note"><strong>Model notes</strong><ul>{% for n in meta.notes %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endif %}
 
 <div class="review">
-<form method="post" action="/rubric/drafts/{{ draft_id }}" class="review-form" novalidate>
+<form method="post" action="{{ P }}/rubric/drafts/{{ draft_id }}" class="review-form" novalidate>
   <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="task" value="{{ task }}">
   <div class="inline">
     <div class="field"><label class="label" for="f-id">Rubric id</label><input id="f-id" type="text" name="rubric_id" value="{{ body.rubric_id or '' }}" size="28"></div>
@@ -47,7 +47,7 @@
   <p class="wrap">{{ meta.source.kind }} · {{ meta.source.label }}<br>
     <span class="muted">{{ meta.source.format }} · {{ "{:,}".format(meta.source.bytes) }} bytes · sha256 {{ meta.source.sha256[:12] }}…</span></p>
   {% if source_text is not none %}<pre class="wrap">{{ source_text }}</pre>
-  {% else %}<p><a href="/rubric/drafts/{{ draft_id }}/source?task={{ task }}">Open source</a> <span class="muted">(read by the model directly; not shown here)</span></p>{% endif %}
+  {% else %}<p><a href="{{ P }}/rubric/drafts/{{ draft_id }}/source?task={{ task }}">Open source</a> <span class="muted">(read by the model directly; not shown here)</span></p>{% endif %}
   <p class="muted">Drafted by {{ meta.model or "— (already a rubric)" }}{% if meta.prompt_id %} · prompt {{ meta.prompt_id }}{% endif %}
     {% if meta.usage %} · {{ meta.usage.tokens_in }} in / {{ meta.usage.tokens_out }} out{% if meta.usage.cost_usd is defined %} · ${{ "%.3f"|format(meta.usage.cost_usd) }}{% endif %}{% endif %}</p>
   {% if meta.raw_reply %}<details><summary>Raw model reply</summary><pre class="wrap">{{ meta.raw_reply[:8000] }}</pre></details>{% endif %}

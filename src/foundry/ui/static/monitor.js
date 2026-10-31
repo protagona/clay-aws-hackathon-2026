@@ -39,7 +39,7 @@
     var m = el();
     if (!m || m.dataset.live !== "1") return;
     if (document.hidden) { setTimeout(poll, POLL_MS); return; }
-    var url = "/runs/" + encodeURIComponent(m.dataset.run) + "/live?seen=" + encodeURIComponent(m.dataset.seen);
+    var url = "/classic/runs/" + encodeURIComponent(m.dataset.run) + "/live?seen=" + encodeURIComponent(m.dataset.seen);
     fetch(url, { credentials: "same-origin", cache: "no-store" })
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
       .then(function (html) {

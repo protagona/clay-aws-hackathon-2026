@@ -49,22 +49,32 @@ The prompts are `adb-001` to `adb-006` (see `tasks/adb/prompts.jsonl`). Run `fou
 uv run foundry ui        # http://127.0.0.1:8765
 ```
 
-| Page | What you can do |
+It's a TypeScript single-page app (React, Vite, Tailwind) over a FastAPI JSON API (`/api`). It updates live as runs progress, with no reloads.
+
+| Screen | What you can do |
 |---|---|
-| **Runs** | Start a run (prompt × config); see every run as a score card; open the report; evaluate a run that hasn't been scored; **compare** it with any other run (a score, cost and calls table with deltas, then both timelines). |
-| **Batches** | Pick a base config, any number of agent models and prompts, repeats, parallel runs, a cost cap and whether to evaluate. Start the batch, then watch the per-model table (mean, min, max and stdev of the overall score) and per-run rows fill in, each linking to its report. |
-| **Import** | Evaluate an agent we didn't build: start the OpenTelemetry receiver with one click and point the agent at the address shown, or upload an OTLP/JSON trace file. Each agent run becomes a normal card. |
+| **Runs** | A live board. Runs move through **Running → Evaluating → Scored / Needs attention** as they progress, with headline numbers, filters and search. **▶ New run** starts one; **Evaluate →** scores one. Click a card for the slide-over monitor: gauges, agent bars, timeline, steps and the report. |
+| **Batches** | Start a batch (models × prompts × repeats, with a cost cap), then watch the per-model table and the runs fill in. |
+| **Dashboard** | Leaderboard, cost vs score (hover for details), and where agents struggle, filtered by rubric. |
+| **Rubric** | Import a rubric from a file (drag and drop), text, a URL or an MCP tool; review the draft; activate it; roll back. |
+| **Import** | Drop an OTLP/JSON trace, or start the live OpenTelemetry receiver and watch runs arrive. |
+| **Compare** | Two runs side by side: deltas and both timelines (from a run's **Compare ↗**). |
 
-- A run's page is a live monitor. While the run is going, it updates in place every second and shows:
-  - a ticking clock
-  - gauges for model calls, time and input tokens against the run's limits
-  - a waterfall of every model and tool call, where parallel calls overlap and errors are red
-  - a step feed with the model's text and each tool's arguments and result
+- **Pop-up notifications** tell you when a run or evaluation finishes.
+- **Light and dark** follow the system setting; the toggle remembers your choice.
+- **Phone width:** the run monitor becomes a full-screen sheet.
+- **Classic UI:** the server-rendered UI of increments 1–8 is still at **`/classic`**.
+- **Bind address:** the UI listens on 127.0.0.1 only.
 
-  Once evaluated, score rings sit above the report, and the feed folds under it.
-- Other pages refresh themselves while something is running.
-- Batches keep going if the UI is restarted.
-- The UI listens on 127.0.0.1 only.
+**Developing the UI:** the source is in `web/`, and needs Node `^22.22.2 || >=24.15.0`.
+
+```bash
+cd web && npm ci
+npm run dev       # Vite on :5173, proxying /api to a running `foundry ui`
+npm test          # Vitest
+npm run build     # writes src/foundry/ui/web_dist/; commit it so `foundry ui` needs no Node
+node ../scripts/ui_e2e.mjs http://127.0.0.1:8765 /tmp/shots   # end-to-end check in headless Chromium
+```
 
 The CLI below does the same things.
 

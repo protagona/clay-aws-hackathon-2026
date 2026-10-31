@@ -2,7 +2,7 @@
 {% block body %}
 <header class="top">
   <h1>Foundry Eval Sandbox</h1>
-  <form class="start" method="post" action="/runs">
+  <form class="start" method="post" action="{{ P }}/runs">
     <label for="prompt_id">Start a run</label>
     <select id="prompt_id" name="prompt_id" aria-label="Prompt">{% for p in prompts %}<option>{{ p }}</option>{% endfor %}</select>
     <select id="config" name="config" aria-label="Config">{% for c in configs %}<option{% if c == "offline" %} selected{% endif %}>{{ c }}</option>{% endfor %}</select>
@@ -13,19 +13,19 @@
 
 {% for job in banners %}
 <div class="banner" role="alert">
-  <span>{{ job.label }} failed{% if job.kind == "run" %} to start{% endif %}: {{ job.last_stderr_line() }} · <a href="/jobs/{{ job.id }}/log">full log</a></span>
-  <form method="post" action="/jobs/{{ job.id }}/dismiss"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link" type="submit">Dismiss</button></form>
+  <span>{{ job.label }} failed{% if job.kind == "run" %} to start{% endif %}: {{ job.last_stderr_line() }} · <a href="{{ P }}/jobs/{{ job.id }}/log">full log</a></span>
+  <form method="post" action="{{ P }}/jobs/{{ job.id }}/dismiss"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link" type="submit">Dismiss</button></form>
 </div>
 {% endfor %}
 
-{% if model_filter %}<p class="note">Showing runs of <strong>{{ model_filter }}</strong> only. <a href="/">Show all runs</a></p>{% endif %}
+{% if model_filter %}<p class="note">Showing runs of <strong>{{ model_filter }}</strong> only. <a href="{{ P }}/">Show all runs</a></p>{% endif %}
 {% if cards %}
 <div class="grid">
 {% for c in cards %}
   {% if c.unreadable %}
   <div class="card"><div class="prompt wrap">{{ c.name }}</div><div class="headline word">unreadable run.json</div></div>
   {% else %}
-  <a class="card" href="/runs/{{ c.run_id }}">
+  <a class="card" href="{{ P }}/runs/{{ c.run_id }}">
     <div class="prompt">{{ c.prompt_id }}</div>
     <div class="model wrap">{{ c.model }}</div>
     <div class="headline{% if not c.headline[0].isdigit() %} word{% endif %}">{{ c.headline }}</div>

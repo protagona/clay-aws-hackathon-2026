@@ -7,9 +7,8 @@ import shutil
 import time
 
 import pytest
-from conftest import FIXTURES, ROOT
+from conftest import FIXTURES, ROOT, classic_client
 from eval_helpers import eval_config, load
-from fastapi.testclient import TestClient
 from harness_helpers import write_config
 
 from foundry.evaluate import lock
@@ -22,7 +21,14 @@ BASE = f"http://127.0.0.1:{PORT}"
 
 def _client(runs, root=ROOT):
     app = create_app(runs, root, port=PORT)
-    return app, TestClient(app, base_url=BASE, follow_redirects=False)
+    return app, classic_client(app, base_url=BASE, follow_redirects=False)
+
+
+def _not_served(r) -> bool:
+    """A refused path: a 404, or (when normalisation lands outside /classic) the TypeScript app's index page,
+    which reveals nothing. Never a classic page or a file's contents."""
+    return r.status_code == 404 or (r.status_code == 200 and '<div id="root"></div>' in r.text
+                                    and "Foundry Eval Sandbox" in r.text and "import " not in r.text)
 
 
 def _csrf(app):
@@ -104,7 +110,7 @@ def test_report_page_and_unevaluated_page(tmp_path):  # AC25
     assert re.search(r'class="ring" style="--p:83\.3">\s*<span class="ring-num">0\.83</span><span class="ring-label">Overall', r.text)
     assert "All steps (" in r.text  # the feed folds under the report once evaluated
     r = c.get("/runs/fixture-recovered")
-    assert 'action="/runs/fixture-recovered/evaluate"' in r.text and 'class="waterfall"' in r.text
+    assert 'action="/classic/runs/fixture-recovered/evaluate"' in r.text and 'class="waterfall"' in r.text
     assert "retry of 6" in r.text
 
 
@@ -116,7 +122,7 @@ def test_bad_run_ids_404(tmp_path, path):  # AC26
     _seed(runs, "clean")
     _, c = _client(runs)
     r = c.get(path)
-    assert r.status_code == 404
+    assert _not_served(r)
 
 
 def test_untrusted_content_rendered_inert(tmp_path):  # AC27
@@ -168,7 +174,7 @@ def test_start_run_then_409_then_card(tmp_path):  # AC28, AC29
     app, c = _client(runs, root)
     form = {"prompt_id": "adb-001", "config": "test", "csrf": _csrf(app)}
     r = c.post("/runs", data=form)
-    assert r.status_code == 303 and r.headers["location"] == "/"
+    assert r.status_code == 303 and r.headers["location"] == "/classic/"
     (job,) = app.state.ui.jobs.values()
     r2 = c.post("/runs", data=form)
     assert r2.status_code == 409 and f"A run is already in progress: {job.run_id}" in r2.text
@@ -183,7 +189,7 @@ def test_evaluate_from_ui_holds_and_releases_lock(tmp_path):  # AC25, AC29
     d = _seed(runs, "recovered")
     app, c = _client(runs)
     r = c.post("/runs/fixture-recovered/evaluate", data={"csrf": _csrf(app)})
-    assert r.status_code == 303 and r.headers["location"] == "/runs/fixture-recovered"
+    assert r.status_code == 303 and r.headers["location"] == "/classic/runs/fixture-recovered"
     (job,) = app.state.ui.jobs.values()
     second = c.post("/runs/fixture-recovered/evaluate", data={"csrf": _csrf(app)})
     if job.exit_code is None:  # the lock is taken before the subprocess starts, so a second click is refused
@@ -275,7 +281,7 @@ def test_symlinked_files_and_dirs_are_never_followed(tmp_path):  # F1, F2
     assert c.get("/runs/symdir").status_code == 404
     assert c.get("/runs/symjson").status_code == 404
     index = c.get("/").text
-    assert "OUTSIDE-SECRET" not in index and 'href="/runs/symdir"' not in index
+    assert "OUTSIDE-SECRET" not in index and 'href="/classic/runs/symdir"' not in index
 
 
 def test_links_use_directory_name_not_run_json_run_id(tmp_path):  # F3
@@ -285,9 +291,9 @@ def test_links_use_directory_name_not_run_json_run_id(tmp_path):  # F3
     rj["run_id"] = "../../jobs/0000000000000000/dismiss?"
     (d["clean"] / "run.json").write_text(json.dumps(rj))
     _, c = _client(runs)
-    assert 'href="/runs/fixture-clean"' in c.get("/").text
+    assert 'href="/classic/runs/fixture-clean"' in c.get("/").text
     page = c.get("/runs/fixture-clean").text
-    assert 'action="/runs/fixture-clean/evaluate"' in page and "dismiss" not in page
+    assert 'action="/classic/runs/fixture-clean/evaluate"' in page and "dismiss" not in page
 
 
 def test_malformed_files_do_not_break_the_index(tmp_path):  # F4
@@ -322,7 +328,7 @@ def test_render_blocks_protocol_relative_links():  # F6
     from foundry.ui.render import render
 
     html = render("[a](//evil.example/x) [b](/\\\\evil.example) [c](https://ok.example) [d](runs/x)")
-    assert 'href="//evil' not in html and "%5Cevil" not in html
+    assert 'href="/classic//evil' not in html and "%5Cevil" not in html
     assert 'href="https://ok.example"' in html and 'href="runs/x"' in html
 
 
@@ -365,7 +371,7 @@ def test_nav_on_every_page(tmp_path):
     _, c = _client(tmp_path / "runs")
     for path in ("/", "/batches", "/import"):
         html = c.get(path).text
-        assert 'href="/batches"' in html and 'href="/import"' in html and 'aria-current="page"' in html
+        assert 'href="/classic/batches"' in html and 'href="/classic/import"' in html and 'aria-current="page"' in html
 
 
 def test_batch_from_the_ui(tmp_path):
@@ -375,7 +381,7 @@ def test_batch_from_the_ui(tmp_path):
     form = {"config": "test", "prompts": ["adb-001", "adb-002"], "repeats": "1", "concurrency": "2",
             "evaluate": "1", "max_cost": "1", "csrf": _csrf(app)}
     r = c.post("/batches", data=form)
-    assert r.status_code == 303 and r.headers["location"].startswith("/batches/b-")
+    assert r.status_code == 303 and r.headers["location"].startswith("/classic/batches/b-")
     batch_id = r.headers["location"].rsplit("/", 1)[1]
     assert c.post("/batches", data=form).status_code in (303, 409)  # one batch at a time (409 while running)
     (job,) = [j for j in app.state.ui.jobs.values() if j.kind == "batch"]
@@ -384,7 +390,7 @@ def test_batch_from_the_ui(tmp_path):
     page = c.get(f"/batches/{batch_id}").text
     assert "2/2 jobs" in page and page.count('>report</a>') == 2 and "succeeded" in page
     assert re.search(r"<th>Mean</th><th>Min</th><th>Max</th><th><abbr[^>]*>Stdev</abbr></th>", page)  # D-7
-    links = re.findall(r'href="/runs/([^"]+)"', page)
+    links = re.findall(r'href="/classic/runs/([^"]+)"', page)
     assert links and all(name.startswith(f"{batch_id}_") for name in links)
     assert c.get(f"/runs/{links[0]}").status_code == 200
     index = c.get("/").text
@@ -403,7 +409,7 @@ def test_batch_form_validation(tmp_path):
     assert c.post("/batches", data={**base, "models": ["not-a-model"]}).status_code == 400
     assert c.post("/batches", data={**base, "max_cost": "500"}).status_code == 400
     assert c.post("/batches", data={**base, "concurrency": "40"}).status_code == 400
-    assert c.get("/batches/../../etc").status_code == 404 and c.get("/batches/b-1").status_code == 404
+    assert _not_served(c.get("/batches/../../etc")) and c.get("/batches/b-1").status_code == 404
 
 
 def test_import_upload_from_the_ui(tmp_path):
@@ -411,7 +417,7 @@ def test_import_upload_from_the_ui(tmp_path):
     app, c = _client(runs)
     files = {"file": ("trace.json", json.dumps(_hand_otlp()), "application/json")}
     r = c.post("/import", data={"task": "adb", "prompt_id": "ext-1", "config": "", "csrf": _csrf(app)}, files=files)
-    assert r.status_code == 303 and r.headers["location"].startswith("/runs/otel-ext-1-")
+    assert r.status_code == 303 and r.headers["location"].startswith("/classic/runs/otel-ext-1-")
     page = c.get(r.headers["location"]).text
     assert "ext-model" in page and "search" in page
     bad = {"file": ("x.json", "not json", "application/json")}
@@ -425,7 +431,7 @@ def test_import_upload_from_the_ui(tmp_path):
 def test_receiver_start_receive_stop_from_the_ui(tmp_path):
     runs = tmp_path / "runs"
     app = create_app(runs, ROOT, port=PORT, receiver_port=0)
-    c = TestClient(app, base_url=BASE, follow_redirects=False)
+    c = classic_client(app, base_url=BASE, follow_redirects=False)
     assert "Start receiving" in c.get("/import").text
     assert c.post("/receiver/start", data={"task": "adb", "prompt_id": "live-1", "csrf": _csrf(app)}).status_code == 303
     rec = app.state.ui.receiver
@@ -482,7 +488,7 @@ def test_compare_page_rows_and_timelines(tmp_path):  # C1
     assert any(k in rows for k in ("data-fit", "method"))  # one row per rubric criterion, as n/max
     assert re.search(r"<td>\d+/\d+</td>", page)
     assert page.index("A timeline") < page.index("B timeline")
-    assert 'href="/runs/fixture-clean"' in page and 'href="/runs/fixture-recovered"' in page
+    assert 'href="/classic/runs/fixture-clean"' in page and 'href="/classic/runs/fixture-recovered"' in page
 
 
 def test_compare_unevaluated_run_shows_dashes(tmp_path):  # C1
@@ -506,7 +512,7 @@ def test_run_page_compare_form(tmp_path):  # C2
     page = c.get("/runs/fixture-clean").text
     form = page[page.index('<form class="compare"'):]
     form = form[:form.index("</form>")]
-    assert 'method="get" action="/compare"' in form and 'name="a" value="fixture-clean"' in form
+    assert 'method="get" action="/classic/compare"' in form and 'name="a" value="fixture-clean"' in form
     options = re.findall(r'<option value="([^"]+)"', form)
     assert sorted(options) == ["fixture-failed", "fixture-recovered"]  # every other run, not itself
     _seed(tmp_path / "solo", "clean")
@@ -544,7 +550,7 @@ def test_live_fragment_and_script_only_while_live(tmp_path):  # L1, L2, L4
     assert "monitor.js" not in page and 'data-live="0"' in page  # finished: no script, no polling
     _running(d["recovered"])
     page = c.get("/runs/fixture-recovered").text
-    assert '<script src="/static/monitor.js" defer></script>' in page and 'data-live="1"' in page
+    assert '<script src="/classic/static/monitor.js" defer></script>' in page and 'data-live="1"' in page
     assert '<noscript><meta http-equiv="refresh" content="3"></noscript>' in page and "data-start=" in page
     frag = c.get("/runs/fixture-recovered/live?seen=5")
     assert frag.status_code == 200 and frag.text.lstrip().startswith('<section id="monitor"')
@@ -580,7 +586,7 @@ def test_csp_and_static_allowlist(tmp_path):  # S1
     assert js.status_code == 200 and js.headers["content-type"].startswith("text/javascript")
     assert "innerHTML" not in js.text and "eval(" not in js.text
     for bad in ("/static/app.py", "/static/..%2Fapp.py", "/static/monitor.js%00", "/static/"):
-        assert c.get(bad).status_code == 404
+        assert _not_served(c.get(bad))
 
 
 def test_feed_renders_model_markdown_safely(tmp_path):  # increment 5 follow-up: model text as Markdown, inert
@@ -684,16 +690,16 @@ def test_rubric_routes_deny(tmp_path):  # S1, S1b
     assert "needs a Bedrock judge model" in c.post("/rubric/draft", data={
         "csrf": _csrf(app), "task": "adb", "kind": "file", "text": "accuracy 0-3", "config": "offline"}).text
     assert c.post("/rubric/draft", data={"csrf": _csrf(app), "task": "../etc", "kind": "text", "text": "x",
-                                         "config": "offline"}).status_code == 400
+                                         "config": "offline"}).status_code == 404  # "Unknown task" (shared action)
     r = c.post("/rubric/draft", data={"csrf": _csrf(app), "task": "adb", "kind": "url",
                                       "url": "https://169.254.169.254/latest", "config": "offline"})
     assert r.status_code == 400 and "non-public" in r.text
     for bad in ("../rubric.json", "x.json", "a@b.json%2F..%2F..%2Fc"):
         assert c.post("/rubric/history/activate", data={"csrf": _csrf(app), "task": "adb", "file": bad}).status_code == 404
-        assert c.get(f"/rubric/history/{bad}?task=adb").status_code == 404
+        assert _not_served(c.get(f"/rubric/history/{bad}?task=adb"))
     for bad in ("../../etc", "ABCDEF123456", "0" * 13):
-        assert c.get(f"/rubric/drafts/{bad}?task=adb").status_code == 404
-        assert c.get(f"/rubric/drafts/{bad}/source?task=adb").status_code == 404
+        assert _not_served(c.get(f"/rubric/drafts/{bad}?task=adb"))
+        assert _not_served(c.get(f"/rubric/drafts/{bad}/source?task=adb"))
     r = _upload(c, app, "clay.json", json.dumps({**RUBRIC, "rubric_id": "../escape"}).encode())
     assert r.status_code == 502  # not a valid rubric, so it needs the model; offline can't draft
     draft_url = _upload(c, app, "ok.json", json.dumps(RUBRIC).encode()).headers["location"].split("?")[0]

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mock B · Product</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:Inter,system-ui,sans-serif}
+@keyframes pulsebar{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}.live{animation:pulsebar 1.6s ease-in-out infinite}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}.rise{animation:rise .5s ease-out both}</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+<header class="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-slate-200">
+  <div class="mx-auto max-w-7xl px-6 h-16 flex items-center gap-8">
+    <div class="flex items-center gap-2 font-semibold"><div class="h-7 w-7 rounded-lg bg-gradient-to-br from-sky-500 to-teal-400"></div>Foundry</div>
+    <nav class="flex gap-6 text-sm"><a class="font-medium text-slate-900 border-b-2 border-sky-500 pb-5 pt-5">Runs</a><a class="text-slate-500 py-5">Batches</a><a class="text-slate-500 py-5">Dashboard</a><a class="text-slate-500 py-5">Rubric</a><a class="text-slate-500 py-5">Import</a></nav>
+    <div class="ml-auto flex items-center gap-3"><span class="text-xs text-slate-500 flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Bedrock connected</span><button class="rounded-full bg-slate-900 text-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-700">New run</button></div>
+  </div>
+</header>
+<main class="mx-auto max-w-7xl px-6 py-8 space-y-8">
+  <section class="grid grid-cols-4 gap-4">
+    <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div class="text-sm text-slate-500">Runs</div><div class="text-3xl font-semibold mt-1">27</div><div class="text-xs text-emerald-600 mt-1">+4 today</div></div>
+    <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div class="text-sm text-slate-500">Mean overall</div><div class="text-3xl font-semibold mt-1">0.96</div><div class="text-xs text-slate-500 mt-1">active rubric</div></div>
+    <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div class="text-sm text-slate-500">Live now</div><div class="text-3xl font-semibold mt-1 text-sky-600">2</div><div class="text-xs text-slate-500 mt-1">1 running · 1 evaluating</div></div>
+    <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><div class="text-sm text-slate-500">Spent</div><div class="text-3xl font-semibold mt-1">$4.60</div><div class="text-xs text-slate-500 mt-1">runs + evaluations</div></div>
+  </section>
+  <section>
+    <div class="flex items-center justify-between mb-4"><h2 class="text-lg font-semibold">Recent runs</h2><div class="flex gap-2 text-sm"><button class="rounded-full bg-white ring-1 ring-slate-200 px-3 py-1.5">All models ▾</button><button class="rounded-full bg-white ring-1 ring-slate-200 px-3 py-1.5">All prompts ▾</button></div></div>
+    <div class="grid grid-cols-3 gap-4">
+      <div class="rise rounded-2xl bg-white p-5 shadow-sm ring-2 ring-sky-400">
+        <div class="flex justify-between items-start"><div><div class="font-semibold">adb-005</div><div class="text-xs text-slate-500">kimi-k3 · pipeline</div></div><span class="rounded-full bg-sky-50 text-sky-700 ring-1 ring-sky-200 text-xs px-2.5 py-1 font-medium">Running · 00:26</span></div>
+        <div class="mt-4 flex gap-1"><div class="h-2 flex-1 rounded-full bg-sky-500"></div><div class="h-2 flex-[3] rounded-full bg-sky-500"></div><div class="h-2 flex-1 rounded-full bg-sky-300 live"></div></div>
+        <div class="mt-2 text-xs text-slate-500 flex justify-between"><span>planner ✓ · executor ✓ · checker…</span><span>7/12 calls</span></div>
+      </div>
+      <div class="rise rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <div class="flex justify-between items-start"><div><div class="font-semibold">adb-001</div><div class="text-xs text-slate-500">claude-sonnet-4-6</div></div><span class="rounded-full bg-amber-50 text-amber-700 ring-1 ring-amber-200 text-xs px-2.5 py-1 font-medium">Evaluating</span></div>
+        <div class="mt-4 h-2 rounded-full bg-amber-200 live"></div><div class="mt-2 text-xs text-slate-500">Judge scoring 4 criteria…</div>
+      </div>
+      <div class="rise rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <div class="flex justify-between items-start"><div><div class="font-semibold">adb-004</div><div class="text-xs text-slate-500">kimi-k3</div></div><div class="relative h-12 w-12"><svg viewBox="0 0 36 36" class="h-12 w-12 -rotate-90"><circle cx="18" cy="18" r="15" fill="none" stroke="#e2e8f0" stroke-width="4"/><circle cx="18" cy="18" r="15" fill="none" stroke="#10b981" stroke-width="4" stroke-dasharray="94 94" stroke-linecap="round"/></svg><span class="absolute inset-0 grid place-content-center text-xs font-semibold">1.00</span></div></div>
+        <div class="mt-3 text-xs text-slate-500">Workflow 1.00 · Output 1.00 · $0.147 · 30s</div>
+      </div>
+      <div class="rise rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <div class="flex justify-between items-start"><div><div class="font-semibold">adb-003</div><div class="text-xs text-slate-500">kimi-k3 · pipeline</div></div><div class="relative h-12 w-12"><svg viewBox="0 0 36 36" class="h-12 w-12 -rotate-90"><circle cx="18" cy="18" r="15" fill="none" stroke="#e2e8f0" stroke-width="4"/><circle cx="18" cy="18" r="15" fill="none" stroke="#10b981" stroke-width="4" stroke-dasharray="88 94" stroke-linecap="round"/></svg><span class="absolute inset-0 grid place-content-center text-xs font-semibold">.93</span></div></div>
+        <div class="mt-3 text-xs text-slate-500">checker ✓ approve · $0.228</div>
+      </div>
+      <div class="rise rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <div class="flex justify-between items-start"><div><div class="font-semibold">adb-002</div><div class="text-xs text-slate-500">scripted · pipeline</div></div><div class="relative h-12 w-12"><svg viewBox="0 0 36 36" class="h-12 w-12 -rotate-90"><circle cx="18" cy="18" r="15" fill="none" stroke="#e2e8f0" stroke-width="4"/><circle cx="18" cy="18" r="15" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="76 94" stroke-linecap="round"/></svg><span class="absolute inset-0 grid place-content-center text-xs font-semibold">.81</span></div></div>
+        <div class="mt-3 text-xs text-slate-500">1 tool error · revised once</div>
+      </div>
+      <div class="rise rounded-2xl bg-white p-5 shadow-sm ring-1 ring-rose-200">
+        <div class="flex justify-between items-start"><div><div class="font-semibold">adb-006</div><div class="text-xs text-slate-500">kimi-k3</div></div><span class="rounded-full bg-rose-50 text-rose-700 ring-1 ring-rose-200 text-xs px-2.5 py-1 font-medium">Failed</span></div>
+        <div class="mt-3 text-xs text-slate-500">max_model_calls (12) reached</div>
+      </div>
+    </div>
+  </section>
+  <section class="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+    <div class="px-6 pt-5 flex items-center gap-6 border-b border-slate-200 text-sm"><span class="font-semibold text-base mr-4">adb-005 · live</span><a class="pb-3 border-b-2 border-sky-500 font-medium">Overview</a><a class="pb-3 text-slate-500">Timeline</a><a class="pb-3 text-slate-500">Steps</a><a class="pb-3 text-slate-500">Report</a></div>
+    <div class="p-6 grid grid-cols-3 gap-6 text-sm">
+      <div class="col-span-2 space-y-3">
+        <div class="flex items-center gap-3"><span class="w-24 text-slate-500">planner</span><div class="flex-1 h-3 rounded-full bg-slate-100"><div class="h-3 w-1/5 rounded-full bg-sky-500"></div></div><span class="w-12 text-right text-slate-500">5.5s</span></div>
+        <div class="flex items-center gap-3"><span class="w-24 text-slate-500">executor</span><div class="flex-1 h-3 rounded-full bg-slate-100"><div class="h-3 ml-[20%] w-[70%] rounded-full bg-sky-500"></div></div><span class="w-12 text-right text-slate-500">19.2s</span></div>
+        <div class="flex items-center gap-3"><span class="w-24 text-slate-500">checker</span><div class="flex-1 h-3 rounded-full bg-slate-100"><div class="h-3 ml-[92%] w-[6%] rounded-full bg-sky-300 live"></div></div><span class="w-12 text-right text-sky-600">live</span></div>
+      </div>
+      <div class="rounded-xl bg-slate-50 p-4 space-y-2"><div class="flex justify-between"><span class="text-slate-500">Model calls</span><span class="font-medium">7 / 12</span></div><div class="flex justify-between"><span class="text-slate-500">Input tokens</span><span class="font-medium">72.8k</span></div><div class="flex justify-between"><span class="text-slate-500">Cost</span><span class="font-medium">$0.147</span></div><div class="flex justify-between"><span class="text-slate-500">Tool errors</span><span class="font-medium">0</span></div></div>
+    </div>
+  </section>
+</main>
+<div class="fixed bottom-6 right-6 rounded-xl bg-slate-900 text-white px-4 py-3 text-sm shadow-xl flex items-center gap-3"><span class="h-2 w-2 rounded-full bg-emerald-400"></span>adb-004 scored 1.00 · <a class="underline">open</a></div>
+</body></html>

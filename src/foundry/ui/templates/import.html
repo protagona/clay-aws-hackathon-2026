@@ -10,10 +10,10 @@
   <p><span class="ok">● Receiving</span> on <code>http://127.0.0.1:{{ receiver.port }}/v1/traces</code> (task {{ receiver.task_id }}, prompt id {{ receiver.prompt_id }}).
      Point the agent at it with <code>OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:{{ receiver.port }}</code>.</p>
   <p>{{ received|length }} run{{ "" if received|length == 1 else "s" }} received{% if received %}:
-    {% for r in received %}<a href="/runs/{{ r }}">{{ r }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}.</p>
-  <form method="post" action="/receiver/stop"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Stop receiving</button></form>
+    {% for r in received %}<a href="{{ P }}/runs/{{ r }}">{{ r }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}.</p>
+  <form method="post" action="{{ P }}/receiver/stop"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Stop receiving</button></form>
   {% else %}
-  <form method="post" action="/receiver/start" class="inline">
+  <form method="post" action="{{ P }}/receiver/start" class="inline">
     <label class="label">Task<br><select name="task">{% for t in tasks %}<option>{{ t }}</option>{% endfor %}</select></label>
     <label class="label">Prompt id<br><input type="text" name="prompt_id" value="imported" pattern="[A-Za-z0-9._-]+"></label>
     <label class="label">Prices from<br><select name="config"><option value="">(no cost)</option>{% for c in configs %}<option{% if c == "bedrock" %} selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
@@ -24,7 +24,7 @@
   {% endif %}
 </section>
 
-<form class="panel" method="post" action="/import" enctype="multipart/form-data">
+<form class="panel" method="post" action="{{ P }}/import" enctype="multipart/form-data">
   <h2>From a file</h2>
   <div class="inline field">
     <label class="label">OTLP/JSON trace file<br><input type="file" name="file" accept=".json,.jsonl,application/json" required></label>

@@ -22,3 +22,19 @@ jobs:
       - run: uv sync
       # Includes the `network` tests: they call the real RODA MCP server, which needs no AWS credentials.
       - run: uv run pytest
+
+  web:  # the TypeScript UI (increment 9): unit tests, a build, and proof the committed bundle matches its source
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: .tool-versions
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: git diff --exit-code -- ../src/foundry/ui/web_dist

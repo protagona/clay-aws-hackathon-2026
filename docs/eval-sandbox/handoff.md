@@ -291,6 +291,20 @@ See [increment-8/handoff.md](increment-8/handoff.md).
 - **Verified live on Bedrock** with PDF, DOCX, XLSX, text, URL and MCP sources. Non-rubrics are refused.
 - **Suite:** 304 passed.
 
+## Increment 9 (2026-10-31): TypeScript UI (live board)
+
+See [increment-9/handoff.md](increment-9/handoff.md).
+
+- A React and TypeScript SPA in the approved B+C design, served by FastAPI over a JSON API:
+  - a live board, with runs moving through the status columns
+  - a slide-over run monitor
+  - notifications
+  - light and dark modes
+  - every screen
+- The classic UI is at `/classic`.
+- The end-to-end check in a real browser passes.
+- **Suites:** Python 317 passed, Vitest 6 passed, `npm audit` clean.
+
 ## Follow-ups
 
 - Deploy and verify: `cdk bootstrap`, `cdk deploy`, `scripts/stage_samples.sh`, then `scripts/verify_deploy.sh` (README, *Deploy*). Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.

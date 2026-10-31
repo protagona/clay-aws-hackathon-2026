@@ -2,12 +2,12 @@
 {% block title %}{{ batch_id }} · Foundry Eval Sandbox{% endblock %}
 {% block body %}
 <div class="runhead">
-  <div><a href="/batches">&lt; Batches</a> &nbsp; <strong>{{ batch_id }}</strong> ·
+  <div><a href="{{ P }}/batches">&lt; Batches</a> &nbsp; <strong>{{ batch_id }}</strong> ·
     {% if running %}<span class="status-running">running</span>{% else %}{{ meta.status or "finished" }}{% endif %}
     · {{ done }}/{{ meta.jobs or rows|length }} jobs
     {% if meta.spent_usd is defined %}· spent ${{ "%.3f"|format(meta.spent_usd) }}{% endif %}
     {% if meta.max_cost %} (cap ${{ "%.2f"|format(meta.max_cost) }}){% endif %}</div>
-  {% if job %}<div class="muted"><a href="/jobs/{{ job.id }}/log">batch log</a></div>{% endif %}
+  {% if job %}<div class="muted"><a href="{{ P }}/jobs/{{ job.id }}/log">batch log</a></div>{% endif %}
 </div>
 {% if not rows %}
 <p class="empty">{% if running %}Starting… this page refreshes by itself.{% else %}No jobs recorded. Check the batch log.{% endif %}</p>
@@ -31,7 +31,7 @@
       <td>{% if r.tool_calls %}{{ r.tool_calls }} ({{ r.tool_errors }}){% endif %}</td>
       <td>{{ "$%.3f"|format(r.cost) if r.cost is not none else "" }}</td>
       <td>{{ r.workflow }}</td><td>{{ r.output }}</td><td>{{ r.overall }}</td>
-      <td>{% if r.link %}<a href="/runs/{{ r.link }}">report</a>{% endif %}</td></tr>
+      <td>{% if r.link %}<a href="{{ P }}/runs/{{ r.link }}">report</a>{% endif %}</td></tr>
   {% endfor %}</tbody>
 </table>
 {% endif %}

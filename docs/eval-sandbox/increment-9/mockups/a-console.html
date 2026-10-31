@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mock A · Console</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>body{font-family:Inter,system-ui,sans-serif}.mono{font-family:'JetBrains Mono',monospace}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}.bar{transform-origin:left;animation:grow .6s ease-out}
+@keyframes sheen{0%{background-position:-200px 0}100%{background-position:200px 0}}
+.working{background:linear-gradient(90deg,rgba(99,102,241,.25),rgba(99,102,241,.7),rgba(99,102,241,.25));background-size:200px 100%;animation:sheen 1.4s linear infinite}</style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 h-screen overflow-hidden">
+<div class="flex h-full">
+  <!-- sidebar -->
+  <aside class="w-60 shrink-0 border-r border-zinc-800 bg-zinc-950 flex flex-col">
+    <div class="px-5 py-5 flex items-center gap-2"><div class="h-7 w-7 rounded-lg bg-gradient-to-br from-indigo-500 to-emerald-400"></div><div><div class="font-semibold leading-tight">Foundry</div><div class="text-xs text-zinc-500">Eval sandbox</div></div></div>
+    <nav class="px-3 space-y-1 text-sm">
+      <a class="flex items-center justify-between rounded-lg bg-zinc-800/70 px-3 py-2 font-medium">Runs <span class="rounded-full bg-indigo-500/20 px-2 text-xs text-indigo-300">2 live</span></a>
+      <a class="block rounded-lg px-3 py-2 text-zinc-400 hover:bg-zinc-900">Batches</a>
+      <a class="block rounded-lg px-3 py-2 text-zinc-400 hover:bg-zinc-900">Dashboard</a>
+      <a class="block rounded-lg px-3 py-2 text-zinc-400 hover:bg-zinc-900">Rubric</a>
+      <a class="block rounded-lg px-3 py-2 text-zinc-400 hover:bg-zinc-900">Import</a>
+    </nav>
+    <div class="mt-auto p-4"><button class="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium hover:bg-indigo-500 shadow-lg shadow-indigo-900/40">＋ New run</button>
+      <div class="mt-3 text-xs text-zinc-500 flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-emerald-400"></span>Bedrock · us-west-2</div></div>
+  </aside>
+  <!-- run list -->
+  <section class="w-[380px] shrink-0 border-r border-zinc-800 flex flex-col">
+    <div class="p-4 border-b border-zinc-800 flex gap-2"><input class="flex-1 rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm placeholder-zinc-500" placeholder="Filter runs…"><button class="rounded-lg border border-zinc-800 px-3 text-sm text-zinc-400">Kimi ▾</button></div>
+    <ul class="overflow-auto divide-y divide-zinc-900 text-sm">
+      <li class="px-4 py-3 bg-indigo-500/10 border-l-2 border-indigo-400"><div class="flex justify-between"><span class="font-medium">adb-005</span><span class="flex items-center gap-1.5 text-indigo-300 text-xs"><span class="h-1.5 w-1.5 rounded-full bg-indigo-400"></span>running · 00:26</span></div><div class="text-zinc-500 text-xs mt-0.5">kimi-k3 · pipeline · checker</div><div class="mt-2 h-1 rounded bg-zinc-800"><div class="h-1 w-3/5 rounded working"></div></div></li>
+      <li class="px-4 py-3"><div class="flex justify-between"><span class="font-medium">adb-001</span><span class="text-xs text-amber-300">evaluating…</span></div><div class="text-zinc-500 text-xs mt-0.5">claude-sonnet-4-6</div></li>
+      <li class="px-4 py-3"><div class="flex justify-between"><span class="font-medium">adb-004</span><span class="mono text-emerald-300 font-semibold">1.00</span></div><div class="text-zinc-500 text-xs mt-0.5">kimi-k3 · W1.00 O1.00 · $0.147</div></li>
+      <li class="px-4 py-3"><div class="flex justify-between"><span class="font-medium">adb-003</span><span class="mono text-emerald-300 font-semibold">0.93</span></div><div class="text-zinc-500 text-xs mt-0.5">kimi-k3 · pipeline · $0.228</div></li>
+      <li class="px-4 py-3"><div class="flex justify-between"><span class="font-medium">adb-002</span><span class="mono text-amber-300 font-semibold">0.81</span></div><div class="text-zinc-500 text-xs mt-0.5">scripted · W0.96 O0.67</div></li>
+      <li class="px-4 py-3"><div class="flex justify-between"><span class="font-medium">adb-006</span><span class="text-xs text-rose-300">failed</span></div><div class="text-zinc-500 text-xs mt-0.5">kimi-k3 · max_model_calls reached</div></li>
+    </ul>
+  </section>
+  <!-- detail -->
+  <main class="flex-1 overflow-auto">
+    <div class="sticky top-0 z-10 backdrop-blur bg-zinc-950/80 border-b border-zinc-800 px-8 py-4 flex items-center justify-between">
+      <div><div class="text-xs text-zinc-500">adb-005 · us.moonshotai.kimi-k3 · pipeline</div><div class="text-lg font-semibold">Sentinel-2 vs Landsat for tropical deforestation</div></div>
+      <div class="flex items-center gap-3"><span class="mono text-2xl font-semibold tabular-nums">00:26</span><span class="rounded-full bg-indigo-500/15 text-indigo-300 px-3 py-1 text-xs font-medium ring-1 ring-indigo-500/30">● RUNNING</span><button class="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300">Compare</button></div>
+    </div>
+    <div class="p-8 space-y-6">
+      <div class="grid grid-cols-4 gap-4">
+        <div class="rounded-xl bg-zinc-900 ring-1 ring-zinc-800 p-4"><div class="text-xs text-zinc-500">Model calls</div><div class="mono text-xl mt-1">7<span class="text-zinc-500">/12</span></div><div class="mt-3 h-1.5 rounded bg-zinc-800"><div class="bar h-1.5 w-7/12 rounded bg-indigo-500"></div></div></div>
+        <div class="rounded-xl bg-zinc-900 ring-1 ring-zinc-800 p-4"><div class="text-xs text-zinc-500">Time</div><div class="mono text-xl mt-1">26s<span class="text-zinc-500">/300</span></div><div class="mt-3 h-1.5 rounded bg-zinc-800"><div class="bar h-1.5 w-[9%] rounded bg-emerald-500"></div></div></div>
+        <div class="rounded-xl bg-zinc-900 ring-1 ring-zinc-800 p-4"><div class="text-xs text-zinc-500">Input tokens</div><div class="mono text-xl mt-1">72.8k<span class="text-zinc-500">/200k</span></div><div class="mt-3 h-1.5 rounded bg-zinc-800"><div class="bar h-1.5 w-[36%] rounded bg-emerald-500"></div></div></div>
+        <div class="rounded-xl bg-zinc-900 ring-1 ring-zinc-800 p-4"><div class="text-xs text-zinc-500">Cost so far</div><div class="mono text-xl mt-1">$0.147</div><div class="text-xs text-zinc-500 mt-3">15 tool calls · 0 errors</div></div>
+      </div>
+      <div class="rounded-xl bg-zinc-900 ring-1 ring-zinc-800 p-5">
+        <div class="flex justify-between text-sm"><span class="font-medium">Timeline</span><span class="text-zinc-500 mono text-xs">0s ······ 10s ······ 20s ······</span></div>
+        <div class="mt-4 space-y-2 text-sm">
+          <div class="grid grid-cols-[180px_1fr] items-center gap-3"><span class="font-medium">▾ planner <span class="text-zinc-500 font-normal">1 call · 5.5s</span></span><div class="relative h-5"><div class="bar absolute left-[2%] w-[20%] h-5 rounded-md bg-indigo-500/25 ring-1 ring-indigo-500/40"></div></div></div>
+          <div class="grid grid-cols-[180px_1fr] items-center gap-3"><span class="font-medium">▾ executor <span class="text-zinc-500 font-normal">17 calls · 19.2s</span></span><div class="relative h-5"><div class="bar absolute left-[22%] w-[70%] h-5 rounded-md bg-indigo-500/25 ring-1 ring-indigo-500/40"></div>
+            <div class="absolute left-[22%] top-1 h-3 w-[5%] rounded bg-indigo-400"></div><div class="absolute left-[28%] top-1 h-3 w-[2%] rounded bg-emerald-400"></div><div class="absolute left-[31%] top-1 h-3 w-[8%] rounded bg-indigo-400"></div><div class="absolute left-[40%] top-1 h-3 w-[1%] rounded bg-emerald-400"></div><div class="absolute left-[45%] top-1 h-3 w-[12%] rounded bg-indigo-400"></div><div class="absolute left-[60%] top-1 h-3 w-[30%] rounded bg-indigo-400"></div></div></div>
+          <div class="grid grid-cols-[180px_1fr] items-center gap-3"><span class="font-medium">▾ checker <span class="text-zinc-500 font-normal">working…</span></span><div class="relative h-5"><div class="absolute left-[92%] w-[6%] h-5 rounded-md working"></div></div></div>
+        </div>
+      </div>
+      <div class="rounded-xl bg-zinc-900 ring-1 ring-zinc-800">
+        <div class="px-5 py-3 border-b border-zinc-800 text-sm font-medium">Live steps</div>
+        <div class="divide-y divide-zinc-800 text-sm">
+          <div class="px-5 py-3 flex gap-3"><span class="mono text-zinc-500 w-6">21</span><span class="rounded-md bg-violet-500/15 text-violet-300 px-2 text-xs h-5 leading-5">checker</span><span class="text-zinc-300">started · reviewing the candidate answer…</span></div>
+          <div class="px-5 py-3 flex gap-3"><span class="mono text-zinc-500 w-6">20</span><span class="rounded-md bg-indigo-500/15 text-indigo-300 px-2 text-xs h-5 leading-5">executor</span><span><span class="font-medium">model</span> <span class="text-zinc-500">6.5s · $0.054</span><br><span class="text-zinc-300">Both sources are verified with current data over the test AOI…</span></span></div>
+          <div class="px-5 py-3 flex gap-3"><span class="mono text-zinc-500 w-6">19</span><span class="rounded-md bg-indigo-500/15 text-indigo-300 px-2 text-xs h-5 leading-5">executor</span><span class="mono text-emerald-300">stac/get_item</span><span class="text-zinc-500">212 ms · ok</span></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body></html>

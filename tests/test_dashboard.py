@@ -5,9 +5,8 @@ import shutil
 
 import pytest
 
-from conftest import FIXTURES, ROOT
+from conftest import FIXTURES, ROOT, classic_client
 from eval_helpers import eval_config, load
-from fastapi.testclient import TestClient
 
 from foundry.contract import Step
 from foundry.evaluate.evaluate import evaluate
@@ -18,7 +17,7 @@ BASE = "http://127.0.0.1:8765"
 
 
 def _client(runs):
-    return TestClient(create_app(runs, ROOT, port=8765), base_url=BASE, follow_redirects=False)
+    return classic_client(create_app(runs, ROOT, port=8765), base_url=BASE, follow_redirects=False)
 
 
 def _seed(runs, name, as_=None, model=None, prompt=None):
@@ -99,8 +98,8 @@ def test_page_from_real_runs(tmp_path):  # D1, D6
     assert 'aria-current="page">Dashboard' in html
     assert '<span class="kpi-num">3</span><span class="muted">runs' in html
     assert '<span class="kpi-num">1</span><span class="muted">scored' in html
-    assert 'href="/?model=scripted-a"' in html and 'href="/?model=other-model"' in html
-    assert 'href="/runs/fixture-clean"' in html and "<summary>Table</summary>" in html
+    assert 'href="/classic/?model=scripted-a"' in html and 'href="/classic/?model=other-model"' in html
+    assert 'href="/classic/runs/fixture-clean"' in html and "<summary>Table</summary>" in html
     assert "<script" not in html
 
 
@@ -111,9 +110,9 @@ def test_model_filter_on_runs_tab(tmp_path):  # D3's link target
     _seed(runs, "recovered", model="other-model")
     c = _client(runs)
     html = c.get("/?model=other-model").text
-    assert 'href="/runs/fixture-recovered"' in html and 'href="/runs/fixture-clean"' not in html
+    assert 'href="/classic/runs/fixture-recovered"' in html and 'href="/classic/runs/fixture-clean"' not in html
     assert "Showing runs of <strong>other-model</strong>" in html
-    assert 'href="/runs/fixture-clean"' in c.get("/").text
+    assert 'href="/classic/runs/fixture-clean"' in c.get("/").text
 
 
 def test_empty_and_hostile_runs(tmp_path):  # D7
@@ -126,7 +125,7 @@ def test_empty_and_hostile_runs(tmp_path):  # D7
     (runs / "broken" / "run.json").write_text("{not json")
     r = c.get("/dashboard?rubric=all")
     assert r.status_code == 200 and "<img" not in r.text and "&lt;img src=x" in r.text
-    assert 'href="/?model=%3Cimg' in r.text
+    assert 'href="/classic/?model=%3Cimg' in r.text
 
 
 def test_pipeline_is_its_own_row():  # increment 7, S2
@@ -175,5 +174,5 @@ def test_empty_state_right_after_an_activation(tmp_path):  # T3: the active rubr
     shutil.copytree(ROOT / "tasks", root / "tasks")
     shutil.copytree(ROOT / "config", root / "config")
     (root / "tasks/adb/rubric.json").write_text((root / "tasks/adb/rubric.json").read_text().replace("0.1", "0.2"))
-    html = TestClient(create_app(runs, root, port=8765), base_url=BASE).get("/dashboard").text
-    assert "No runs have been scored with this rubric yet" in html and 'href="/dashboard?rubric=all"' in html
+    html = classic_client(create_app(runs, root, port=8765), base_url=BASE).get("/dashboard").text
+    assert "No runs have been scored with this rubric yet" in html and 'href="/classic/dashboard?rubric=all"' in html

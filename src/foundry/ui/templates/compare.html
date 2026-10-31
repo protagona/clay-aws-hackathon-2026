@@ -2,10 +2,10 @@
 {% block title %}Compare · Foundry Eval Sandbox{% endblock %}
 {% block body %}
 <div class="runhead">
-  <div><a href="/">&lt; Runs</a> &nbsp; <strong>Compare two runs</strong></div>
+  <div><a href="{{ P }}/">&lt; Runs</a> &nbsp; <strong>Compare two runs</strong></div>
   {% for label, s in (("A", a), ("B", b)) %}
   <div class="wrap"><strong>{{ label }}</strong> &nbsp; {{ s.run.prompt_id }} · {{ s.label }} ·
-    <span class="status-{{ s.run.status }}">{{ s.run.status }}</span> · <a href="/runs/{{ s.run.run_id }}">report</a></div>
+    <span class="status-{{ s.run.status }}">{{ s.run.status }}</span> · <a href="{{ P }}/runs/{{ s.run.run_id }}">report</a></div>
   {% endfor %}
 </div>
 
