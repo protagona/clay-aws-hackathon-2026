@@ -6,7 +6,8 @@
     services  foundry.services.*                what the app does
     api       foundry.api.*                     HTTP only
     ui        foundry.ui.*                      serves the built web app
-    entry     foundry.cli, __main__, server     wire the layers together; may import anything
+    entry     foundry.cli, cli_rubric,          wire the layers together; may import anything
+              __main__, server
 
 Dependencies point down only. The checks below parse every module with `ast` (imports inside functions count too).
 """
@@ -21,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 
 KERNEL = {"foundry", "foundry.config", "foundry.contract"}
-ENTRY = {"foundry.cli", "foundry.__main__", "foundry.server"}
+ENTRY = {"foundry.cli", "foundry.cli_rubric", "foundry.__main__", "foundry.server"}
 LAYERS = ("data", "engine", "services", "api", "ui")
 ALLOWED = {  # importer layer -> layers it may import (besides itself)
     "kernel": {"kernel"},
@@ -37,10 +38,7 @@ WEB_LAYERS = {"api", "ui", "entry"}
 
 # Modules not yet moved into their layer, and the layer each is headed for. Each slice of increment 16 shrinks this
 # list; it must be empty when the increment is done (test_unmoved_modules_list_is_current keeps it honest).
-UNMOVED = {
-    "foundry.rubrics": "services",  # rubrics/cli.py and rubrics/service.py (slice 5)
-    **{f"foundry.ui.{m}": "services" for m in ("actions", "app", "api", "dashboard", "monitor", "render")},
-}
+UNMOVED: dict[str, str] = {}
 
 
 def layer_of(module: str) -> str | None:
@@ -129,6 +127,10 @@ def test_layers():
     assert not problems, "\n".join(problems)
 
 
+def test_every_module_has_moved():
+    assert not UNMOVED, "increment 16 is done only when every module is in its layer"
+
+
 def test_unmoved_modules_list_is_current():
     """Every UNMOVED entry still exists (so the list shrinks as modules move, and can't go stale)."""
     gone = [m for m in UNMOVED if not ((SRC / Path(*m.split("."))).with_suffix(".py").exists()
@@ -150,6 +152,78 @@ def test_the_checker_catches_a_bad_edge(tmp_path):
     assert any("data/bad.py:2 imports foundry.engine.runner" in p for p in problems), problems
     assert any("data/bad.py:3 imports fastapi" in p for p in problems), problems
     assert any("module foundry.stray is in no layer" in p for p in problems), problems
+
+
+# --- services and api don't touch files or processes themselves ---------------------------------------------------
+
+# Calls that read or write files or start processes. services and api go through foundry.data (files) and
+# foundry.services.jobs (processes) instead; each exception below is the one module whose job that is.
+FILE_CALLS = {"open", "read_text", "read_bytes", "write_text", "write_bytes", "iterdir", "glob", "rglob", "mkdir",
+              "unlink", "exists", "is_file", "is_dir", "is_symlink", "rmdir", "rename", "touch", "stat"}
+FILE_MODULES = {"shutil", "subprocess"}  # importing these at all; `os.<anything>(...)` calls too (os.environ is fine)
+FILE_ALLOWED = {
+    "foundry/services/jobs.py",  # starts `foundry` subprocesses with their stderr in a log file
+    "foundry/api/uploads.py",  # streams an upload to disk under its size cap
+}
+
+
+def file_calls(path: Path) -> list[tuple[int, str]]:
+    tree = ast.parse(path.read_text(), filename=str(path))
+    out = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            f = node.func
+            if isinstance(f, ast.Name) and f.id == "open":
+                out.append((node.lineno, "open()"))
+            elif isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id == "os":
+                out.append((node.lineno, f"os.{f.attr}()"))
+            elif isinstance(f, ast.Attribute) and f.attr in FILE_CALLS:
+                out.append((node.lineno, f".{f.attr}()"))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""]
+            out += [(node.lineno, f"import {n}") for n in names if n.split(".")[0] in FILE_MODULES]
+    return out
+
+
+def test_services_and_api_dont_touch_files():
+    found = []
+    for layer in ("services", "api"):
+        for path in sorted((SRC / "foundry" / layer).rglob("*.py")):
+            rel = str(path.relative_to(SRC))
+            if rel in FILE_ALLOWED:
+                continue
+            found += [f"{rel}:{line}: {what}" for line, what in file_calls(path)]
+    assert not found, "use foundry.data (files) or foundry.services.jobs (processes):\n" + "\n".join(found)
+    assert all((SRC / f).is_file() for f in FILE_ALLOWED), "an allowlisted module is gone; drop it from FILE_ALLOWED"
+
+
+def test_the_file_check_catches_a_read(tmp_path):
+    f = tmp_path / "m.py"
+    f.write_text("import shutil\nimport os\nfrom pathlib import Path\nPath('x').read_text()\nopen('y')\n"
+                 "os.replace('a', 'b')\n'a'.replace('a', 'b')\nos.environ.get('X')\n")
+    assert sorted(w for _, w in file_calls(f)) == [".read_text()", "import shutil", "open()", "os.replace()"]
+
+
+def test_services_have_no_import_cycles():
+    """foundry.services modules import each other in one direction only (the order in docs/architecture.md)."""
+    graph = {}
+    for path in (SRC / "foundry" / "services").glob("*.py"):
+        me = module_name(path, SRC)
+        graph[me] = {t for _, t in imports(path, SRC) if t.startswith("foundry.services.") and t != me}
+    state: dict[str, int] = {}
+
+    def visit(m, stack):
+        if state.get(m) == 1:
+            raise AssertionError("import cycle: " + " -> ".join([*stack[stack.index(m):], m]))
+        if state.get(m) == 2:
+            return
+        state[m] = 1
+        for t in sorted(graph.get(m, ())):
+            visit(t, [*stack, m])
+        state[m] = 2
+
+    for m in sorted(graph):
+        visit(m, [])
 
 
 # --- increment 16: the server-rendered UI is gone, and stays gone -------------------------------------------------

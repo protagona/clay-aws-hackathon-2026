@@ -11,8 +11,8 @@ from eval_helpers import eval_config, load
 
 from foundry.contract import Step
 from foundry.engine.evaluate.evaluate import evaluate
-from foundry.ui.app import create_app
-from foundry.ui.dashboard import MAX_COLOURED, build
+from foundry.server import create_app
+from foundry.services.stats import MAX_COLOURED, build
 
 BASE = "http://127.0.0.1:8765"
 

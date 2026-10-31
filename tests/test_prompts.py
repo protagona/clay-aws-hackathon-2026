@@ -141,7 +141,7 @@ def test_archived_flag_is_exactly_true(store):
 from conftest import FIXTURES  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from foundry.ui.app import create_app  # noqa: E402
+from foundry.server import create_app  # noqa: E402
 
 BASE = "http://127.0.0.1:8765"
 

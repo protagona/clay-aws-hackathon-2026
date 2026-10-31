@@ -1,4 +1,4 @@
-// Response shapes of the FastAPI JSON API (src/foundry/ui/api.py). The UI only displays these.
+// Response shapes of the FastAPI JSON API (src/foundry/api/routes.py). The UI only displays these.
 
 export type Column = "running" | "evaluating" | "scored" | "attention";
 

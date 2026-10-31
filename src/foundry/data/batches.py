@@ -41,3 +41,13 @@ def batch_list(batches_dir: Path, runs_dir: Path) -> list[dict]:
                     "spent": sum(r["cost"] for r in rows if isinstance(r["cost"], float)),
                     "max_cost": meta.get("max_cost"), "models": meta.get("models") or meta.get("configs") or []})
     return sorted(out, key=lambda b: b["id"], reverse=True)
+
+
+def batch_path(batches_dir: Path, batch_id: str) -> Path | None:
+    """The directory for a batch id from a URL: a valid id naming a directory, else None."""
+    path = batches_dir / batch_id
+    return path if BATCH_ID_RE.match(batch_id) and path.is_dir() else None
+
+
+def read_meta(path: Path) -> dict:
+    return read_json(path / "batch.json") or {}

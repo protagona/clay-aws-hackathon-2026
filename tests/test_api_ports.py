@@ -14,7 +14,7 @@ from harness_helpers import write_config
 
 from foundry.data import locks as lock
 from foundry.engine.evaluate.evaluate import evaluate
-from foundry.ui.app import create_app
+from foundry.server import create_app
 
 BASE = "http://127.0.0.1:8765"
 
@@ -131,7 +131,7 @@ def test_security_headers_and_framing(tmp_path):  # was test_security_headers_an
 
 
 def test_render_blocks_protocol_relative_links():  # was test_render_blocks_protocol_relative_links (F6)
-    from foundry.ui.render import render
+    from foundry.api.render import render
 
     html = render("[a](//evil.example/x) [b](/\\\\evil.example) [c](https://ok.example) [d](runs/x)")
     assert 'href="//evil' not in html and "%5Cevil" not in html

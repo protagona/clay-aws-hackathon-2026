@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 
 from foundry.contract import Step
-from foundry.ui.monitor import monitor
+from foundry.services.run_view import monitor
 
 T0 = "2026-10-30T10:00:00.000Z"
 

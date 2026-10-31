@@ -184,3 +184,59 @@ def run_dirs(runs_dir: Path) -> list[Path]:
         return []
     return [d for d in runs_dir.iterdir()
             if not d.is_symlink() and d.is_dir() and not d.name.startswith(".") and is_valid_run_id(d.name)]
+
+
+def safe_run_path(runs_dir: Path, run_id: str) -> Path | None:
+    """The run directory for an id from a URL: a valid id, never a symlink, inside runs_dir, with a readable run.json."""
+    if not is_valid_run_id(run_id) or run_id.startswith("."):
+        return None
+    raw = runs_dir / run_id
+    if raw.is_symlink():
+        return None
+    path = raw.resolve()
+    if not path.is_relative_to(runs_dir) or read_run(path) is None:
+        return None
+    return path
+
+
+def has_scores_file(path: Path) -> bool:
+    """scores.json exists at all (even if unreadable): an evaluation was attempted."""
+    return (path / "scores.json").exists()
+
+
+def read_report(path: Path) -> str | None:
+    """report.md as text (a regular file only)."""
+    f = path / "report.md"
+    return f.read_text() if is_regular(f) else None
+
+
+def read_steps_safely(path: Path) -> list:
+    """The trace's steps (validated by the contract), or [] when there is no regular trace or it is malformed."""
+    try:
+        if is_regular(path / "trace.jsonl"):
+            return RunDir(path).read_steps(drop_truncated_last=True)
+    except ValueError:
+        pass
+    return []
+
+
+def read_trace_lenient(path: Path) -> list[dict]:
+    """The trace's raw step objects, skipping lines that aren't JSON objects (cost and agents on board cards, where a
+    single invalid step must not hide the rest)."""
+    f = path / "trace.jsonl"
+    if not is_regular(f):
+        return []
+    out = []
+    for line in f.read_text(errors="replace").splitlines():
+        try:
+            s = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(s, dict):
+            out.append(s)
+    return out
+
+
+def ensure_dir(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path

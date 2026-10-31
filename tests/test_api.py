@@ -10,8 +10,8 @@ from eval_helpers import eval_config, load
 from fastapi.testclient import TestClient
 
 from foundry.engine.evaluate.evaluate import evaluate
-from foundry.ui.api import DIST
-from foundry.ui.app import create_app
+from foundry.ui.spa import DIST
+from foundry.server import create_app
 
 BASE = "http://127.0.0.1:8765"
 RUBRIC = {"rubric_id": "clay-adb", "version": "1.0", "task_id": "adb", "description": "d",
@@ -74,6 +74,7 @@ def test_run_detail_and_404(tmp_path):  # A1, A4
     d = c.get("/api/runs/fixture-clean").json()
     assert d["run"]["run_id"] == "fixture-clean" and d["scores"]["overall"] and "<h2>" in d["report_html"]
     assert d["rubric_info"]["id"] == "adb-rubric-v0" and d["m"]["rows"] and isinstance(d["m"]["feed"][0]["s"], dict)
+    assert "report_md" not in d  # the API sends rendered HTML only (increment 16: services return Markdown)
     h = c.get("/api/runs/fixture-hostile").json()
     assert all("<script" not in (f["s"].get("text_html") or "") for f in h["m"]["feed"])
     for bad in ("nope", "a..b", ".ui-jobs", "%2e%2e"):

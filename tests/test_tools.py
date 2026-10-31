@@ -61,7 +61,7 @@ import pytest  # noqa: E402
 from conftest import FIXTURES  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from foundry.ui.app import create_app  # noqa: E402
+from foundry.server import create_app  # noqa: E402
 
 
 @pytest.fixture
@@ -75,10 +75,10 @@ def ui(tmp_path, monkeypatch):
     shutil.copytree(FIXTURES / "clean", runs / "fixture-clean")
     app = create_app(runs, root, port=8765)
     spawned = []
-    import foundry.ui.app as core
+    from foundry.services import jobs
 
     def fake_spawn(st, kind, run_id, label, args, **kw):  # record the job instead of starting `uvx` servers
-        class J:  # the parts of app.Job that tool_menu reads
+        class J:  # the parts of services.jobs.Job that tool_menu reads
             alive, exit_code = True, None
         j = J()
         j.kind, j.run_id, j.args = kind, run_id, args
@@ -86,7 +86,7 @@ def ui(tmp_path, monkeypatch):
         spawned.append(j)
         return j
 
-    monkeypatch.setattr(core, "_spawn", fake_spawn)
+    monkeypatch.setattr(jobs, "spawn", fake_spawn)
     c = TestClient(app, base_url="http://127.0.0.1:8765", follow_redirects=False)
     return app, c, {"x-csrf-token": c.get("/api/session").json()["csrf"]}, spawned
 

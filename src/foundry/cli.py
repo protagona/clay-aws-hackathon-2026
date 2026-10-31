@@ -66,7 +66,7 @@ def _build_parser() -> argparse.ArgumentParser:
     va = sub.add_parser("validate", help="check a run directory against the trace contract")
     va.add_argument("run_dir")
 
-    from foundry.rubrics.cli import add_parser as add_rubric_parser
+    from foundry.cli_rubric import add_parser as add_rubric_parser
 
     add_rubric_parser(sub)
 
@@ -191,7 +191,7 @@ def _cmd_ui(args: argparse.Namespace) -> int:
     import uvicorn
 
     from foundry.config import project_root
-    from foundry.ui.app import create_app
+    from foundry.server import create_app
 
     app = create_app(args.runs_dir, project_root(), port=args.port)
     print(f"Foundry UI on http://127.0.0.1:{args.port}", flush=True)
@@ -238,7 +238,7 @@ def _cmd_receive(args: argparse.Namespace) -> int:
 
 
 def _cmd_rubric(args: argparse.Namespace) -> int:
-    from foundry.rubrics.cli import main as rubric_main
+    from foundry.cli_rubric import main as rubric_main
 
     return rubric_main(args)
 

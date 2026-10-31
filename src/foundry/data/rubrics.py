@@ -214,6 +214,12 @@ class Store:
                     continue
         return sorted(out, key=lambda m: m.get("created_at", ""), reverse=True)
 
+    def write_draft_meta(self, draft_id: str, meta: dict) -> None:
+        """Replace a draft's meta.json (the rubric service adds the drafting cost once it knows the price)."""
+        if not DRAFT_ID_RE.match(draft_id):
+            raise StoreError(f"Unknown draft {draft_id}")
+        (self.base / "drafts" / draft_id / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
+
     def load_draft(self, draft_id: str) -> tuple[dict, dict, Path]:
         d = self._draft_dir(draft_id)
         try:
@@ -380,3 +386,9 @@ class Store:
         for e in self.history():
             rows[e["sha256"]] = {**e, "runs": counts.get(e["sha256"], 0), "active": e["sha256"] == active}
         return sorted(rows.values(), key=lambda r: r.get("activated_at") or "", reverse=True)
+
+
+def read_source(path: Path, limit: int | None = None) -> bytes:
+    """A draft's saved source file (its first `limit` bytes, or all of it)."""
+    data = path.read_bytes()
+    return data if limit is None else data[:limit]

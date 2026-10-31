@@ -1,6 +1,6 @@
 # Threat model
 
-## UI HTTP surface (`src/foundry/ui/app.py`)
+## UI HTTP surface (`src/foundry/server.py`, `src/foundry/api/guard.py`, `src/foundry/api/routes.py`)
 - **Threats (STRIDE):**
   - spoofing and tampering through CSRF or DNS rebinding, which could trigger paid runs
   - information disclosure through path traversal or symlinks
@@ -18,10 +18,10 @@
   - test-log 2026-10-30
   - The server-rendered UI and its `tests/test_ui.py` were removed in increment 16; their checks were ported to the tests above.
 
-## Untrusted run content in HTML (`ui/render.py`, `engine/evaluate/report.py`, the web app)
+## Untrusted run content in HTML (`api/render.py`, `engine/evaluate/report.py`, the web app)
 - **Threats (STRIDE):** tampering or elevation through stored XSS from model, tool or agent output.
 - **Mitigation:**
-  - Services return run text as plain text. Only `ui/render.py` (the API's renderer) turns it into HTML (`text_html`, `report_html`); the web app renders every other field as text.
+  - Services return run text as plain text. Only `api/render.py` (the API's renderer) turns it into HTML (`text_html`, `report_html`); the web app renders every other field as text.
   - `report.md` escaping (HTML, links, images, headings, `|`)
   - markdown-it with `html=False`, images off, and only http(s) or relative links
   - CSP `default-src 'none'; frame-ancestors 'none'`
