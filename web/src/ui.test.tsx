@@ -119,3 +119,18 @@ describe("usePoll", () => {  // verify 2: a response that arrives after the draw
     vi.unstubAllGlobals();
   });
 });
+
+describe("RubricView", () => {  // increment 10, R3/R5: every level shown; the run's level and the judge's score marked
+  it("renders levels and highlights the scored level", async () => {
+    const { RubricView } = await import("./components/RubricView");
+    const rubric: Rubric = { rubric_id: "r", version: "1", description: "Desc <b>x</b>", criteria: [
+      { id: "fit", name: "Data fit", description: "Datasets fit", max: 4, weight: 2, levels: { "1": "Wrong", "2": "Weak", "3": "Good", "4": "Great" } }] };
+    render(<RubricView rubric={rubric} scores={[{ id: "fit", score: 3, max: 4, rationale: "Mostly right" }]} />);
+    const levels = screen.getByRole("list", { name: "Data fit levels" });
+    expect(within(levels).getAllByRole("listitem")).toHaveLength(4);
+    expect(within(levels).getByText(/Good/).closest("li")?.getAttribute("aria-current")).toBe("true");
+    expect(screen.getByText("scored 3/4")).toBeTruthy();
+    expect(screen.getByText("Judge: Mostly right")).toBeTruthy();
+    expect(screen.getByText("Desc <b>x</b>")).toBeTruthy();  // text, never HTML
+  });
+});

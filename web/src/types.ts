@@ -173,6 +173,7 @@ export interface Dashboard {
     criteria: { label: string; value: number; n: number; pct: number }[];
   };
   rubric_options: { sha: string; label: string; runs: number; active: boolean }[];
+  scored_by?: Record<string, string>;  // rubric sha -> a run scored with it (to open that rubric's copy)
   rubric_choice: string;
   mixed: boolean;
   total_runs: number;

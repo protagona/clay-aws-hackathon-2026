@@ -38,6 +38,11 @@ export default function Dashboard() {
             <option value="all">All runs (any rubric)</option>
           </select>
         </label>
+        {(() => {  // increment 10: open the selected rubric (even one never in the history) through a run it scored
+          const run = rubric === "all" ? null : rubric === "active" ? null : q.data.scored_by?.[rubric];
+          return rubric === "active" ? <Link className="pb-2 text-sm text-sky-600" to="/rubric/active">View rubric →</Link>
+            : run ? <Link className="pb-2 text-sm text-sky-600" to={`/rubric/runs/${encodeURIComponent(run)}`}>View rubric →</Link> : null;
+        })()}
       </div>
       {mixed && <p className="rounded-xl bg-amber-50 px-4 py-2 text-sm text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/30">These runs were scored with different rubrics, so their scores aren't directly comparable.</p>}
       {total_runs === 0 ? <Empty title="No runs yet">Start one from the Runs tab.</Empty>

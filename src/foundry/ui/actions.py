@@ -181,7 +181,12 @@ def dashboard_view(st, rubric: str = "active") -> dict:
                                                  ({rubric} if any(o["sha"] == rubric for o in options) else active))
     shown = entries if chosen is None else [e for e in entries if (e["scores"] or {}).get("rubric_sha256") in chosen]
     mixed = chosen is None and len({(e["scores"] or {}).get("rubric_sha256") for e in entries if e["scores"]}) > 1
-    return {"d": dashboard.build(shown), "rubric_options": options,
+    scored_by: dict[str, str] = {}  # rubric sha -> one run scored with it, to open that rubric's copy (increment 10)
+    for e in entries:
+        sha = (e["scores"] or {}).get("rubric_sha256")
+        if isinstance(sha, str):
+            scored_by.setdefault(sha, e["run_id"])
+    return {"d": dashboard.build(shown), "rubric_options": options, "scored_by": scored_by,
             "rubric_choice": rubric if rubric in ("active", "all") or chosen is not active else "active",
             "mixed": mixed, "total_runs": len(entries)}
 
@@ -389,6 +394,36 @@ def rubric_version(st, task: str, name: str) -> dict:
     except (StoreError, RubricError):
         raise UiError(404, "Unknown rubric version") from None
     return {"task": task, "rubric": rubric, "active": hashlib.sha256(raw).hexdigest() == store.active_sha()}
+
+
+def _rubric_with_meta(store, path: Path) -> dict:
+    from foundry.tasks import RubricError, load_rubric
+
+    try:
+        rubric, raw = load_rubric(path)
+    except RubricError:
+        raise UiError(404, "No valid rubric there") from None
+    sha = hashlib.sha256(raw).hexdigest()
+    file = next((e["file"] for e in store.history() if e.get("sha256") == sha), None)
+    return {"rubric": rubric, "sha256": sha, "active": sha == store.active_sha(), "file": file}
+
+
+def rubric_active(st, task: str) -> dict:
+    """Increment 10, R1: the active rubric in full, with the history file holding the same bytes (if any)."""
+    store = rubric_store(st, task)
+    return _rubric_with_meta(store, store.task / "rubric.json")
+
+
+def run_rubric(st, run_id: str) -> dict:
+    """Increment 10, R2: the exact rubric copied into a run when it was evaluated (untrusted: regular file only)."""
+    core = _core()
+    path = need_run(st, run_id)
+    copy = path / "rubric.json"
+    if not core._regular(copy):
+        raise UiError(404, "This run has no rubric copy (not evaluated yet)")
+    task = (core._read_run(path) or {}).get("task_id")
+    store = rubric_store(st, task if isinstance(task, str) and task in core._task_ids(st) else "adb")
+    return _rubric_with_meta(store, copy)
 
 
 def rubric_activate_version(st, task: str, name: str) -> None:

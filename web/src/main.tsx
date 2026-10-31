@@ -34,6 +34,8 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/rubric" element={<Rubric />} />
               <Route path="/rubric/drafts/:id" element={<RubricDraft />} />
               <Route path="/rubric/history/:file" element={<RubricVersion />} />
+              <Route path="/rubric/active" element={<RubricVersion kind="active" />} />
+              <Route path="/rubric/runs/:id" element={<RubricVersion kind="run" />} />
               <Route path="/import" element={<Import />} />
               <Route path="*" element={<div className="p-8 text-slate-500">Page not found. <a className="text-sky-600 underline" href="/">Back to runs</a></div>} />
             </Routes>

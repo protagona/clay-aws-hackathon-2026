@@ -364,3 +364,26 @@ def test_second_run_while_one_is_running_is_409(tmp_path, monkeypatch):  # A3: o
     app_state.jobs["0" * 16] = Alive()
     r = c.post("/api/runs", headers={"x-csrf-token": csrf}, json={"prompt_id": "adb-001", "config": "offline"})
     assert r.status_code == 409 and "already in progress: busy-run" in r.json()["error"]
+
+
+def test_rubric_contents_viewable(tmp_path):  # increment 10: R1, R2, R4
+    import os
+
+    runs = tmp_path / "runs"
+    _seed(runs, "clean", "recovered", "failed")
+    evaluate(runs / "fixture-clean", load(eval_config(tmp_path / "e")))
+    evaluate(runs / "fixture-recovered", load(eval_config(tmp_path / "e2")))
+    (runs / "fixture-recovered" / "rubric.json").unlink()  # a symlinked copy is never followed
+    os.symlink(ROOT / "tasks/adb/rubric.json", runs / "fixture-recovered" / "rubric.json")
+    _, c, _ = _client(tmp_path)
+    a = c.get("/api/rubric/active?task=adb").json()
+    assert a["rubric"]["rubric_id"] == "adb-rubric-v0" and len(a["rubric"]["criteria"]) == 4 and a["active"]
+    assert len(a["sha256"]) == 64 and a["file"] is None  # not in a history yet
+    r = c.get("/api/runs/fixture-clean/rubric").json()
+    assert r["rubric"]["criteria"][0]["levels"]["1"] and r["sha256"] == a["sha256"] and r["active"]
+    for bad in ("fixture-failed", "fixture-recovered", "nope", "a..b"):
+        assert c.get(f"/api/runs/{bad}/rubric").status_code == 404
+    (runs / "fixture-clean" / "rubric.json").write_text("{not a rubric")
+    assert c.get("/api/runs/fixture-clean/rubric").status_code == 404
+    assert c.get("/api/rubric/active?task=nope").status_code == 404
+    assert c.get("/api/dashboard?rubric=all").json()["scored_by"][a["sha256"]] in ("fixture-clean", "fixture-recovered")

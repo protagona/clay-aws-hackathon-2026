@@ -72,8 +72,7 @@ export default function Rubric() {
         <Panel className="p-5">
           <h1 className="text-lg font-semibold">Active rubric</h1>
           {!d ? <Skeleton className="mt-3 h-24" /> : d.active ? (<>
-            <p className="mt-1">{(() => { const f = d.versions.find((v) => v.active)?.file;
-              return f ? <Link className="font-semibold text-sky-700 dark:text-sky-400" to={`/rubric/history/${f}`}>{d.active.rubric_id}</Link> : <strong>{d.active.rubric_id}</strong>; })()} v{d.active.version} · {d.active.criteria.length} criteria</p>
+            <p className="mt-1"><Link className="font-semibold text-sky-700 dark:text-sky-400" to="/rubric/active">{d.active.rubric_id}</Link> v{d.active.version} · {d.active.criteria.length} criteria · <Link className="text-sm text-sky-600" to="/rubric/active">View full rubric →</Link></p>
             <div className="mt-3 flex flex-wrap gap-2">{d.active.criteria.map((c) => <Pill key={c.id}>{c.id} · 1–{c.max} · ×{c.weight}</Pill>)}</div>
             <p className="mt-3 text-xs text-slate-500">Future evaluations use the active rubric. Past runs keep the rubric they were scored with.</p>
           </>) : <p className="mt-2 text-sm text-rose-600">✗ No valid rubric.json for this task.</p>}

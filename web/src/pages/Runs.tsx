@@ -6,7 +6,8 @@ import { AgentBars, Gauges, StepFeed, Waterfall } from "../components/run";
 import { useToast } from "../components/toasts";
 import { Empty, ErrorBanner, Kpi, Pill, ScoreRing, Skeleton, Spinner, Tabs } from "../components/ui";
 import { clock, money, score, shortModel } from "../format";
-import type { RunDetail, RunsResponse } from "../types";
+import { RubricView } from "../components/RubricView";
+import type { Criterion, RunDetail, Rubric, RunsResponse } from "../types";
 import { boardInterval, runInterval, usePoll } from "../usePoll";
 
 export default function Runs() {
@@ -68,7 +69,25 @@ export default function Runs() {
   );
 }
 
-type Tab = "overview" | "timeline" | "steps" | "report";
+type Tab = "overview" | "timeline" | "steps" | "report" | "rubric";
+
+/** Increment 10: the rubric that scored this run (its own copy), or the active one if it isn't scored yet. */
+function RunRubric({ id, scored, criteria }: { id: string; scored: boolean; criteria?: Criterion[] }) {
+  const own = usePoll<{ rubric: Rubric; sha256: string; active: boolean }>(scored ? `/api/runs/${encodeURIComponent(id)}/rubric` : null, () => null);
+  const active = usePoll<{ rubric: Rubric }>(scored ? null : "/api/rubric/active?task=adb", () => null);
+  const data = scored ? own.data : active.data;
+  const error = scored ? own.error : active.error;
+  if (error) return <ErrorBanner message={error} />;
+  if (!data) return <Skeleton className="h-48" />;
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-500">{scored
+        ? <>Scored with <strong>{data.rubric.rubric_id} v{data.rubric.version}</strong> (the copy saved with this run). <Link className="text-sky-600" to={`/rubric/runs/${encodeURIComponent(id)}`}>Open full page</Link></>
+        : <>Not evaluated yet: this run will be scored with the active rubric, <strong>{data.rubric.rubric_id} v{data.rubric.version}</strong>.</>}</p>
+      <RubricView rubric={data.rubric} scores={scored ? criteria ?? null : null} />
+    </div>
+  );
+}
 
 export function RunDrawer({ id, onEvaluate, refresh = 0 }: { id: string; onEvaluate: (id: string) => void; refresh?: number }) {
   const navigate = useNavigate();
@@ -106,7 +125,7 @@ export function RunDrawer({ id, onEvaluate, refresh = 0 }: { id: string; onEvalu
           <Tabs<Tab> value={tab} onChange={setTab} tabs={[
             { id: "overview", label: "Overview" }, { id: "timeline", label: "Timeline" },
             { id: "steps", label: <>Steps <span className="font-mono text-xs">{d?.m.feed.length ?? ""}</span></> },
-            { id: "report", label: "Report" }]} />
+            { id: "report", label: "Report" }, { id: "rubric", label: "Rubric" }]} />
           <Link className="ml-auto hidden pb-2 text-sm text-slate-500 hover:text-sky-600 sm:inline" to={`/compare?a=${encodeURIComponent(id)}`}>Compare ↗</Link>
         </div>
       </div>
@@ -128,6 +147,7 @@ export function RunDrawer({ id, onEvaluate, refresh = 0 }: { id: string; onEvalu
         </>)}
         {d && tab === "timeline" && <Waterfall m={d.m} />}
         {d && tab === "steps" && <StepFeed m={d.m} />}
+        {d && tab === "rubric" && <RunRubric id={id} scored={!!d.scores} criteria={d.scores?.output.criteria} />}
         {d && tab === "report" && (d.report_html
           ? <article className="report" dangerouslySetInnerHTML={{ __html: d.report_html }} />
           : <Empty title={d.evaluating ? "Evaluating…" : d.interrupted ? "Evaluation was interrupted" : "Not evaluated yet"}>

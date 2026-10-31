@@ -85,6 +85,17 @@ try {
   console.log("drawer shows the scores");
   if ((await js("window.__marker")) !== "no-reload") fail("the page reloaded");
   console.log(`scored: ${ring}; no reload`);
+  // Increment 10: the drawer's Rubric tab shows the rubric that scored the run, with the judge's scores.
+  await js(`[...document.querySelectorAll('aside[aria-label="Run details"] [role=tab]')].find(t => t.textContent === 'Rubric').click()`);
+  const rub = await until(`(() => { const l = document.querySelectorAll('aside[aria-label="Run details"] ol[aria-label$=" levels"]');
+    const s = [...document.querySelectorAll('aside[aria-label="Run details"] span')].filter(x => /^scored [0-9]/.test(x.textContent));
+    return l.length && s.length ? { lists: l.length, scored: s.length } : null; })()`, "the Rubric tab's criteria and scores", 20000);
+  console.log(`rubric tab: ${rub.lists} criteria, ${rub.scored} scored`);
+  if (out) {
+    mkdirSync(out, { recursive: true });
+    const shot = await send("Page.captureScreenshot", { format: "png" });
+    writeFileSync(join(out, "drawer-rubric-tab-light-1440.png"), Buffer.from(shot.result.data, "base64"));
+  }
 
   if (out) {
     mkdirSync(out, { recursive: true });

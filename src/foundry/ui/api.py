@@ -251,6 +251,14 @@ def make_router(st) -> APIRouter:
         return Response(src.read_bytes(), media_type="application/octet-stream",
                         headers={"Content-Disposition": f'attachment; filename="rubric-source{src.suffix}"'})
 
+    @r.get("/rubric/active")
+    def rubric_active(task: str = "adb"):
+        return _json(act.rubric_active(st, task))
+
+    @r.get("/runs/{run_id}/rubric")
+    def run_rubric(run_id: str):
+        return _json(act.run_rubric(st, run_id))
+
     @r.get("/rubric/history/{name}")
     def version(name: str, task: str = "adb"):
         return _json(act.rubric_version(st, task, name))
