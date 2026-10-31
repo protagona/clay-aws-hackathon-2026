@@ -13,7 +13,7 @@ from harness_helpers import PROMPT, load, steps, write_config
 from otlp_recorder import Recorder
 
 from foundry.contract import validate_run_dir
-from foundry.importer import ImportError_, import_spans, spans_from_file
+from foundry.engine.importer import ImportError_, import_spans, spans_from_file
 
 HELPER = ROOT / "tests" / "strands_otel_agent.py"
 
@@ -68,7 +68,7 @@ def test_round_trip_with_our_otel_tracer(tmp_path):  # I5
     from google.protobuf.json_format import MessageToDict
     from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
-    from foundry.harness.runner import run
+    from foundry.engine.harness.runner import run
 
     rec = Recorder()
     try:
@@ -143,7 +143,7 @@ def test_bad_input_exits_2(tmp_path, content, needle):  # I1, I7
 
 
 def test_size_limit_and_hostile_values(tmp_path, monkeypatch):  # I7
-    import foundry.importer as importer
+    import foundry.engine.importer as importer
 
     src = tmp_path / "big.json"
     src.write_text("x" * 2000)
@@ -164,7 +164,7 @@ def test_size_limit_and_hostile_values(tmp_path, monkeypatch):  # I7
 
 
 def test_receiver_with_a_real_strands_agent(tmp_path):  # I8
-    from foundry.receiver import Receiver
+    from foundry.engine.receiver import Receiver
 
     rec = Receiver(tmp_path / "runs", "adb", "adb-001", port=0, grace_s=0.5, log=lambda *_: None).start()
     try:

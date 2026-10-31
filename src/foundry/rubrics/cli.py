@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 
 from foundry.config import ConfigError, load_config
-from foundry.models.base import ProviderError
+from foundry.engine.models.base import ProviderError
 from foundry.rubrics.service import acquire, create_draft
-from foundry.rubrics.sources import SourceError
+from foundry.engine.rubrics.sources import SourceError
 from foundry.data.rubrics import Store, StoreError
 from foundry.data.tasks import RubricError, task_dir
 

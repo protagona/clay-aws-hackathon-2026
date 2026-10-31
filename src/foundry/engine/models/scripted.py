@@ -14,7 +14,7 @@ from typing import Any
 
 from strands.models.model import Model
 
-from foundry.models.base import Completion, CompletionRequest, ProviderError
+from foundry.engine.models.base import Completion, CompletionRequest, ProviderError
 
 
 class ScriptExhausted(Exception):

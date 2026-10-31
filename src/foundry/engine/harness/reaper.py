@@ -1,6 +1,6 @@
 """Run an MCP server and make sure it dies with the harness.
 
-`python -m foundry.harness.reaper -- <command> [args...]`
+`python -m foundry.engine.harness.reaper -- <command> [args...]`
 
 The server inherits this process's stdin/stdout/stderr (the MCP stdio pipe) and runs in its own process group.
 If the harness disappears (even SIGKILL, which leaves no chance to clean up), this process notices that its
@@ -34,7 +34,7 @@ def _kill_group(proc: subprocess.Popen) -> None:
 
 def main(argv: list[str]) -> int:
     if not argv or argv[0] != "--" or len(argv) < 2:
-        print("usage: python -m foundry.harness.reaper -- <command> [args...]", file=sys.stderr)
+        print("usage: python -m foundry.engine.harness.reaper -- <command> [args...]", file=sys.stderr)
         return 2
     parent = os.getppid()
     proc = subprocess.Popen(argv[1:], start_new_session=True)  # own process group; inherits stdio

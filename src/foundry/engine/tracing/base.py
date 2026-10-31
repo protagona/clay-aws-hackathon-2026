@@ -63,11 +63,11 @@ class TracerSet:
 
 
 def build_tracers(tracing_cfg, run_dir: Path) -> TracerSet:
-    from foundry.tracing.jsonl import JsonlTracer
+    from foundry.engine.tracing.jsonl import JsonlTracer
 
     tracers: list[Tracer] = [JsonlTracer(run_dir)]
     if "otel" in tracing_cfg.tracers:
-        from foundry.tracing.otel import OtelTracer
+        from foundry.engine.tracing.otel import OtelTracer
 
         tracers.append(OtelTracer(tracing_cfg.otel))
     return TracerSet(tracers)

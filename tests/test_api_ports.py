@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from harness_helpers import write_config
 
 from foundry.data import locks as lock
-from foundry.evaluate.evaluate import evaluate
+from foundry.engine.evaluate.evaluate import evaluate
 from foundry.ui.app import create_app
 
 BASE = "http://127.0.0.1:8765"
@@ -159,7 +159,7 @@ def test_pipeline_run_detail_compare_and_card(tmp_path):  # was test_pipeline_ru
     from harness_helpers import PROMPT
     from harness_helpers import load as load_cfg
 
-    from foundry.harness.runner import run as run_agent
+    from foundry.engine.harness.runner import run as run_agent
 
     turns = [{"text": "1. Search."}, {"tool": "echo", "input": {"text": "hi"}}, {"text": "## Plan\nUse NAIP."},
              {"text": "VERDICT: approve"}]
@@ -196,8 +196,8 @@ def test_run_detail_names_the_rubric_that_scored_it(tmp_path):  # was test_run_p
     {"criteria": [{"id": "a", "name": "A", "description": "d", "max": 3, "weight": "inf", "levels": {"1": "x", "3": "y"}}]},
 ])
 def test_malformed_model_drafts_open_and_can_be_discarded(tmp_path, monkeypatch, bad):  # was the classic one
-    import foundry.models.registry as registry
-    from foundry.models.base import Completion
+    import foundry.engine.models.registry as registry
+    from foundry.engine.models.base import Completion
 
     reply = json.dumps({"rubric_id": "r", "version": "1", "task_id": "adb", "description": "d", **bad})
 

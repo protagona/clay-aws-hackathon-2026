@@ -18,7 +18,7 @@ from strands.hooks import (
 )
 
 from foundry.data.runs import utc_now
-from foundry.tracing.base import TracerSet
+from foundry.engine.tracing.base import TracerSet
 
 PREVIEW_CHARS = 1000
 ERROR_CHARS = 500

@@ -5,7 +5,7 @@ from __future__ import annotations
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import BotoCoreError, ClientError
 
-from foundry.models.base import Completion, CompletionRequest, ProviderError
+from foundry.engine.models.base import Completion, CompletionRequest, ProviderError
 
 
 class BedrockProvider:
@@ -57,7 +57,7 @@ class BedrockProvider:
         content = resp.get("output", {}).get("message", {}).get("content", [])
         text = "".join(b.get("text", "") for b in content)
         usage = resp.get("usage", {})
-        from foundry.harness.hooks import cached_tokens, total_input_tokens
+        from foundry.engine.harness.hooks import cached_tokens, total_input_tokens
 
         return Completion(text, total_input_tokens(usage) or 0, usage.get("outputTokens", 0), self.model_id,
                           tokens_in_cached=cached_tokens(usage))

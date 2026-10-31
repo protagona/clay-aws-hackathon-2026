@@ -22,7 +22,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
-from foundry.batch import spread
+from foundry.engine.batch import spread
 from foundry.config import ConfigError, load_config
 from foundry.contract import evaluation_interrupted
 from foundry.data import locks as lock
@@ -89,7 +89,7 @@ class UiState:
     jobs: dict[str, Job] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
     receiver_port: int = 4318
-    receiver: object | None = None  # foundry.receiver.Receiver while running
+    receiver: object | None = None  # foundry.engine.receiver.Receiver while running
 
     @property
     def batches_dir(self) -> Path:
@@ -399,7 +399,7 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
 
 async def save_upload(st: UiState, file: UploadFile) -> Path:
     """A trace upload streamed to runs/.uploads/ under the import size cap."""
-    from foundry.importer import MAX_FILE_BYTES
+    from foundry.engine.importer import MAX_FILE_BYTES
     from foundry.ui.actions import UiError
 
     upload_dir = st.runs_dir / ".uploads"
@@ -419,7 +419,7 @@ async def save_upload(st: UiState, file: UploadFile) -> Path:
 
 async def read_rubric_upload(file: UploadFile | None) -> tuple[str, bytes]:
     """(file name, bytes) of an optional rubric upload, under the rubric source size cap."""
-    from foundry.rubrics.sources import MAX_BYTES
+    from foundry.engine.rubrics.sources import MAX_BYTES
     from foundry.ui.actions import UiError
 
     if file is None or not file.filename:

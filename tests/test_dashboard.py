@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from eval_helpers import eval_config, load
 
 from foundry.contract import Step
-from foundry.evaluate.evaluate import evaluate
+from foundry.engine.evaluate.evaluate import evaluate
 from foundry.ui.app import create_app
 from foundry.ui.dashboard import MAX_COLOURED, build
 

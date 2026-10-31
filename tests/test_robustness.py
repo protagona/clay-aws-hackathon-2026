@@ -50,15 +50,15 @@ def test_sigkilled_run_leaves_no_mcp_server_behind(tmp_path):  # R1
 
 
 def test_reaper_passes_exit_code_and_usage():
-    assert subprocess.run([sys.executable, "-m", "foundry.harness.reaper", "--", sys.executable, "-c",
+    assert subprocess.run([sys.executable, "-m", "foundry.engine.harness.reaper", "--", sys.executable, "-c",
                            "raise SystemExit(7)"]).returncode == 7
-    assert subprocess.run([sys.executable, "-m", "foundry.harness.reaper"], capture_output=True).returncode == 2
+    assert subprocess.run([sys.executable, "-m", "foundry.engine.harness.reaper"], capture_output=True).returncode == 2
 
 
 def test_normal_run_still_logs_server_stderr(tmp_path):  # R2
     from harness_helpers import PROMPT, load
 
-    from foundry.harness.runner import run
+    from foundry.engine.harness.runner import run
 
     run_dir, status = run(load(write_config(tmp_path, [{"text": "done"}], server_args=["--crash-on-start"])),
                           PROMPT, tmp_path / "runs")

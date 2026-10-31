@@ -3,8 +3,8 @@ import re
 
 from eval_helpers import eval_config, load
 
-from foundry.evaluate.evaluate import evaluate
-from foundry.evaluate.report import cell, esc
+from foundry.engine.evaluate.evaluate import evaluate
+from foundry.engine.evaluate.report import cell, esc
 
 
 def test_esc_neutralizes_markdown_and_html():

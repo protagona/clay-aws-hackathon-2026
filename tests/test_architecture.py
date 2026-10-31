@@ -38,8 +38,7 @@ WEB_LAYERS = {"api", "ui", "entry"}
 # Modules not yet moved into their layer, and the layer each is headed for. Each slice of increment 16 shrinks this
 # list; it must be empty when the increment is done (test_unmoved_modules_list_is_current keeps it honest).
 UNMOVED = {
-    **{m: "engine" for m in ("foundry.batch", "foundry.external", "foundry.importer", "foundry.receiver")},
-    **{f"foundry.{p}": "engine" for p in ("evaluate", "harness", "mcp_servers", "models", "tracing", "rubrics")},
+    "foundry.rubrics": "services",  # rubrics/cli.py and rubrics/service.py (slice 5)
     **{f"foundry.ui.{m}": "services" for m in ("actions", "app", "api", "dashboard", "monitor", "render")},
 }
 

@@ -25,10 +25,10 @@ def _kill(proc: subprocess.Popen) -> None:
 
 
 def main(args) -> int:
-    from foundry.cli import _print_scores
+    from foundry.engine.evaluate.report import print_scores
     from foundry.config import ConfigError, load_eval_config
-    from foundry.evaluate.evaluate import EvaluateError, evaluate
-    from foundry.receiver import GRACE_S, Receiver
+    from foundry.engine.evaluate.evaluate import EvaluateError, evaluate
+    from foundry.engine.receiver import GRACE_S, Receiver
     from foundry.data.runs import RunDir
     from foundry.data.tasks import UnknownPrompt, resolve_prompt
 
@@ -89,7 +89,7 @@ def main(args) -> int:
         status_ok &= RunDir(run_dir).read_run().status == "succeeded"
         if args.evaluate:
             try:
-                _print_scores(run_dir, evaluate(run_dir, cfg))
+                print_scores(run_dir, evaluate(run_dir, cfg))
             except (EvaluateError, PermissionError) as exc:
                 print(f"Evaluation failed for {run_dir}: {exc}", file=sys.stderr)
                 eval_failed = True

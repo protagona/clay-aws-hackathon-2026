@@ -9,7 +9,7 @@ from harness_helpers import PROMPT, write_config
 
 from foundry.data import storage
 from foundry.config import StorageCfg, load_config
-from foundry.harness.runner import run
+from foundry.engine.harness.runner import run
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +53,7 @@ def test_upload_failure_warns_and_keeps_files(tmp_path, fixture_run, monkeypatch
 def test_upload_at_run_end_and_after_evaluation_never_at_start(tmp_path, monkeypatch):
     from eval_helpers import eval_config, load
 
-    from foundry.evaluate.evaluate import evaluate
+    from foundry.engine.evaluate.evaluate import evaluate
 
     uploads = []
 

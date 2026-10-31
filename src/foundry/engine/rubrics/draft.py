@@ -13,9 +13,9 @@ from pathlib import Path
 
 
 from foundry.contract import Rubric
-from foundry.models.base import CompletionRequest, Provider
+from foundry.engine.models.base import CompletionRequest, Provider
 from foundry.data.rubrics import DraftResult, Source, check  # noqa: F401 (DraftResult: re-exported for callers)
-from foundry.rubrics.sources import BINARY
+from foundry.engine.rubrics.sources import BINARY
 
 PROMPT_ID = "draft-v3"  # v2: refuses non-rubrics (live finding); v3: max 2-20, wider scales banded (verify finding)
 _PROMPT = Path(__file__).with_name("prompts") / f"{PROMPT_ID}.txt"

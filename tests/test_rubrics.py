@@ -11,11 +11,11 @@ from conftest import ROOT
 from harness_helpers import load, write_config
 
 from foundry.contract import Rubric
-from foundry.models.base import Completion, CompletionRequest, ProviderError
-from foundry.models.offline import OfflineProvider
-from foundry.rubrics import sources
-from foundry.rubrics.draft import PROMPT_ID, draft
-from foundry.rubrics.sources import Source, SourceError, from_file, from_mcp, from_text, from_url
+from foundry.engine.models.base import Completion, CompletionRequest, ProviderError
+from foundry.engine.models.offline import OfflineProvider
+from foundry.engine.rubrics import sources
+from foundry.engine.rubrics.draft import PROMPT_ID, draft
+from foundry.engine.rubrics.sources import Source, SourceError, from_file, from_mcp, from_text, from_url
 from foundry.data.rubrics import Store, StoreError
 
 GOOD = {"rubric_id": "clay-adb", "version": "1.0", "task_id": "adb", "description": "From Clay.",
@@ -186,7 +186,7 @@ def test_offline_judge_cannot_draft():  # D1
 
 def test_documents_reach_bedrock_request():  # D1: the Converse request carries a neutral-named document block
     from foundry.config import RoleCfg
-    from foundry.models.registry import build_provider
+    from foundry.engine.models.registry import build_provider
 
     prov = build_provider(RoleCfg(provider="bedrock", id="us.anthropic.claude-opus-4-6-v1"))
     sent = {}
@@ -216,7 +216,7 @@ def task(tmp_path):
 
 
 def _draft(store, body=GOOD):
-    from foundry.rubrics.draft import DraftResult
+    from foundry.engine.rubrics.draft import DraftResult
 
     return store.save_draft(Source("file", "clay.pdf", "pdf", b"%PDF-1"), DraftResult(body, model="m", prompt_id="p"))
 

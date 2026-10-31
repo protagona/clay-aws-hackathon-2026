@@ -9,7 +9,7 @@ from conftest import FIXTURES, ROOT
 from eval_helpers import eval_config, load
 from fastapi.testclient import TestClient
 
-from foundry.evaluate.evaluate import evaluate
+from foundry.engine.evaluate.evaluate import evaluate
 from foundry.ui.api import DIST
 from foundry.ui.app import create_app
 
@@ -239,12 +239,12 @@ def test_must_deny_paths(tmp_path, monkeypatch):  # A3: the classic UI's must-de
     assert c.get("/api/compare?a=fixture-clean&b=..%2F..%2Fetc").status_code == 404
     assert c.get("/api/rubric?task=nope").status_code == 404
     assert c.post("/api/receiver/start", headers=h, json={"task": "nope"}).status_code == 400
-    import foundry.importer
+    import foundry.engine.importer
 
-    monkeypatch.setattr(foundry.importer, "MAX_FILE_BYTES", 1000)
+    monkeypatch.setattr(foundry.engine.importer, "MAX_FILE_BYTES", 1000)
     r = c.post("/api/import", headers=h, data={"task": "adb", "prompt_id": "x"}, files={"file": ("t.json", b"x" * 2000)})
     assert r.status_code == 413
-    monkeypatch.setattr(foundry.importer, "MAX_FILE_BYTES", 50 * 1024 * 1024)
+    monkeypatch.setattr(foundry.engine.importer, "MAX_FILE_BYTES", 50 * 1024 * 1024)
     r = c.post("/api/import", headers=h, data={"task": "adb", "prompt_id": "x"}, files={"file": ("t.json", b"nope")})
     assert r.status_code == 400 and ".uploads" not in r.json()["error"] and "t.json" in r.json()["error"]
     for bad in ("..%2Frubric.json", "x.json", "a@b"):

@@ -260,7 +260,7 @@ def check_import_form(st, task: str, prompt_id: str, config: str) -> None:
 
 
 def import_saved_trace(st, dest: Path, filename: str, task: str, prompt_id: str, config: str) -> list[Path]:
-    from foundry.importer import ImportError_, import_spans, spans_from_file
+    from foundry.engine.importer import ImportError_, import_spans, spans_from_file
 
     try:
         prices = load_config(st.root / "config" / f"{config}.toml").prices if config else None
@@ -272,7 +272,7 @@ def import_saved_trace(st, dest: Path, filename: str, task: str, prompt_id: str,
 
 
 def receiver_start(st, task: str, prompt_id: str, config: str) -> None:
-    from foundry.receiver import Receiver
+    from foundry.engine.receiver import Receiver
 
     check_import_form(st, task, prompt_id, config)
     with st.lock:
@@ -320,9 +320,9 @@ def rubric_overview(st, task: str) -> dict:
 def rubric_create_draft(st, task: str, kind: str, config: str, *, file_name: str = "", file_data: bytes = b"",
                         text: str = "", url: str = "", mcp: str = "", args: str = "") -> str:
     """Blocking (up to a minute): acquire the source and draft it. Call from a worker thread."""
-    from foundry.models.base import ProviderError
+    from foundry.engine.models.base import ProviderError
     from foundry.rubrics.service import acquire, create_draft
-    from foundry.rubrics.sources import SourceError
+    from foundry.engine.rubrics.sources import SourceError
 
     store = rubric_store(st, task)
     if kind == "file" and not file_name:  # filled another field without switching the source type
@@ -343,7 +343,7 @@ def rubric_create_draft(st, task: str, kind: str, config: str, *, file_name: str
 
 
 def rubric_draft(st, task: str, draft_id: str) -> dict:
-    from foundry.rubrics.sources import BINARY
+    from foundry.engine.rubrics.sources import BINARY
     from foundry.data.rubrics import StoreError
 
     store = rubric_store(st, task)

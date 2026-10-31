@@ -123,7 +123,7 @@ def from_url(url: str, *, allow_http: bool = False) -> Source:
 
 def from_mcp(cfg, server: str, tool: str, args: dict | None = None) -> Source:
     """Call one tool on a server from the config's [mcp.servers] (S3: no free-form commands) and take its text."""
-    from foundry.harness.mcp import McpStartError, start_servers
+    from foundry.engine.harness.mcp import McpStartError, start_servers
 
     if server not in cfg.mcp.servers:
         raise SourceError(f"Unknown MCP server '{server}'. This config has: {', '.join(cfg.mcp.servers) or 'none'}")

@@ -6,10 +6,10 @@ from types import SimpleNamespace
 from harness_helpers import PROMPT, load, output_json, run_json, steps, write_config
 
 from foundry.contract import validate_run_dir
-from foundry.harness.hooks import Limits, TraceHooks
-from foundry.harness.roles import parse_verdict, user_message
-from foundry.harness.runner import run
-from foundry.tracing.base import TracerSet
+from foundry.engine.harness.hooks import Limits, TraceHooks
+from foundry.engine.harness.roles import parse_verdict, user_message
+from foundry.engine.harness.runner import run
+from foundry.engine.tracing.base import TracerSet
 
 PIPELINE = '\n[agents]\nmode = "pipeline"\n'
 PLAN = {"text": "1. Search. 2. Confirm."}
@@ -177,7 +177,7 @@ def test_hooks_refuse_after_timeout():  # P3: deterministic, no clock
 
 
 def test_struggles_name_revisions_not_approvals(tmp_path):  # report narrative for pipeline verdict notes
-    from foundry.evaluate.summarize import struggles
+    from foundry.engine.evaluate.summarize import struggles
     from foundry.data.runs import RunDir
 
     turns = [PLAN, ANSWER, {"text": "VERDICT: revise"}, {"text": "v2"}, {"text": "VERDICT: approve"}]

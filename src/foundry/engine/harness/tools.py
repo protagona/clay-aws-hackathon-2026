@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from foundry.config import ConfigError, McpServerCfg, load_config
-from foundry.harness.mcp import McpStartError, start_servers
+from foundry.engine.harness.mcp import McpStartError, start_servers
 
 DESCRIPTION_MAX = 600
 

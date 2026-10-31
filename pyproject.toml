@@ -46,6 +46,6 @@ markers = [
     "network: needs internet access (real RODA MCP server via uvx)",
 ]
 filterwarnings = [
-    # strands-agents 1.62.0 bug on MCP start failure (see src/foundry/harness/mcp.py); the failure itself is tested
+    # strands-agents 1.62.0 bug on MCP start failure (see src/foundry/engine/harness/mcp.py); the failure itself is tested
     "ignore:coroutine 'MCPClient.stop.<locals>._set_close_event' was never awaited:RuntimeWarning",
 ]

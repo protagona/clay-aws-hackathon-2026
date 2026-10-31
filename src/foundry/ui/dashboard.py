@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 from collections import Counter, defaultdict
 
-from foundry.batch import spread
+from foundry.engine.batch import spread
 
 MAX_COLOURED = 3  # all-pairs categorical cap (dataviz reference palette): further models fold into "Other"
 SHAPES = ["circle", "square", "triangle"]

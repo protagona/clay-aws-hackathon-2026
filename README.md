@@ -117,7 +117,7 @@ On `revise`, the executor gets one revision and the checker one more look.
 - **Comparing:**
   - The dashboard lists `<model> · pipeline` as its own row.
   - A batch over `bedrock` and `bedrock-pipeline` compares single and multi-agent directly.
-- **Role prompts:** they are versioned in `src/foundry/harness/roles/v1/`, and the version is recorded in `run.json.agents.prompts`.
+- **Role prompts:** they are versioned in `src/foundry/engine/harness/roles/v1/`, and the version is recorded in `run.json.agents.prompts`.
 
 ## What gets written
 
@@ -203,9 +203,9 @@ Result on 2026-10-30, Opus 4.6 judge, $0.36. **All 13 checks pass.**
 Two MCP servers are configured, and both need no credentials:
 
 - **RODA** (`awslabs.roda-mcp-server`, pinned): discovers datasets in the Registry of Open Data on AWS.
-- **STAC** (`src/foundry/mcp_servers/stac.py`, part of this repo): finds actual scenes for an area and date range through `search_items`, `get_item` and `list_collections`. It uses Earth Search by default; set `STAC_API_URL` to use another STAC API. Responses are compacted to a few KB, so they don't flood the agent's context.
+- **STAC** (`src/foundry/engine/mcp_servers/stac.py`, part of this repo): finds actual scenes for an area and date range through `search_items`, `get_item` and `list_collections`. It uses Earth Search by default; set `STAC_API_URL` to use another STAC API. Responses are compacted to a few KB, so they don't flood the agent's context.
 
-Every MCP server runs under a small reaper (`foundry.harness.reaper`), so it can't outlive a killed `foundry run`.
+Every MCP server runs under a small reaper (`foundry.engine.harness.reaper`), so it can't outlive a killed `foundry run`.
 
 ## Evaluate an agent we didn't build
 

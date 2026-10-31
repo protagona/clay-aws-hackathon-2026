@@ -12,7 +12,7 @@ from eval_helpers import eval_config, load
 from harness_helpers import write_config
 
 from foundry.data import locks as lock
-from foundry.evaluate.evaluate import evaluate
+from foundry.engine.evaluate.evaluate import evaluate
 from foundry.ui.app import create_app
 
 PORT = 8765
@@ -469,7 +469,7 @@ def test_browser_form_post_is_not_refused_as_cross_origin(tmp_path):
 # --- compare two runs (increment-4 C1, C2) ---
 
 def _evaluated(tmp_path, *names):
-    from foundry.evaluate.evaluate import evaluate
+    from foundry.engine.evaluate.evaluate import evaluate
 
     d = _seed(tmp_path / "runs", *names)
     cfg = load(eval_config(tmp_path / "cfg"))
@@ -614,7 +614,7 @@ def test_pipeline_run_page_compare_and_cards(tmp_path):  # increment 7: U1, U2, 
     from harness_helpers import PROMPT
     from harness_helpers import load as load_cfg
 
-    from foundry.harness.runner import run as run_agent
+    from foundry.engine.harness.runner import run as run_agent
 
     turns = [{"text": "1. Search."}, {"tool": "echo", "input": {"text": "hi"}}, {"text": "## Plan\nUse NAIP."},
              {"text": "VERDICT: approve"}]
@@ -741,8 +741,8 @@ def test_run_page_names_the_rubric_that_scored_it(tmp_path):  # T1
     {"criteria": [{"id": "a", "name": "A", "description": "d", "max": 3, "weight": "inf", "levels": {"1": "x", "3": "y"}}]},
 ])
 def test_malformed_model_drafts_open_and_can_be_discarded(tmp_path, monkeypatch, bad):  # verify pass 2 blockers
-    import foundry.models.registry as registry
-    from foundry.models.base import Completion
+    import foundry.engine.models.registry as registry
+    from foundry.engine.models.base import Completion
 
     reply = json.dumps({"rubric_id": "r", "version": "1", "task_id": "adb", "description": "d", **bad})
 

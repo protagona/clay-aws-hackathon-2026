@@ -1,7 +1,7 @@
 import pytest
 from conftest import FIXTURES
 
-from foundry.evaluate import workflow
+from foundry.engine.evaluate import workflow
 from foundry.data.runs import RunDir
 
 

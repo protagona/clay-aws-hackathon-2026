@@ -8,7 +8,7 @@ import shutil
 from conftest import foundry
 from harness_helpers import write_config
 
-from foundry import batch as batch_mod
+from foundry.engine import batch as batch_mod
 
 ECHO = [{"tool": "echo", "input": {"text": "x"}, "usage": {"in": 1000, "out": 100}}, {"text": "done", "usage": {"in": 1000, "out": 100}}]
 PRICED = '\n[prices]\n"scripted-test" = { input = 10.0, output = 100.0 }\n'  # 2 calls x $0.02 = $0.04 per run

@@ -69,13 +69,13 @@ def start_servers(servers: dict[str, McpServerCfg], startup_timeout: int, log_di
     started = McpServers()
     try:
         for name, cfg in servers.items():
-            # "{python}" means this interpreter, so in-repo servers (python -m foundry.mcp_servers.*) need no PATH setup.
+            # "{python}" means this interpreter, so in-repo servers (python -m foundry.engine.mcp_servers.*) need no PATH setup.
             command = sys.executable if cfg.command == "{python}" else shutil.which(cfg.command)
             if command is None:
                 raise McpStartError(name, f"command '{cfg.command}' not found on PATH. Install it (see README) or fix [mcp.servers.{name}] command.")
             # Wrap the server in the reaper so it can't outlive a harness that is SIGKILLed.
             params = StdioServerParameters(command=sys.executable,
-                                           args=["-m", "foundry.harness.reaper", "--", command, *cfg.args],
+                                           args=["-m", "foundry.engine.harness.reaper", "--", command, *cfg.args],
                                            env=server_env(cfg))
             errlog = open(log_dir / f"mcp-{name}.log", "a", encoding="utf-8")  # noqa: SIM115 (lives as long as the server)
             started.logs.append(errlog)

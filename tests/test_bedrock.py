@@ -5,9 +5,9 @@ import pytest
 from botocore.stub import Stubber
 
 from foundry.config import load_config
-from foundry.models.base import CompletionRequest, ProviderError
-from foundry.models.bedrock import BedrockProvider
-from foundry.models.registry import build_provider
+from foundry.engine.models.base import CompletionRequest, ProviderError
+from foundry.engine.models.bedrock import BedrockProvider
+from foundry.engine.models.registry import build_provider
 
 
 @pytest.fixture(autouse=True)

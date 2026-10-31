@@ -9,7 +9,7 @@ import pytest
 from conftest import foundry
 from harness_helpers import PROMPT, load, steps, write_config
 
-from foundry.harness.runner import run
+from foundry.engine.harness.runner import run
 
 FAKE_ASSETS = {k: {"href": f"https://example.org/{k}.tif", "type": "image/tiff"} for k in
                ("visual", "red", "green", "blue", "nir", "swir16", "scl", "aot", "wvp", "thumbnail")}
@@ -70,7 +70,7 @@ class FakeStac:
 
 def _stac_config(tmp_path, turns, url, timeout=None):
     env = f'{{ STAC_API_URL = "{url}"' + (f', STAC_TIMEOUT_S = "{timeout}"' if timeout else "") + " }"
-    extra = ('\n[mcp.servers.stac]\ncommand = "{python}"\nargs = ["-m", "foundry.mcp_servers.stac"]\n'
+    extra = ('\n[mcp.servers.stac]\ncommand = "{python}"\nargs = ["-m", "foundry.engine.mcp_servers.stac"]\n'
              f'error_detection = "mcp"\nenv = {env}\n')
     return load(write_config(tmp_path, turns, extra=extra))
 
@@ -107,7 +107,7 @@ def test_search_response_is_compact(tmp_path, fake):  # S2: the server's own out
     from mcp.client.stdio import stdio_client
 
     async def call():
-        p = StdioServerParameters(command=sys.executable, args=["-m", "foundry.mcp_servers.stac"],
+        p = StdioServerParameters(command=sys.executable, args=["-m", "foundry.engine.mcp_servers.stac"],
                                   env={"STAC_API_URL": fake.url, "PATH": "/usr/bin:/bin"})
         async with stdio_client(p) as (r, w), ClientSession(r, w) as s:
             await s.initialize()

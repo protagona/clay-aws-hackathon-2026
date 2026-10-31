@@ -21,7 +21,7 @@ from strands import Agent  # noqa: E402
 from strands.telemetry import StrandsTelemetry  # noqa: E402
 from strands.tools.mcp import MCPClient  # noqa: E402
 
-from foundry.models.scripted import ScriptedModel  # noqa: E402
+from foundry.engine.models.scripted import ScriptedModel  # noqa: E402
 
 TURNS = [{"tool": "echo", "input": {"text": "hello"}, "usage": {"in": 500, "out": 20}},
          {"tool": "fail", "input": {"message": "boom"}, "usage": {"in": 700, "out": 20}},

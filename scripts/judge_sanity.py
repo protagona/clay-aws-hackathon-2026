@@ -28,7 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from foundry.config import load_eval_config
-from foundry.evaluate.evaluate import evaluate
+from foundry.engine.evaluate.evaluate import evaluate
 
 RESULT_FILES = ("rubric.json", "scores.json", "report.md")
 

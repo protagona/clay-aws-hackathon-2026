@@ -5,7 +5,7 @@ Complements RODA, which discovers datasets. Talks to any STAC API with item sear
 swamp an agent's context, so items are reduced to what a dataset-build plan needs (id, date, cloud cover,
 footprint, and the hrefs of a few key assets).
 
-Run: python -m foundry.mcp_servers.stac        (stdio; STAC_API_URL overrides the endpoint)
+Run: python -m foundry.engine.mcp_servers.stac        (stdio; STAC_API_URL overrides the endpoint)
 """
 
 from __future__ import annotations

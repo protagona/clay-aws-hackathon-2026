@@ -13,14 +13,14 @@ from strands import Agent
 from foundry.data import storage
 from foundry.config import Config
 from foundry.contract import CONTRACT_VERSION, HarnessRef, Limits, McpServerRef, ModelRef, Output, RunRecord
-from foundry.harness import roles
-from foundry.harness.hooks import Limits as HookLimits
-from foundry.harness.hooks import TraceHooks
-from foundry.harness.mcp import McpServers, McpStartError, start_servers
-from foundry.models.registry import build_provider
+from foundry.engine.harness import roles
+from foundry.engine.harness.hooks import Limits as HookLimits
+from foundry.engine.harness.hooks import TraceHooks
+from foundry.engine.harness.mcp import McpServers, McpStartError, start_servers
+from foundry.engine.models.registry import build_provider
 from foundry.data.runs import RunDir, new_run_id, utc_now
 from foundry.data.tasks import Prompt, system_prompt
-from foundry.tracing.base import build_tracers, tracer_label
+from foundry.engine.tracing.base import build_tracers, tracer_label
 
 HARD_STOP_GRACE_S = 3
 

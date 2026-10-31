@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import re
 
 from foundry.contract import Output, RunRecord, Step
@@ -108,3 +110,12 @@ def build(run: RunRecord, steps: list[Step], output: Output, scores: dict) -> st
               f"- Evaluated at: {esc(scores['evaluated_at'])}",
               f"- Evaluation id: {esc(scores['evaluation_id'])}", ""]
     return "\n".join(lines)
+
+
+def print_scores(run_dir: str | Path, scores: dict) -> None:
+    """The CLI's one-line summary of a scored run (cli.py and external.py; increment 16 moved it out of cli)."""
+    overall = scores["overall"]
+    w, o = scores["workflow"]["score"], scores["output"]["score"]
+    fmt = lambda x: "n/a" if x is None else f"{x:.2f}"  # noqa: E731
+    print(f"{Path(run_dir) / 'report.md'}")
+    print(f"overall {fmt(overall) if overall is not None else 'incomplete'} | workflow {fmt(w)} | output {fmt(o)}")

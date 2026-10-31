@@ -44,8 +44,8 @@ version = "0.1.7"
 error_detection = "json_status"
 
 [mcp.servers.stac]           # scenes (STAC items) for an area and dates; complements RODA's dataset discovery
-command = "{python}"         # this interpreter: the server ships in this repo (src/foundry/mcp_servers/stac.py)
-args = ["-m", "foundry.mcp_servers.stac"]
+command = "{python}"         # this interpreter: the server ships in this repo (src/foundry/engine/mcp_servers/stac.py)
+args = ["-m", "foundry.engine.mcp_servers.stac"]
 package = "foundry.mcp_servers.stac"
 version = "0.1.0"
 error_detection = "mcp"

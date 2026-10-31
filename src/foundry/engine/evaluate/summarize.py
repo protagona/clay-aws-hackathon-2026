@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from importlib.resources import files
 
 from foundry.contract import RunRecord, Step
-from foundry.models.base import Completion, CompletionRequest, Provider
+from foundry.engine.models.base import Completion, CompletionRequest, Provider
 
 TEMPLATE = "summarizer-v1"
 MAX_WORDS = 150
@@ -25,7 +25,7 @@ def word_count(text: str) -> int:
 
 
 def narrative(provider: Provider, run_data: str, max_tokens: int) -> Narrative:
-    template = files("foundry.templates").joinpath(f"{TEMPLATE}.txt").read_text()
+    template = files("foundry.engine.evaluate.templates").joinpath(f"{TEMPLATE}.txt").read_text()
     req = CompletionRequest(system="", user=template.replace("{{RUN_DATA}}", run_data), max_tokens=max_tokens,
                             purpose="summary")
     result = Narrative(None)

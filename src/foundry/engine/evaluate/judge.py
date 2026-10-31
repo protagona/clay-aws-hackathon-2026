@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from importlib.resources import files
 
 from foundry.contract import Rubric
-from foundry.models.base import Completion, CompletionRequest, Provider
+from foundry.engine.models.base import Completion, CompletionRequest, Provider
 
 TEMPLATE = "judge-v1"
 NO_OUTPUT_RATIONALE = "No final output was produced."
@@ -27,7 +27,7 @@ class JudgeResult:
 
 
 def prompt(rubric: Rubric, run_data: str) -> str:
-    template = files("foundry.templates").joinpath(f"{TEMPLATE}.txt").read_text()
+    template = files("foundry.engine.evaluate.templates").joinpath(f"{TEMPLATE}.txt").read_text()
     rubric_json = json.dumps(rubric.model_dump(), indent=2)
     return template.replace("{{RUBRIC_JSON}}", rubric_json).replace("{{RUN_DATA}}", run_data)
 

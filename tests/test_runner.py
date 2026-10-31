@@ -6,7 +6,7 @@ import time
 
 from harness_helpers import PROMPT, load, output_json, run_json, steps, write_config
 
-from foundry.harness.runner import run
+from foundry.engine.harness.runner import run
 
 FINAL = {"text": "Final plan."}
 
@@ -135,12 +135,12 @@ def test_schema_invalid_args(tmp_path):  # AC9d
 
 def test_tool_result_capped_for_agent(tmp_path):
     from foundry.config import load_config
-    from foundry.models.registry import build_provider  # noqa: F401  (provider built inside run)
+    from foundry.engine.models.registry import build_provider  # noqa: F401  (provider built inside run)
 
     cfg_path = write_config(tmp_path, [{"tool": "big", "input": {"chars": 20000}}, FINAL])
     cfg = load_config(cfg_path)
     seen = {}
-    import foundry.models.scripted as scripted
+    import foundry.engine.models.scripted as scripted
 
     orig = scripted.ScriptedModel.stream
 

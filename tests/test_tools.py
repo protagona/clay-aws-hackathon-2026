@@ -4,7 +4,7 @@ import re
 import shutil
 from pathlib import Path
 
-from foundry.harness.tools import list_tools
+from foundry.engine.harness.tools import list_tools
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,7 +21,7 @@ def _config(tmp_path: Path, name: str, servers: str) -> Path:
 
 STAC = '''[mcp.servers.stac]
 command = "{python}"
-args = ["-m", "foundry.mcp_servers.stac"]
+args = ["-m", "foundry.engine.mcp_servers.stac"]
 package = "foundry.mcp_servers.stac"
 version = "0.1.0"
 error_detection = "mcp"

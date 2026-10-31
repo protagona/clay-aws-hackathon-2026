@@ -13,7 +13,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from foundry.importer import ImportError_, Span, agent_roots, spans_from_protobuf, spans_from_request, write_run
+from foundry.engine.importer import ImportError_, Span, agent_roots, spans_from_protobuf, spans_from_request, write_run
 
 MAX_BODY = 10 * 1024 * 1024
 GRACE_S = 2.0

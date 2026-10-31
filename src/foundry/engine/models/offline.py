@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 
-from foundry.models.base import Completion, CompletionRequest, ProviderError
+from foundry.engine.models.base import Completion, CompletionRequest, ProviderError
 
 STEP_LINE = re.compile(r"^#\d+ ", re.MULTILINE)
 

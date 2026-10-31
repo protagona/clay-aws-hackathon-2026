@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from foundry.rubrics import sources
-from foundry.rubrics.draft import MAX_TOKENS as DRAFT_MAX_TOKENS
-from foundry.rubrics.draft import draft
-from foundry.rubrics.sources import SourceError
+from foundry.engine.rubrics import sources
+from foundry.engine.rubrics.draft import MAX_TOKENS as DRAFT_MAX_TOKENS
+from foundry.engine.rubrics.draft import draft
+from foundry.engine.rubrics.sources import SourceError
 from foundry.data.rubrics import Store
 
 
@@ -34,7 +34,7 @@ def acquire(kind: str, cfg, *, file_name: str = "", file_data: bytes = b"", text
 
 def create_draft(task_dir: Path, source: sources.Source, cfg) -> tuple[str, dict]:
     """Draft with cfg.judge and save; returns (draft_id, meta). Provider errors propagate (ProviderError)."""
-    from foundry.models.registry import build_provider
+    from foundry.engine.models.registry import build_provider
 
     # Its own output budget: a big rubric (criteria x levels + notes) must not be cut at the judge's max_tokens.
     role = cfg.judge.model_copy(update={"max_tokens": max(cfg.judge.max_tokens, DRAFT_MAX_TOKENS)})

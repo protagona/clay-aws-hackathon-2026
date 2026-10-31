@@ -264,7 +264,7 @@ def test_prompt_view_runs_latest_20(api):  # P4: newest first, at most 20, with 
 
 
 def test_prompts_mean_uses_active_rubric_only(api):  # P2: a run scored with another rubric counts as a run, not in the mean
-    from foundry.evaluate.evaluate import evaluate
+    from foundry.engine.evaluate.evaluate import evaluate
 
     app, c, _, _ = api
     runs = app.state.ui.runs_dir

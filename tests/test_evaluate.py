@@ -5,8 +5,8 @@ import pytest
 from conftest import ROOT, foundry
 from eval_helpers import ALL3, eval_config, judge_reply, load
 
-from foundry.evaluate import view
-from foundry.evaluate.evaluate import EvaluateError, evaluate
+from foundry.engine.evaluate import view
+from foundry.engine.evaluate.evaluate import EvaluateError, evaluate
 
 OFFLINE = None
 
@@ -105,7 +105,7 @@ def test_judge_raises_then_recovers_and_raises_twice(tmp_path, fixture_run):  # 
 
 def test_injection_only_inside_data_block(tmp_path, fixture_run, monkeypatch):  # AC10b
     seen = []
-    from foundry.models.offline import OfflineProvider
+    from foundry.engine.models.offline import OfflineProvider
 
     orig = OfflineProvider.complete
 
@@ -279,8 +279,8 @@ def test_replay_cli_does_not_run_agent(tmp_path, fixture_run):  # AC17, AC2
 
 
 def test_replay_never_touches_runner(tmp_path, fixture_run, monkeypatch):  # AC17
-    import foundry.harness.mcp as mcp
-    import foundry.harness.runner as runner
+    import foundry.engine.harness.mcp as mcp
+    import foundry.engine.harness.runner as runner
 
     def boom(*a, **k):
         raise AssertionError("evaluate must not start the agent or MCP servers")

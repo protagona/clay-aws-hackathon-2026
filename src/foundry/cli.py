@@ -85,7 +85,7 @@ def _cmd_tools(args: argparse.Namespace) -> int:
     import tempfile
 
     from foundry.config import project_root
-    from foundry.harness.tools import list_tools
+    from foundry.engine.harness.tools import list_tools
 
     import signal
 
@@ -130,7 +130,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
 def _cmd_run(args: argparse.Namespace) -> int:
     from foundry.config import ConfigError, load_config
-    from foundry.harness.runner import run
+    from foundry.engine.harness.runner import run
     from foundry.data.runs import is_valid_run_id
     from foundry.data.tasks import UnknownPrompt, resolve_prompt
 
@@ -158,27 +158,21 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if status != "succeeded":
         print(f"Run {status}: see {run_dir / 'trace.jsonl'}", file=sys.stderr)
     if args.evaluate:  # failed runs are scored too: the trace says where the agent struggled
-        from foundry.evaluate.evaluate import EvaluateError, evaluate
+        from foundry.engine.evaluate.evaluate import EvaluateError, evaluate
+        from foundry.engine.evaluate.report import print_scores
 
         try:
-            _print_scores(run_dir, evaluate(run_dir, cfg))
+            print_scores(run_dir, evaluate(run_dir, cfg))
         except (EvaluateError, PermissionError) as exc:
             print(f"Evaluation failed: {exc}", file=sys.stderr)
             return 2
     return 0 if status == "succeeded" else 1
 
 
-def _print_scores(run_dir: str | Path, scores: dict) -> None:
-    overall = scores["overall"]
-    w, o = scores["workflow"]["score"], scores["output"]["score"]
-    fmt = lambda x: "n/a" if x is None else f"{x:.2f}"  # noqa: E731
-    print(f"{Path(run_dir) / 'report.md'}")
-    print(f"overall {fmt(overall) if overall is not None else 'incomplete'} | workflow {fmt(w)} | output {fmt(o)}")
-
-
 def _cmd_evaluate(args: argparse.Namespace) -> int:
     from foundry.config import ConfigError, load_eval_config
-    from foundry.evaluate.evaluate import EvaluateError, evaluate
+    from foundry.engine.evaluate.report import print_scores
+    from foundry.engine.evaluate.evaluate import EvaluateError, evaluate
 
     try:
         cfg = load_eval_config(args.config)
@@ -189,7 +183,7 @@ def _cmd_evaluate(args: argparse.Namespace) -> int:
     except PermissionError as exc:
         print(f"Cannot write evaluation files: {exc}. Check permissions on {args.run_dir}.", file=sys.stderr)
         return 2
-    _print_scores(args.run_dir, scores)
+    print_scores(args.run_dir, scores)
     return 0
 
 
@@ -206,14 +200,14 @@ def _cmd_ui(args: argparse.Namespace) -> int:
 
 
 def _cmd_batch(args: argparse.Namespace) -> int:
-    from foundry.batch import main as batch_main
+    from foundry.engine.batch import main as batch_main
 
     return batch_main(args)
 
 
 def _cmd_import(args: argparse.Namespace) -> int:
     from foundry.config import ConfigError, load_eval_config
-    from foundry.importer import ImportError_, import_spans, spans_from_file
+    from foundry.engine.importer import ImportError_, import_spans, spans_from_file
     from foundry.data.runs import is_valid_run_id
 
     if not is_valid_run_id(args.prompt_id):
@@ -232,13 +226,13 @@ def _cmd_import(args: argparse.Namespace) -> int:
 
 
 def _cmd_external(args: argparse.Namespace) -> int:
-    from foundry.external import main as external_main
+    from foundry.engine.external import main as external_main
 
     return external_main(args)
 
 
 def _cmd_receive(args: argparse.Namespace) -> int:
-    from foundry.receiver import main as receive_main
+    from foundry.engine.receiver import main as receive_main
 
     return receive_main(args)
 
