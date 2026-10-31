@@ -59,6 +59,9 @@ def struggles(steps: list[Step], run: RunRecord) -> list[str]:
             out.append(f"Step {s.step}: {s.name} failed: {detail}")
         elif s.type == "llm_call" and s.status == "error":
             out.append(f"Step {s.step}: model call failed: {detail}")
+        elif s.type == "note" and s.name == "verdict":  # pipeline checker (increment 7): approval is no struggle
+            if s.text == "revise":
+                out.append(f"Step {s.step}: the checker asked for a revision")
         elif s.type == "note":
             out.append(f"Step {s.step}: {detail}")
         if s.retry_of is not None:

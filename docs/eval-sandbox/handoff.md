@@ -271,6 +271,16 @@ See [increment-6.md](increment-6.md).
 - **Run monitor:** the status dot no longer pulses (user feedback).
 - **Suite:** 223 passed.
 
+## Increment 7 (2026-10-31): multi-agent mode (B-6)
+
+See [increment-7/handoff.md](increment-7/handoff.md).
+
+- `[agents] mode = "pipeline"` runs a planner → executor → checker pipeline, with one revision on `VERDICT: revise`.
+- Each agent's calls nest under its `agent_step` in the trace, the OTel export and the run page's agent bands.
+- The dashboard shows `<model> · pipeline` as its own row.
+- **Live on Kimi K3:** single scored 0.96 and 0.96, pipeline 0.93 and 0.91, at 1.4–2× the cost. The sample is tiny, and the shared 12-call budget cut off one revision check.
+- **Suite:** 245 passed.
+
 ## Follow-ups
 
 - Deploy and verify: `cdk bootstrap`, `cdk deploy`, `scripts/stage_samples.sh`, then `scripts/verify_deploy.sh` (README, *Deploy*). Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.

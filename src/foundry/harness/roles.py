@@ -42,10 +42,18 @@ def _inert(text: str) -> str:
 
 def parse_verdict(text: str) -> str | None:
     """'approve' | 'revise' from the last line that starts with "VERDICT:" (Markdown emphasis/heading marks ignored);
-    None if there is none. Asked to lead with it, Kimi K3 put its reasoning first (live run, 2026-10-31)."""
-    found = None
+    None if there is none or it says anything else. Asked to lead with it, Kimi K3 put its reasoning first (live
+    run, 2026-10-31)."""
+    last = None
     for line in (text or "").splitlines():
-        m = _VERDICT_RE.match(line.translate(_MARKS).strip().lstrip("#> \t"))
-        if m:
-            found = m.group(1).lower()
-    return found
+        line = line.translate(_MARKS).strip().lstrip("#> \t")
+        if line.upper().startswith("VERDICT:"):
+            last = line
+    m = _VERDICT_RE.match(last) if last else None
+    return m.group(1).lower() if m else None
+
+
+def preview(message: str) -> str:
+    """agent_step text: what this agent was handed by the previous one (the tagged part), else the task."""
+    i = min((message.find(f"<{t}>") for t in _TAGS if f"<{t}>" in message), default=0)
+    return message[i:i + PREVIEW_CHARS]

@@ -32,6 +32,7 @@ def test_parse_verdict():  # P2
     assert parse_verdict("Spot-checks done.\n- bucket ok\n\n**VERDICT: revise**") == "revise"  # reasoning first
     assert parse_verdict("VERDICT: revise\n...\nVERDICT: approve") == "approve"  # the last one is the conclusion
     assert parse_verdict("Looks good; the VERDICT: approve line is below?") is None  # must start a line
+    assert parse_verdict("VERDICT: revise\n...\nVERDICT: approved") is None  # the last VERDICT line decides
     assert parse_verdict("VERDICT: approved") is None and parse_verdict("") is None
     assert parse_verdict("**VERDICT:** revise") == "revise" and parse_verdict("> **VERDICT:** _Approve_") == "approve"
 
@@ -117,6 +118,24 @@ def test_limit_after_answer_keeps_the_answer(tmp_path):  # P3 (user decision 202
     assert run_json(run_dir)["agents"]["verdict"] == "none"
 
 
+def test_checker_error_fails_run_and_empty_answer_skips_checker(tmp_path):  # P3
+    run_dir, status = _run(tmp_path, [PLAN, ANSWER])  # the checker's model call runs out of script
+    s = steps(run_dir)
+    assert status == "failed" and [n for _, n in _agents(s)] == ["planner", "executor", "checker"]
+    err = next(x for x in s if x["type"] == "llm_call" and x["status"] == "error")
+    assert err["parent"] == _agents(s)[2][0] and run_json(run_dir)["agents"]["verdict"] == "none"
+    run_dir, status = _run(tmp_path / "empty", [PLAN, {"text": ""}])
+    assert status == "failed" and [n for _, n in _agents(steps(run_dir))] == ["planner", "executor"]
+
+
+def test_previews_show_what_each_agent_was_handed(tmp_path):  # U2
+    turns = [PLAN, ANSWER, {"text": "VERDICT: revise\n- add licence"}, {"text": "v2"}, {"text": "VERDICT: approve"}]
+    run_dir, _ = _run(tmp_path, turns)
+    texts = [x["text"] for x in steps(run_dir) if x["type"] == "agent_step"]
+    assert texts[0].startswith("Task:") and texts[1].startswith("<plan>\n1. Search.")
+    assert texts[2].startswith("<candidate_answer>\nFinal plan v1.") and texts[3].startswith("<candidate_answer>")
+
+
 def test_planner_error_fails_run(tmp_path):  # P3: the script is empty, so the planner's model call raises
     run_dir, status = _run(tmp_path, [])
     s = steps(run_dir)
@@ -155,3 +174,14 @@ def test_hooks_refuse_after_timeout():  # P3: deterministic, no clock
     hooks.before_tool(tool)
     assert model.cancel == "run timed out" and tool.cancel_tool == "run timed out"
     assert hooks.model_calls == 0 and tracers.steps == []
+
+
+def test_struggles_name_revisions_not_approvals(tmp_path):  # report narrative for pipeline verdict notes
+    from foundry.evaluate.summarize import struggles
+    from foundry.runstore import RunDir
+
+    turns = [PLAN, ANSWER, {"text": "VERDICT: revise"}, {"text": "v2"}, {"text": "VERDICT: approve"}]
+    run_dir, _ = _run(tmp_path, turns)
+    rd = RunDir(run_dir)
+    out = struggles(rd.read_steps(), rd.read_run())
+    assert any(x.endswith("the checker asked for a revision") for x in out) and not any("approve" in x for x in out)

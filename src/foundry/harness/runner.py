@@ -164,7 +164,7 @@ def _pipeline(model, tools: list, task_system: str, prompt: str, hooks: TraceHoo
     def call(name: str, role: str, message: str, agent_tools: list) -> str | None:
         if stopped():  # never start an agent after a timeout or limit
             return None
-        marker = tracers.record(type="agent_step", name=name, text=message[:roles.PREVIEW_CHARS])
+        marker = tracers.record(type="agent_step", name=name, text=roles.preview(message))
         if marker is None:  # tracer closed: the run is being finalized
             return None
         hooks.start_agent(marker.step)
@@ -179,12 +179,13 @@ def _pipeline(model, tools: list, task_system: str, prompt: str, hooks: TraceHoo
     if plan is None:
         return ""
     answer = call("executor", "executor", roles.user_message(prompt, plan=plan), tools)
-    if answer is None:
+    if not answer:  # stopped, or nothing to check: don't spend budget on a checker
         return ""
     for revision in (0, 1):
         review = call("checker" if revision == 0 else "checker (revision 1)", "checker",
                       roles.user_message(prompt, candidate=answer), tools)
-        if review is None:
+        if review is None:  # this checker was cut off: the final answer is unchecked
+            state.verdict = "none"
             return answer
         verdict = roles.parse_verdict(review)
         state.verdict = verdict or "unparseable"

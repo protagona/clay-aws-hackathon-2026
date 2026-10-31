@@ -1,6 +1,6 @@
 # Increment 7: multi-agent mode (B-6) — Spec
 
-**Track:** Standard   **Status:** Built (verify review pending)   **Date:** 2026-10-30   **Product stage:** Introduction (hackathon prototype)
+**Track:** Standard   **Status:** Built (verified 2026-10-31)   **Date:** 2026-10-30   **Product stage:** Introduction (hackathon prototype)
 
 ## Problem
 
@@ -37,7 +37,7 @@ Clay's brief lists multi-agent traces as a planner, executor and checker. The sa
   - **When `run.json.agents` is written:** at run start, as `{"mode": "pipeline", "prompts": "roles-v1", "roles": [], "revisions": 0, "verdict": "none"}`, so running or crashed runs are already keyed as pipeline. Finalize overwrites it.
   - **`roles`:** every `agent_step` name started, in order, including `(revision 1)` names.
   - **`revisions`:** the number of executor revisions run (0 or 1).
-  - **`verdict`:** the **last** checker's verdict. It is `approve`, `revise` or `unparseable`, or `none` if no checker finished.
+  - **`verdict`:** the **last** checker's verdict. It is `approve`, `revise` or `unparseable`, or `none` if the last checker started didn't finish (or none started). In that case the final answer is unchecked.
   - **`prompts`:** the role-prompt version.
   1. **Planner:** no tools. Its input is the task prompt. It writes a numbered plan.
   2. **Executor:** has the MCP tools. Its input is the task prompt plus the plan. Its output is the candidate answer.
@@ -57,7 +57,7 @@ Clay's brief lists multi-agent traces as a planner, executor and checker. The sa
 - **T1:** Each agent invocation writes one `agent_step` when it starts, with:
   - `name`: `planner`, `executor`, `checker`, `executor (revision 1)` or `checker (revision 1)`
   - `duration_ms`: 0
-  - `text`: a 200-character preview of its input
+  - `text`: a 200-character preview of what it was handed: the tagged plan, candidate or feedback, or the task for the planner
   - `status`: `ok`
 
   Every `llm_call`, `tool_call` and `note` that the agent produces carries `parent` = that step's number. Step numbers keep increasing in file order (`validate_run_dir` passes unchanged).
@@ -105,5 +105,5 @@ This is the cost of the pipeline, not a bug. The report shows it.
 
 1. **A single model instance can be shared by three sequential agents** (BedrockModel and ScriptedModel). The scripted model replays one script across all three. Owner: the team. Default: share it; covered by V1.
 2. **One `TraceHooks` instance can be registered on several Agents**, and it keeps the limits summed. Owner: the team. Default: share it; covered by a test.
-3. **The checker can be prompted into a parseable first-line verdict** on Kimi K3. Owner: the team. Default: treat unparseable as approve (P2); V2 checks it live.
+3. **The checker can be prompted into a parseable verdict** on Kimi K3. **Resolved live:** Kimi put its reasoning before the verdict, so parsing takes the last `VERDICT:` line (P2).
 4. **Scatter colours:** two models in two modes make four series. The scatter colours three and folds the fourth into "Other", as the palette's all-pairs cap requires. Owner: the team. Default: accepted for the demo; the leaderboard and table keep every series named.

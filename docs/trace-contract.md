@@ -58,8 +58,8 @@ runs/<run_id>/
 - `type`: `llm_call`, `tool_call`, `agent_step` (for multi-agent: planner, executor, checker), or `note`.
 - `status`: `ok` or `error`.
 - `parent`: optional, the number of an earlier step that this step belongs to. In multi-agent (pipeline) runs, every model call, tool call and note an agent produces carries `parent` = that agent's `agent_step`.
-- **`agent_step` in pipeline runs** (`run.json.agents.mode == "pipeline"`) is a **start marker**: it is written when the agent starts, with `duration_ms: 0` and `text` = a 200-character preview of the agent's input. Its extent is its descendants' extent (its own start time if it has none). Step numbers still increase in file order. Imported traces write `agent_step` with a real `duration_ms` and no children; that use is unchanged.
-- **Pipeline notes:** `note` `verdict` (`text`: `approve`, `revise` or `unparseable`, `parent` = the checker), and `note` `verdict_parse` (`checker verdict unparseable`) when the checker's first line has no verdict.
+- **`agent_step` in pipeline runs** (`run.json.agents.mode == "pipeline"`) is a **start marker**: it is written when the agent starts, with `duration_ms: 0` and `text` = a 200-character preview of what it was handed: the tagged plan, candidate or feedback, or the task for the planner. Its extent is its descendants' extent (its own start time if it has none). Step numbers still increase in file order. Imported traces write `agent_step` with a real `duration_ms` and no children; that use is unchanged.
+- **Pipeline notes:** `note` `verdict` (`text`: `approve`, `revise` or `unparseable`, `parent` = the checker), and `note` `verdict_parse` (`checker verdict unparseable`) when the checker's last line that starts with `VERDICT:` is missing or says something else.
 - Optional `retry_of: <step>` marks a **retry** explicitly. Don't infer retries from repeated tool names, because agents legitimately call the same tool many times.
 - `result_preview` is capped at about 1 KB. Large results go to a file referenced as `result_uri`.
 
