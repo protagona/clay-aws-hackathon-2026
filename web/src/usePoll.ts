@@ -43,5 +43,5 @@ export function usePoll<T>(url: string | null, interval: (data: T | null) => num
 
 /** Board cadence (design): 2 s while anything is live, 5 s otherwise. */
 export const boardInterval = (live: number | undefined) => (live ? 2000 : 5000);
-/** Run cadence: 1 s while live, then stop. */
-export const runInterval = (live: boolean | undefined) => (live ? 1000 : null);
+/** Run cadence: 1 s while live, then 4 s, so an evaluation started elsewhere (or from the card) still shows up. */
+export const runInterval = (live: boolean | undefined) => (live ? 1000 : 4000);

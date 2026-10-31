@@ -61,13 +61,18 @@ export default function Import() {
   );
 
   return (
-    <main className="grid gap-6 px-4 py-6 sm:px-8 lg:grid-cols-2">
+    <main className="space-y-6 px-4 py-6 sm:px-8">
       <Panel className="p-5">
-        <h1 className="text-lg font-semibold">Import a trace</h1>
+        <h1 className="text-lg font-semibold">Import agent runs</h1>
+        <p className="mb-3 text-sm text-slate-500">Runs imported below are recorded under this task and prompt id.</p>
+        {common}
+      </Panel>
+      <div className="grid gap-6 lg:grid-cols-2">
+      <Panel className="p-5">
+        <h2 className="text-lg font-semibold">Upload a trace</h2>
         <p className="mb-4 text-sm text-slate-500">Evaluate an agent we didn't build: drop an OTLP/JSON trace file. Each agent run becomes a normal run.</p>
         <form onSubmit={submit} className="space-y-4">
           <Dropzone accept=".json,.jsonl" file={file} onFile={setFile} hint="OTLP/JSON or JSON Lines · up to 50 MB" />
-          {common}
           {progress !== null && <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800" role="progressbar" aria-valuenow={progress}><div className="h-2 rounded-full bg-sky-500 transition-all" style={{ width: `${progress}%` }} /></div>}
           {error && <p role="alert" className="text-sm text-rose-600">✗ {error}</p>}
           <button className="btn-primary" disabled={!file || progress !== null}>{progress !== null ? `Uploading… ${progress}%` : "Import"}</button>
@@ -79,7 +84,7 @@ export default function Import() {
           {rec.data && <Pill tone={rec.data.running ? "emerald" : "slate"}>{rec.data.running ? "● receiving" : "stopped"}</Pill>}
         </div>
         <p className="mb-4 text-sm text-slate-500">Point any OpenTelemetry-instrumented agent at this endpoint; each run it sends appears on the board.</p>
-        {common}
+        {rec.error && <p role="alert" className="text-sm text-rose-600">✗ Can't reach the receiver status: {rec.error}</p>}
         <div className="mt-4 rounded-xl bg-slate-50 p-3 font-mono text-xs dark:bg-slate-800">OTEL_EXPORTER_OTLP_ENDPOINT={rec.data?.endpoint ?? "…"}</div>
         <button className="btn-primary mt-4" onClick={toggleReceiver}>{rec.data?.running ? "Stop receiving" : "Start receiving"}</button>
         {rec.data?.running && (
@@ -88,6 +93,7 @@ export default function Import() {
           </div>
         )}
       </Panel>
+      </div>
     </main>
   );
 }

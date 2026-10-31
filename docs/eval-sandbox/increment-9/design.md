@@ -121,11 +121,11 @@ The new UI is at `/`, and the old one at `/classic`. A rollback is a revert, or 
 | A1, A2 | `api.py` → `actions.py` | `test_api.py`: one test per endpoint group (session, runs list and detail, start and evaluate, compare, dashboard, batches, import, receiver, rubric create, update, activate, discard, roll back and source, jobs) |
 | A3 | `require_write`, guard middleware, `actions` validation | `test_api.py`:<br>• `::test_writes_need_csrf_header_and_json`<br>• `::test_origin_and_host_checked_on_every_write`<br>• `::test_must_deny_paths`: bad run ids (404), batch traversal (404), unknown compare side (404), unknown task (404 for rubric routes, 400 for import and receiver, as the classic UI does), bad draft ids and history names (404), an import over the cap (413), and no server paths in import errors |
 | A4 | `install()` handlers, guard | `test_api.py::test_errors_are_json` (422 rewrite, 404, 403, 400 Host) |
-| A5 | `api.runs`, `api.jobs` | `test_api.py::test_runs_kpis_and_columns`, `::test_jobs_report_recent_completions` |
+| A5 | `api.runs`, `api.jobs` | `test_api.py::test_runs_kpis_and_columns`, `::test_spent_counts_every_run_mean_only_active_rubric`, the jobs assertions in `::test_start_run_and_evaluate_through_api` |
 | B1, B3, B5 | `mount_spa`, `/classic` prefix | `test_api.py::test_spa_served_and_fallback`, and the existing `test_ui.py`/`test_dashboard.py` running against `/classic` through `classic_client` (redirects, `monitor.js` path, rubric link) |
-| B2, B2a | middleware CSP, `vite.config.ts` | `test_api.py::test_csp`, `::test_bundle_has_no_inline_scripts_or_data_fonts` |
+| B2, B2a | middleware CSP, `vite.config.ts` | `test_api.py::test_csp_and_bundle` |
 | B4 | lockfile | `npm audit` output, recorded |
-| U1–U6 | `web/src` | Vitest: `Board.test.tsx` (columns from the API field, the empty state), `Drawer.test.tsx` (tabs), `RubricForm.test.tsx` (field error shown next to its field), `usePoll.test.ts` (2 s/5 s/1 s cadence by state), `toasts.test.ts` (one toast per job id) |
+| U1–U6 | `web/src` | Vitest (`web/src/ui.test.tsx`): the board (columns from the API field, the empty column), the drawer tabs, the rubric form (field error next to its field), the cadence test (board 2 s/5 s, run 1 s then 4 s) and the toast test (one per job id), all in `web/src/ui.test.tsx` |
 | U5 | — | screenshots at 375 px and desktop, light and dark; `prefers-reduced-motion` checked by emulating it over CDP in `scripts/ui_e2e.mjs` |
 | T2 (CI) | `.github/workflows/ci.yml` web job | runs in CI once billing is fixed |
 | T3 | `scripts/ui_e2e.mjs` | local; needs the Playwright-cached `chrome-headless-shell` (found under `~/Library/Caches/ms-playwright`). Without it the script exits with "no headless browser found", and the handoff says T3 wasn't run. |

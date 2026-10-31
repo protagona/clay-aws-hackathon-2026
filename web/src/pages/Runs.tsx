@@ -23,11 +23,13 @@ export default function Runs() {
   const models = useMemo(() => [...new Set((board.data?.runs ?? []).map((r) => r.model))].sort(), [board.data]);
   const prompts = useMemo(() => [...new Set((board.data?.runs ?? []).map((r) => r.prompt_id))].sort(), [board.data]);
 
+  const [evalTick, setEvalTick] = useState(0);
   async function evaluate(runId: string) {
     try {
       await post(`/api/runs/${encodeURIComponent(runId)}/evaluate`);
       toast({ tone: "info", text: `Evaluating ${runId}…` });
       board.reload();
+      setEvalTick((n) => n + 1);  // the open drawer re-polls at once and shows "Evaluating…"
     } catch (e) {
       toast({ tone: "bad", text: e instanceof ApiError ? e.message : String(e) });
     }
@@ -61,17 +63,19 @@ export default function Runs() {
       {board.loading && !board.data ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-40" />)}</div>
         : board.data && board.data.runs.length === 0 ? <Empty title="No runs yet">Click <strong>▶ New run</strong> to start one, or run <code>foundry run --config config/offline.toml --prompt adb-001</code>.</Empty>
         : <Board runs={runs} selected={id} onEvaluate={evaluate} />}
-      {id && <RunDrawer id={id} onEvaluate={evaluate} />}
+      {id && <RunDrawer id={id} onEvaluate={evaluate} refresh={evalTick} />}
     </main>
   );
 }
 
 type Tab = "overview" | "timeline" | "steps" | "report";
 
-export function RunDrawer({ id, onEvaluate }: { id: string; onEvaluate: (id: string) => void }) {
+export function RunDrawer({ id, onEvaluate, refresh = 0 }: { id: string; onEvaluate: (id: string) => void; refresh?: number }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("overview");
   const run = usePoll<RunDetail>(`/api/runs/${encodeURIComponent(id)}`, (d) => runInterval(d?.m.live));
+  const reloadRun = run.reload;
+  useEffect(() => { if (refresh) reloadRun(); }, [refresh, reloadRun]);
   const [, tick] = useState(0);
   useEffect(() => {
     const t = window.setInterval(() => tick((n) => n + 1), 1000);
@@ -84,7 +88,7 @@ export function RunDrawer({ id, onEvaluate }: { id: string; onEvaluate: (id: str
   const tone = status === "running" ? "sky" : status === "evaluating" ? "amber" : status === "succeeded" ? "emerald" : "rose";
 
   return (
-    <aside aria-label="Run details" className="drawer-in fixed inset-0 top-16 z-20 overflow-auto border-l border-slate-200 bg-white shadow-2xl min-[900px]:left-auto min-[900px]:w-[540px] dark:border-slate-800 dark:bg-slate-950">
+    <aside aria-label="Run details" className="drawer-in fixed inset-0 top-[6.75rem] z-20 md:top-16 overflow-auto border-l border-slate-200 bg-white shadow-2xl min-[900px]:left-auto min-[900px]:w-[540px] dark:border-slate-800 dark:bg-slate-950">
       <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-6 pt-5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -94,6 +98,7 @@ export function RunDrawer({ id, onEvaluate }: { id: string; onEvaluate: (id: str
           <div className="flex shrink-0 items-center gap-2">
             {d && <Pill tone={tone}>{status === "running" && <span className="h-1.5 w-1.5 rounded-full bg-sky-500" aria-hidden="true" />}{status}</Pill>}
             <span className="font-mono text-sm tabular-nums">{d?.m.start_ms ? clock(d.m.start_ms) : d?.m.elapsed}</span>
+            <Link to={`/compare?a=${encodeURIComponent(id)}`} className="btn-ghost sm:hidden" aria-label="Compare with another run">⇄</Link>
             <Link to="/" className="btn-ghost" aria-label="Close run details">✕</Link>
           </div>
         </div>
@@ -102,7 +107,7 @@ export function RunDrawer({ id, onEvaluate }: { id: string; onEvaluate: (id: str
             { id: "overview", label: "Overview" }, { id: "timeline", label: "Timeline" },
             { id: "steps", label: <>Steps <span className="font-mono text-xs">{d?.m.feed.length ?? ""}</span></> },
             { id: "report", label: "Report" }]} />
-          <Link className="ml-auto pb-2 text-sm text-slate-500 hover:text-sky-600" to={`/compare?a=${encodeURIComponent(id)}`}>Compare ↗</Link>
+          <Link className="ml-auto hidden pb-2 text-sm text-slate-500 hover:text-sky-600 sm:inline" to={`/compare?a=${encodeURIComponent(id)}`}>Compare ↗</Link>
         </div>
       </div>
       <div className="space-y-5 p-6">

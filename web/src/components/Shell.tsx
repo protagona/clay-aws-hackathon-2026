@@ -13,19 +13,23 @@ const NAV = [
   { to: "/import", label: "Import" },
 ];
 
+/** Follows the system theme until the user picks one with the toggle; only an explicit choice is remembered. */
 function useTheme() {
-  const [dark, setDark] = useState(() => {
-    try {
-      const saved = localStorage.getItem("theme");
-      if (saved) return saved === "dark";
-    } catch { /* storage blocked */ }
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
-  });
+  const media = window.matchMedia("(prefers-color-scheme: dark)");
+  const [saved, setSaved] = useState<string | null>(() => { try { return localStorage.getItem("theme"); } catch { return null; } });
+  const [system, setSystem] = useState(media.matches);
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-    try { localStorage.setItem("theme", dark ? "dark" : "light"); } catch { /* storage blocked */ }
-  }, [dark]);
-  return [dark, setDark] as const;
+    const on = (e: MediaQueryListEvent) => setSystem(e.matches);
+    media.addEventListener("change", on);
+    return () => media.removeEventListener("change", on);
+  }, [media]);
+  const dark = saved ? saved === "dark" : system;
+  useEffect(() => { document.documentElement.classList.toggle("dark", dark); }, [dark]);
+  const choose = (d: boolean) => {
+    setSaved(d ? "dark" : "light");
+    try { localStorage.setItem("theme", d ? "dark" : "light"); } catch { /* storage blocked */ }
+  };
+  return [dark, choose] as const;
 }
 
 export function Shell({ children }: { children: ReactNode }) {

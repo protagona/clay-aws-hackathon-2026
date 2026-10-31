@@ -80,6 +80,9 @@ try {
   await until(card("Scored"), "the card in Scored");
   const ring = await js(`document.querySelector('section[aria-label="Scored"] a[href="/runs/${encodeURIComponent(runId)}"] [role=img]')?.getAttribute('aria-label')`);
   if (!ring || !/overall \.?\d/.test(ring)) fail(`no score ring (${ring})`);
+  // The open drawer must switch to the scored state on its own (verify finding: it went stale).
+  await until(`!!document.querySelector('aside[aria-label="Run details"] [role=img][aria-label^="overall"]')`, "the drawer's score rings", 30000);
+  console.log("drawer shows the scores");
   if ((await js("window.__marker")) !== "no-reload") fail("the page reloaded");
   console.log(`scored: ${ring}; no reload`);
 
@@ -94,6 +97,12 @@ try {
         await sleep(1800);
         const overflow = await js("document.documentElement.scrollWidth > window.innerWidth + 1");
         if (overflow) console.log(`WARN: horizontal page scroll on ${name} at ${w}px`);
+        if (name === "drawer") {  // the drawer's close button must be on top, not under the header (verify finding)
+          const ok = await js(`(() => { const b = document.querySelector('aside[aria-label="Run details"] a[aria-label="Close run details"]');
+            if (!b) return false; const r = b.getBoundingClientRect(); const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            return b.contains(hit); })()`);
+          if (!ok) fail(`the drawer's close button is covered at ${w}px`);
+        }
         const shot = await send("Page.captureScreenshot", { format: "png" });
         writeFileSync(join(out, `${name}-${dark ? "dark" : "light"}-${w}.png`), Buffer.from(shot.result.data, "base64"));
       }

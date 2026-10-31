@@ -303,7 +303,7 @@ See [increment-9/handoff.md](increment-9/handoff.md).
   - every screen
 - The classic UI is at `/classic`.
 - The end-to-end check in a real browser passes.
-- **Suites:** Python 317 passed, Vitest 6 passed, `npm audit` clean.
+- **Suites:** Python 318 passed, Vitest 7 passed, `npm audit` clean.
 
 ## Follow-ups
 

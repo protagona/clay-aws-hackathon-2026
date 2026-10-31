@@ -39,7 +39,7 @@ describe("polling cadence", () => {  // design: board 2 s live / 5 s idle; run 1
     expect(boardInterval(1)).toBe(2000);
     expect(boardInterval(0)).toBe(5000);
     expect(runInterval(true)).toBe(1000);
-    expect(runInterval(false)).toBeNull();
+    expect(runInterval(false)).toBe(4000);  // keeps watching, so an evaluation shows up
   });
 });
 
@@ -72,5 +72,32 @@ describe("rubric form", () => {  // U4: the API's field path puts the message ne
     const second = screen.getByRole("group", { name: "Criterion 2" });
     expect(within(second).getByRole("alert").textContent).toContain("levels must describe 3");
     expect(within(screen.getByRole("group", { name: "Criterion 1" })).queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("run drawer", () => {  // T2: the drawer's tabs show the monitor's views
+  it("switches between overview, timeline, steps and report", async () => {
+    const { RunDrawer } = await import("./pages/Runs");
+    const { fireEvent, findByText } = await import("@testing-library/react");
+    const step = { step: 1, type: "llm_call", name: "model", status: "ok", duration_ms: 1200, started_at: "x", text: "hi", text_html: "<p>Planning the build</p>", tokens_in: 10, tokens_out: 5 };
+    const detail = {
+      run: { run_id: "r1", prompt_id: "adb-001", prompt: "Map cropland", model: { id: "m" }, status: "succeeded" },
+      scores: { overall: 0.9, workflow: { score: 1 }, output: { score: 0.8 } }, report_html: "<h1>Evaluation report</h1>",
+      rubric_info: null, evaluating: false, interrupted: false,
+      m: { live: false, status: "succeeded", elapsed: "00:02", start_ms: null, gauges: [], cost: 0.01, tokens_out: "5",
+        tools_ok: 0, tools_err: 0, servers: [], rows: [{ step: 1, kind: "model", label: "model", error: false, ms: 1200, new: false, left: 0, width: 50 }],
+        working: null, axis: [{ pct: 0, label: "0s" }], feed: [{ s: step, new: false, agent: null, divider: false }], seen: 1 },
+    };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(detail), { status: 200 })));
+    render(<MemoryRouter><RunDrawer id="r1" onEvaluate={() => {}} /></MemoryRouter>);
+    expect(await findByText(document.body, "Map cropland")).toBeTruthy();
+    expect(screen.getByRole("img", { name: "overall .90" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Timeline" }));
+    expect(screen.getByText("tool")).toBeTruthy();  // the waterfall legend
+    fireEvent.click(screen.getByRole("tab", { name: /Steps/ }));
+    expect(screen.getByText("Planning the build")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Report" }));
+    expect(screen.getByRole("heading", { name: "Evaluation report" })).toBeTruthy();
+    vi.unstubAllGlobals();
   });
 });

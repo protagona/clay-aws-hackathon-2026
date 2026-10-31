@@ -264,3 +264,31 @@ def test_spent_counts_every_run_mean_only_active_rubric(tmp_path):  # A5
     k = c.get("/api/runs").json()["kpis"]
     d_all = c.get("/api/dashboard?rubric=all").json()["d"]["kpis"]
     assert k["spent"] == pytest.approx(d_all["spent"]) and k["scored"] == 1 and k["runs"] == 2
+
+
+def test_must_deny_paths_continued(tmp_path, monkeypatch):  # A3: the rest of the classic must-deny cases
+    import os
+    import socket
+
+    runs = tmp_path / "runs"
+    _seed(runs, "clean", "recovered")
+    rj = json.loads((runs / "fixture-recovered" / "run.json").read_text())
+    rj["status"] = "running"
+    (runs / "fixture-recovered" / "run.json").write_text(json.dumps(rj))
+    os.symlink(runs / "fixture-clean", runs / "symdir")  # a symlinked run dir is never followed
+    (runs / "symjson").mkdir()
+    os.symlink(runs / "fixture-clean" / "run.json", runs / "symjson" / "run.json")
+    root = _project(tmp_path)
+    _, c, csrf = _client(tmp_path, root=root)
+    h = {"x-csrf-token": csrf}
+    r = c.post("/api/runs/fixture-recovered/evaluate", headers=h)
+    assert r.status_code == 409 and "still running" in r.json()["error"]
+    for bad in ("symdir", "symjson"):
+        assert c.get(f"/api/runs/{bad}").status_code == 404
+    r = c.post("/api/rubric/drafts", headers=h, data={"task": "adb", "kind": "file", "config": "offline"},
+               files={"file": ("evil.exe", b"MZ")})
+    assert r.status_code == 400 and "Unsupported file type" in r.json()["error"]
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [(None, None, None, "", ("169.254.169.254", 443))])
+    r = c.post("/api/rubric/drafts", headers=h, data={"task": "adb", "kind": "url", "config": "offline",
+                                                      "url": "https://metadata.example/latest"})
+    assert r.status_code == 400 and "non-public address" in r.json()["error"]
