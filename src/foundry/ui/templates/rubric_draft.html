@@ -8,7 +8,7 @@
 {% if meta.notes %}<div class="note"><strong>Model notes</strong><ul>{% for n in meta.notes %}<li>{{ n }}</li>{% endfor %}</ul></div>{% endif %}
 
 <div class="review">
-<form method="post" action="/rubric/drafts/{{ draft_id }}" class="review-form">
+<form method="post" action="/rubric/drafts/{{ draft_id }}" class="review-form" novalidate>
   <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="task" value="{{ task }}">
   <div class="inline">
     <div class="field"><label class="label" for="f-id">Rubric id</label><input id="f-id" type="text" name="rubric_id" value="{{ body.rubric_id or '' }}" size="28"></div>

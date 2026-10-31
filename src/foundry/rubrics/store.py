@@ -22,7 +22,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from foundry.contract import Rubric
-from foundry.rubrics.draft import DraftResult, check
+from foundry.rubrics.draft import DraftResult, check, form_shape
 from foundry.rubrics.sources import Source
 
 DRAFT_ID_RE = re.compile(r"^[a-f0-9]{12}$")
@@ -88,7 +88,7 @@ class Store:
         d = self.base / "drafts" / draft_id
         d.mkdir(parents=True)
         (d / f"source.{source.fmt}").write_bytes(source.data)
-        body = result.rubric or result.partial or {}
+        body = result.rubric or form_shape(result.partial)  # an invalid reply is saved form-shaped (never crashes review)
         _write(d / "draft.json", _dump(body))
         meta = {"draft_id": draft_id, "created_at": _now(), "valid": result.rubric is not None, "error": result.error,
                 "source": {"kind": source.kind, "label": source.label, "format": source.fmt,
@@ -118,13 +118,13 @@ class Store:
         except (OSError, ValueError):
             raise StoreError("This draft is unreadable; discard it") from None
         src = next((p for p in d.iterdir() if p.name.startswith("source.")), None)
-        return meta, body if isinstance(body, dict) else {}, src
+        return meta, body if isinstance(body, dict) and not meta.get("error") else form_shape(body), src
 
     def update_draft(self, draft_id: str, body: dict) -> str | None:
         """Save an edited draft; returns the validation error (or None when it is a valid rubric)."""
         d = self._draft_dir(draft_id)
         rubric, error = check(dict(body), self.task.name)
-        _write(d / "draft.json", _dump(rubric or body))
+        _write(d / "draft.json", _dump(rubric or form_shape(body)))
         meta = json.loads((d / "meta.json").read_text())
         meta["valid"], meta["error"] = rubric is not None, error
         _write(d / "meta.json", (json.dumps(meta, indent=2) + "\n").encode())

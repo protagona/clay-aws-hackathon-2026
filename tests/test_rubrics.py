@@ -344,7 +344,7 @@ def test_odd_notes_never_crash(notes):  # verify finding: notes as int/bool cras
     assert r.notes == (["one note"] if notes == "one note" else ["1", "x"] if isinstance(notes, list) else [])
 
 
-@pytest.mark.parametrize("weight", [float("inf"), 1e308, 0, -1, 101])
+@pytest.mark.parametrize("weight", [float("inf"), 1e308, 0, -1, 101, "inf", "1e308", "5000"])
 def test_weight_must_be_finite_and_bounded(weight):
     p = FakeProvider(json.dumps({**GOOD, "criteria": [{**GOOD["criteria"][0], "weight": weight}]}).replace("Infinity", "1e999"),
                      json.dumps({**GOOD, "criteria": [{**GOOD["criteria"][0], "weight": weight}]}).replace("Infinity", "1e999"))

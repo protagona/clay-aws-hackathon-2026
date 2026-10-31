@@ -18,7 +18,7 @@ from foundry.contract import Rubric
 from foundry.models.base import CompletionRequest, Provider
 from foundry.rubrics.sources import BINARY, Source
 
-PROMPT_ID = "draft-v2"  # v2: refuses sources that are not rubrics instead of inventing one (live finding)
+PROMPT_ID = "draft-v3"  # v2: refuses non-rubrics (live finding); v3: max 2-20, wider scales banded (verify finding)
 _PROMPT = Path(__file__).with_name("prompts") / f"{PROMPT_ID}.txt"
 MAX_TOKENS = 8192
 INSTRUCTION = "Convert the rubric in the attached source document into the JSON rubric described above."
@@ -56,6 +56,7 @@ def _first_object(text: str) -> dict | None:
 
 
 MAX_WEIGHT = 100  # finite and bounded: Infinity or 1e308 would break the weighted score
+MAX_LEVELS = 20  # the review form shows one field per level; wider scales are banded by the model (prompt v3)
 NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 VERSION_RE = re.compile(r"^[A-Za-z0-9._-]{1,40}$")
 
@@ -73,8 +74,15 @@ def canonical(obj: dict, task_id: str) -> dict:
         mx = c.get("max")
         keep = {str(i) for i in range(1, mx + 1)} if isinstance(mx, int) and not isinstance(mx, bool) and mx < 100 else set()
         weight = c.get("weight", 1)
-        if isinstance(weight, (int, float)) and not isinstance(weight, bool) and not (0 < weight <= MAX_WEIGHT):
+        try:
+            w = float(weight)
+        except (TypeError, ValueError):
+            w = None
+        if w is not None and not isinstance(weight, bool) and not (0 < w <= MAX_WEIGHT):  # also "inf", "1e308"
             raise ValueError(f"criteria.{len(out['criteria'])}.weight: must be above 0 and at most {MAX_WEIGHT}")
+        if isinstance(mx, int) and not isinstance(mx, bool) and mx > MAX_LEVELS:
+            raise ValueError(f"criteria.{len(out['criteria'])}.max: use a scale of 2 to {MAX_LEVELS} levels "
+                             "(map wider scales to bands)")
         out["criteria"].append({"id": c.get("id"), "name": c.get("name"), "description": c.get("description"),
                                 "max": mx, "weight": weight,
                                 "levels": {k: v for k, v in levels.items() if k in keep}})
@@ -84,6 +92,29 @@ def canonical(obj: dict, task_id: str) -> dict:
     if not VERSION_RE.match(rubric.version):
         raise ValueError("version: use letters, digits, '.', '_' or '-' only (max 40)")
     return rubric.model_dump(include={"rubric_id", "task_id", "version", "description", "criteria"})
+
+
+def form_shape(obj) -> dict:
+    """Any draft body (even a malformed model reply) reshaped so the review form can always render it."""
+    obj = obj if isinstance(obj, dict) else {}
+    crits = obj.get("criteria") if isinstance(obj.get("criteria"), list) else []
+
+    def s(v):
+        return v if isinstance(v, str) else "" if v is None else str(v)
+
+    out = []
+    for c in crits[:50]:
+        c = c if isinstance(c, dict) else {}
+        mx = c.get("max")
+        levels = c.get("levels")
+        if isinstance(levels, list):  # ["poor", "ok", "good"] -> {"1": "poor", ...}
+            levels = {str(i + 1): v for i, v in enumerate(levels)}
+        out.append({"id": s(c.get("id")), "name": s(c.get("name")), "description": s(c.get("description")),
+                    "max": mx if isinstance(mx, int) and not isinstance(mx, bool) and 2 <= mx <= MAX_LEVELS else 4,
+                    "weight": c.get("weight") if isinstance(c.get("weight"), (int, float)) else 1,
+                    "levels": {s(k): s(v) for k, v in levels.items()} if isinstance(levels, dict) else {}})
+    return {"rubric_id": s(obj.get("rubric_id")), "version": s(obj.get("version")),
+            "description": s(obj.get("description")), "criteria": out}
 
 
 def check(obj: dict, task_id: str) -> tuple[dict | None, str | None]:

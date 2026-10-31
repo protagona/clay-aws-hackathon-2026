@@ -41,7 +41,7 @@
 
 ## Verification
 
-**Suite:** 295 passed after the verify-review fixes. Ruff and gitleaks are clean, and there are no new dependencies.
+**Suite:** 303 passed after both verify passes. Ruff and gitleaks are clean, and there are no new dependencies.
 
 | AC | How it was proven |
 |---|---|
@@ -82,6 +82,14 @@
   - `</source>` inside pasted text is neutralised
   - a form submitted with the radio left on "File" but another field filled infers the source kind
   - the T3 empty state is tested (`test_empty_state_right_after_an_activation`)
+- **Fixed after the second verify pass:**
+  - A model reply whose `levels` came back as a list or a string, or whose `criteria` came back as a number, was saved as-is and crashed the review page (500), leaving its Discard button unreachable. Every draft is now reshaped into the form's structure before it's saved and before it's shown.
+  - A scale above 20 (for example 1–25) showed "✓ Valid" but the form couldn't activate or discard it. `max` is now capped at 20, prompt `draft-v3` maps wider scales (such as 0–100) to 10 bands and notes it, and the form is `novalidate`, so Discard always works.
+  - Weights given as strings (`"inf"`, `"5000"`) are bounded too.
+  - The file input fits at 375 px, and pending drafts have "Review" links.
+
+  Regression tests: `test_malformed_model_drafts_open_and_can_be_discarded` (5 cases, through the real routes with only the model faked) and the weight test (8 cases).
+- **Accepted:** the URL timeout applies per socket operation, so a slow-drip server can hold a fetch past 10 s. Uploads are spooled by Starlette before the size check, as in the existing trace import.
 - **Rulings:**
   - **Identical bytes:** re-activating byte-identical content under an existing id@version is allowed. It's idempotent and appends a history line. Different bytes under the same id@version are refused.
   - **Field errors:** R2's "inline errors" is met by showing the first validation error, naming its field (for example `criteria.0.levels`), in the status line above the form, not next to each field.

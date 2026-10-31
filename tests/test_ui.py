@@ -722,3 +722,36 @@ def test_run_page_names_the_rubric_that_scored_it(tmp_path):  # T1
     evaluate(d["clean"], load(eval_config(tmp_path / "e")))
     _, c = _client(runs)
     assert "Rubric:\n    adb-rubric-v0 v0.1" in c.get("/runs/fixture-clean").text
+
+
+@pytest.mark.parametrize("bad", [
+    {"criteria": [{"id": "a", "name": "A", "description": "d", "max": 3, "weight": 1, "levels": ["w", "m", "r"]}]},
+    {"criteria": [{"id": "a", "name": "A", "description": "d", "max": 3, "weight": 1, "levels": "all good"}]},
+    {"criteria": 7},
+    {"criteria": [{"id": "a", "name": "A", "description": "d", "max": 25, "weight": 1, "levels": {"1": "x", "25": "y"}}]},
+    {"criteria": [{"id": "a", "name": "A", "description": "d", "max": 3, "weight": "inf", "levels": {"1": "x", "3": "y"}}]},
+])
+def test_malformed_model_drafts_open_and_can_be_discarded(tmp_path, monkeypatch, bad):  # verify pass 2 blockers
+    import foundry.models.registry as registry
+    from foundry.models.base import Completion
+
+    reply = json.dumps({"rubric_id": "r", "version": "1", "task_id": "adb", "description": "d", **bad})
+
+    class Fake:
+        provider, model_id = "fake", "fake"
+
+        def complete(self, req):
+            return Completion(reply, 10, 10, "fake")
+
+    monkeypatch.setattr(registry, "build_provider", lambda *a, **k: Fake())
+    root = _rubric_project(tmp_path)
+    app, c = _client(tmp_path / "runs", root=root)
+    r = c.post("/rubric/draft", data={"csrf": _csrf(app), "task": "adb", "kind": "text", "text": "x",
+                                      "config": "bedrock"})
+    assert r.status_code == 303
+    page = c.get(r.headers["location"])
+    assert page.status_code == 200 and "✗ Invalid" in page.text and "✓ Valid" not in page.text
+    assert "novalidate" in page.text  # Discard works in a real browser even with odd field values
+    url = r.headers["location"].split("?")[0]
+    assert c.post(url, data={"csrf": _csrf(app), "task": "adb", "action": "discard"}).status_code == 303
+    assert not list((root / "tasks/adb/rubrics/drafts").iterdir())
