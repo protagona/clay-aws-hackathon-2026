@@ -28,12 +28,14 @@ from foundry.contract import evaluation_interrupted
 from foundry.evaluate import lock
 from foundry.runstore import RunDir, is_valid_run_id, new_run_id
 from foundry.tasks import load_prompts
+from foundry.ui.monitor import monitor
 from foundry.ui.render import render
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
 CONFIG_STEM_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 JOB_ID_RE = re.compile(r"^[a-f0-9]{16}$")
 BATCH_ID_RE = re.compile(r"^b-\d{8}-\d{6}-[a-f0-9]{4}$")
+STATIC = {"monitor.js": "text/javascript"}  # the only files /static serves
 
 
 @dataclass
@@ -104,7 +106,8 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
         except Exception:
             response = PlainTextResponse("Internal Server Error", status_code=500)
         response.headers["Content-Security-Policy"] = (
-            "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+            "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; form-action 'self'; "
+            "frame-ancestors 'none'")
         response.headers["X-Content-Type-Options"] = "nosniff"
         # Not "no-referrer": with it, browsers send `Origin: null` on form POSTs (Fetch spec), which the Origin
         # check above rejects. "same-origin" still sends nothing to other sites.
@@ -141,11 +144,8 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
         return page(request, "index.html", cards=cards, configs=_configs(st), prompts=_prompt_ids(st),
                     banners=[j for j in st.jobs.values() if j.failed_visibly], refresh=busy, nav="runs")
 
-    @app.get("/runs/{run_id}", response_class=HTMLResponse)
-    def run_page(request: Request, run_id: str):
-        path = run_path(run_id)
-        if path is None:
-            return error(request, 404, "Run not found")
+    def run_view(path: Path, seen: int | None = None) -> dict:
+        """Context for run.html and its live fragment, from the run's own files."""
         rd = RunDir(path)
         run = {**_read_run(path), "run_id": path.name}  # links and forms use the directory name, never run.json's
         scores = _scores(path)
@@ -160,11 +160,35 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
         except ValueError:
             pass
         evaluating = lock.is_locked(path)
+        live = evaluating or run.get("status") == "running"
+        return {"run": run, "scores": None if interrupted else scores, "report_html": report_html,
+                "interrupted": interrupted, "evaluating": evaluating,
+                "m": monitor(run, steps, live=live, seen=seen)}
+
+    @app.get("/runs/{run_id}", response_class=HTMLResponse)
+    def run_page(request: Request, run_id: str):
+        path = run_path(run_id)
+        if path is None:
+            return error(request, 404, "Run not found")
+        ctx = run_view(path)
         others = [c for c in sorted((c for c in _cards(st) if not c["unreadable"]), key=lambda c: c["started_at"],
                                     reverse=True) if c["run_id"] != path.name][:COMPARE_CHOICES]
-        return page(request, "run.html", run=run, scores=None if interrupted else scores, report_html=report_html,
-                    steps=steps, interrupted=interrupted, evaluating=evaluating, others=others,
-                    refresh=evaluating or run.get("status") == "running")
+        return page(request, "run.html", others=others, noscript_refresh=ctx["m"]["live"], **ctx)
+
+    @app.get("/runs/{run_id}/live", response_class=HTMLResponse)
+    def run_live(request: Request, run_id: str, seen: int = 0):
+        """The #monitor fragment alone, polled by monitor.js while the run is live."""
+        path = run_path(run_id)
+        if path is None:
+            return PlainTextResponse("Run not found", status_code=404)
+        return page(request, "_monitor.html", **run_view(path, seen=seen))
+
+    @app.get("/static/{name}")
+    def static(name: str):
+        if name not in STATIC:
+            return PlainTextResponse("Not found", status_code=404)
+        return Response((Path(__file__).with_name("static") / name).read_bytes(), media_type=STATIC[name],
+                        headers={"Cache-Control": "no-cache"})
 
     @app.get("/compare", response_class=HTMLResponse)
     def compare_page(request: Request, a: str = "", b: str = ""):

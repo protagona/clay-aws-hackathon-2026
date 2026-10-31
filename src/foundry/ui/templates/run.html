@@ -1,8 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ run.prompt_id }} · Foundry Eval Sandbox{% endblock %}
+{% block script %}{% if m.live %}<script src="/static/monitor.js" defer></script>{% endif %}{% endblock %}
 {% block body %}
 <div class="runhead">
-  <div><a href="/">&lt; Runs</a> &nbsp; <strong>{{ run.prompt_id }}</strong> · {{ run.model.id }} · <span class="status-{{ run.status }}">{{ run.status }}</span></div>
+  <div><a href="/">&lt; Runs</a> &nbsp; <strong>{{ run.prompt_id }}</strong> · {{ run.model.id }}</div>
   <div class="wrap" style="color:var(--muted);font-size:13px">{{ run.run_id }}</div>
   {% if others %}
   <form class="compare" method="get" action="/compare">
@@ -12,22 +13,14 @@
     <button type="submit">Compare</button>
   </form>
   {% endif %}
-  {% if scores %}
-  <div class="scores">Overall {{ "%.2f"|format(scores.overall) if scores.overall is not none else "incomplete" }}
-    | Workflow {{ "%.2f"|format(scores.workflow.score) }}
-    | Output {{ "%.2f"|format(scores.output.score) if scores.output.score is not none else "not scored" }}</div>
-  {% endif %}
 </div>
 
 {% if evaluating %}
-<p class="note">Evaluating… reload to see the report.</p>
+<p class="note">Evaluating… the scores appear here when it finishes.</p>
 {% elif interrupted %}
 <p class="note">Evaluation was interrupted; re-run foundry evaluate.</p>
 {% endif %}
-
-{% if report_html %}
-<article class="report">{{ report_html | safe }}</article>
-{% else %}
+{% if not report_html %}
   {% if run.status == "running" %}
   <p class="note">If this run crashed, evaluate it from the CLI with --force.</p>
   {% endif %}
@@ -35,20 +28,14 @@
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <button type="submit"{% if run.status == "running" or evaluating %} disabled{% endif %}>Evaluate</button>
   </form>
-  <h2 style="font-size:17px">Timeline</h2>
-  {% if steps %}
-  <table>
-    <thead><tr><th>Step</th><th>Type</th><th>Name</th><th>Status</th><th>Duration (ms)</th><th>Detail</th></tr></thead>
-    <tbody>
-    {% for s in steps %}
-    <tr><td>{{ s.step }}</td><td>{{ s.type }}</td><td>{{ s.server ~ "/" if s.server else "" }}{{ s.name }}</td>
-        <td>{{ s.status }}{% if s.retry_of is not none %} (retry of {{ s.retry_of }}){% endif %}{% if s.invalid %} (invalid){% endif %}</td>
-        <td>{{ s.duration_ms }}</td><td class="wrap">{{ (s.error or s.text or s.result_preview or "")[:160] }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <p class="empty">No steps recorded yet.</p>
-  {% endif %}
+{% endif %}
+
+{% include "_monitor.html" %}
+
+{% if report_html %}
+<article class="report">{{ report_html | safe }}</article>
+<details class="all-steps"><summary>All steps ({{ m.feed | length }})</summary>
+{% include "_feed.html" %}
+</details>
 {% endif %}
 {% endblock %}

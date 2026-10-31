@@ -100,9 +100,11 @@ def test_report_page_and_unevaluated_page(tmp_path):  # AC25
     evaluate(d["clean"], load(eval_config(tmp_path / "e")))
     _, c = _client(runs)
     r = c.get("/runs/fixture-clean")
-    assert r.status_code == 200 and "<h2>Workflow score: 1.00</h2>" in r.text and "Overall 0.83" in r.text
+    assert r.status_code == 200 and "<h2>Workflow score: 1.00</h2>" in r.text
+    assert re.search(r'class="ring" style="--p:83\.3">\s*<span class="ring-num">0\.83</span><span class="ring-label">Overall', r.text)
+    assert "All steps (" in r.text  # the feed folds under the report once evaluated
     r = c.get("/runs/fixture-recovered")
-    assert 'action="/runs/fixture-recovered/evaluate"' in r.text and "<table>" in r.text
+    assert 'action="/runs/fixture-recovered/evaluate"' in r.text and 'class="waterfall"' in r.text
     assert "retry of 6" in r.text
 
 
@@ -522,3 +524,60 @@ def test_compare_hostile_scores_do_not_break_the_page(tmp_path):  # C1: files ar
     r = c.get("/compare?a=fixture-clean&b=fixture-recovered")
     assert r.status_code == 200 and "<script>x</script>" not in r.text and "&lt;script&gt;" in r.text
     assert "<td>3/4</td>" in r.text
+
+
+# --- increment 5: live run monitor ------------------------------------------------------------------
+
+
+def _running(d):
+    rj = json.loads((d / "run.json").read_text())
+    rj["status"] = "running"
+    rj.pop("ended_at", None)
+    (d / "run.json").write_text(json.dumps(rj))
+
+
+def test_live_fragment_and_script_only_while_live(tmp_path):  # L1, L2, L4
+    runs = tmp_path / "runs"
+    d = _seed(runs, "recovered")
+    _, c = _client(runs)
+    page = c.get("/runs/fixture-recovered").text
+    assert "monitor.js" not in page and 'data-live="0"' in page  # finished: no script, no polling
+    _running(d["recovered"])
+    page = c.get("/runs/fixture-recovered").text
+    assert '<script src="/static/monitor.js" defer></script>' in page and 'data-live="1"' in page
+    assert '<noscript><meta http-equiv="refresh" content="3"></noscript>' in page and "data-start=" in page
+    frag = c.get("/runs/fixture-recovered/live?seen=5")
+    assert frag.status_code == 200 and frag.text.lstrip().startswith('<section id="monitor"')
+    assert "<html" not in frag.text and "wf-bar working" in frag.text
+    news = re.findall(r'class="feed-item[^"]*\bnew\b[^"]*">\s*<div class="feed-head">\s*<span class="step-no">(\d+)', frag.text)
+    assert news and all(int(n) > 5 for n in news)
+    assert " new" not in c.get("/runs/fixture-recovered").text.split('id="monitor"')[1].split("feed-item")[1][:60]
+
+
+@pytest.mark.parametrize("path", ["/runs/a..b/live", "/runs/nope/live", "/runs/%2e%2e/live", "/runs/.ui-jobs/live"])
+def test_live_fragment_bad_ids_404(tmp_path, path):  # L2
+    _seed(tmp_path / "runs", "clean")
+    _, c = _client(tmp_path / "runs")
+    assert c.get(path).status_code == 404
+
+
+def test_live_fragment_renders_untrusted_content_inert(tmp_path):  # L5
+    runs = tmp_path / "runs"
+    d = _seed(runs, "hostile")
+    _running(d["hostile"])
+    _, c = _client(runs)
+    html = c.get("/runs/fixture-hostile/live").text
+    assert "<script" not in html and "<img" not in html and "<b>" not in html
+    assert "\\u003cscript\\u003e" in html and "&lt;b&gt;bold&lt;/b&gt;" in html  # args via tojson; error text escaped
+
+
+def test_csp_and_static_allowlist(tmp_path):  # S1
+    _, c = _client(tmp_path / "runs")
+    csp = c.get("/").headers["content-security-policy"]
+    assert "default-src 'none'" in csp and "script-src 'self'" in csp and "connect-src 'self'" in csp
+    assert "frame-ancestors 'none'" in csp and "unsafe-eval" not in csp and "script-src 'unsafe-inline'" not in csp
+    js = c.get("/static/monitor.js")
+    assert js.status_code == 200 and js.headers["content-type"].startswith("text/javascript")
+    assert "innerHTML" not in js.text and "eval(" not in js.text
+    for bad in ("/static/app.py", "/static/..%2Fapp.py", "/static/monitor.js%00", "/static/"):
+        assert c.get(bad).status_code == 404

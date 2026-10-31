@@ -55,7 +55,14 @@ uv run foundry ui        # http://127.0.0.1:8765
 | **Batches** | Pick a base config, any number of agent models and prompts, repeats, parallel runs, a cost cap and whether to evaluate. Start the batch, then watch the per-model table (mean, min, max and stdev of the overall score) and per-run rows fill in, each linking to its report. |
 | **Import** | Evaluate an agent we didn't build: start the OpenTelemetry receiver with one click and point the agent at the address shown, or upload an OTLP/JSON trace file. Each agent run becomes a normal card. |
 
-- Pages refresh themselves while something is running.
+- A run's page is a live monitor. While the run is going, it updates in place every second and shows:
+  - a ticking clock
+  - gauges for model calls, time and input tokens against the run's limits
+  - a waterfall of every model and tool call, where parallel calls overlap and errors are red
+  - a step feed with the model's text and each tool's arguments and result
+
+  Once evaluated, score rings sit above the report, and the feed folds under it.
+- Other pages refresh themselves while something is running.
 - Batches keep going if the UI is restarted.
 - The UI listens on 127.0.0.1 only.
 

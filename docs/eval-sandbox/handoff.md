@@ -240,6 +240,21 @@ See [increment-4.md](increment-4.md).
 - **F-3, compare:** `/compare?a=&b=` and a "Compare with" picker on every run page. The layout was approved by the user.
 - **Suite:** 200 passed.
 
+## Increment 5 (2026-10-30): live run monitor
+
+See [increment-5.md](increment-5.md).
+
+- The run page is now a live monitor, built to the approved "Mission control" design:
+  - a status pill and ticking clock
+  - limit gauges
+  - a waterfall that shows parallel tool calls
+  - a step feed with expandable args and results
+  - score rings once the run is evaluated
+- **Live updates:** `GET /runs/{id}/live` returns a server-rendered, autoescaped fragment, and a 60-line same-origin script swaps it in every second. Without scripts, the page falls back to a meta refresh.
+- **Security policy:** the CSP gains only `script-src 'self'` and `connect-src 'self'`.
+- **Verified in a real browser:** headless Chromium over CDP, against live Bedrock runs.
+- **Suite:** 212 passed.
+
 ## Follow-ups
 
 - Deploy and verify: `cdk bootstrap`, `cdk deploy`, `scripts/stage_samples.sh`, then `scripts/verify_deploy.sh` (README, *Deploy*). Request quota for Sonnet and Haiku 5.5 if those models are preferred; switching back is a config change (ADR-8). Verify Bedrock prices in the console.
@@ -249,7 +264,8 @@ See [increment-4.md](increment-4.md).
 - Scope `HarnessRole` Bedrock actions to model and inference-profile ARNs (F-012).
 - S3 access logging (F-010) before any non-sandbox use.
 - Compare the judge against human scores (D-6's sanity check passes; human agreement is untested). Add more adversarial prompt-injection fixtures.
-- Real-browser UI check: screenshots and a screen-reader pass.
+- Screen-reader pass on the UI. Real-browser screenshots are done for the run page (increment 5).
+- Render model text in the run feed as Markdown. It shows raw for now.
 - Clay's real rubric and prompts once they arrive (K-1). Swapping them in is a data-only change.
 - Investigate the `RuntimeWarning: coroutine ... _set_close_event was never awaited` that Strands emits when an MCP server fails to start.
 

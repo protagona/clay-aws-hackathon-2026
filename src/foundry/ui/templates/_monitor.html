@@ -1,0 +1,63 @@
+{# The live part of the run page; also served alone by GET /runs/{id}/live. `m` is foundry.ui.monitor.monitor(). #}
+<section id="monitor" class="monitor" data-run="{{ run.run_id }}" data-live="{{ 1 if m.live else 0 }}"
+         data-state="{{ run.status }}|{{ evaluating }}|{{ scores is not none }}" data-seen="{{ m.seen }}"
+         {% if m.start_ms %}data-start="{{ m.start_ms }}"{% endif %}>
+  <div class="statusbar">
+    <span class="pill big status-{{ 'evaluating' if evaluating else run.status }}">{% if m.live %}<span class="dot" aria-hidden="true"></span>{% endif %}{{ "evaluating" if evaluating else run.status }}</span>
+    <span class="clock" data-clock title="{{ 'Elapsed' if m.start_ms else 'Duration' }}">{{ m.elapsed }}</span>
+    <span class="muted conn" data-conn></span>
+  </div>
+
+  {% if scores %}
+  <div class="rings">
+    {% for label, v in [("Overall", scores.overall), ("Workflow", scores.workflow.score), ("Output", scores.output.score)] %}
+    <div class="ring{% if v is none %} none{% endif %}" style="--p:{{ ((v or 0) * 100) | round(1) }}">
+      <span class="ring-num">{{ "%.2f"|format(v) if v is not none else "—" }}</span><span class="ring-label">{{ label }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="gauges">
+    {% for g in m.gauges %}
+    <div class="gauge">
+      <div class="gauge-head"><span>{{ g.label }}</span><span class="num">{{ g.value }}{% if g.max %} / {{ g.max }}{% endif %}</span></div>
+      {% if g.pct is not none %}<div class="bar" role="img" aria-label="{{ g.label }} {{ g.pct }}% of limit"><span class="fill {{ g.level }}" style="width:{{ g.pct }}%"></span></div>{% endif %}
+    </div>
+    {% endfor %}
+    <div class="stats">
+      <div><span class="muted">Cost</span> <span class="num">{{ "$%.3f"|format(m.cost) if m.cost is not none else "—" }}</span></div>
+      <div><span class="muted">Output tokens</span> <span class="num">{{ m.tokens_out }}</span></div>
+      <div><span class="muted">Tool calls</span> <span class="num">{{ m.tools_ok }} ok{% if m.tools_err %} · <span class="bad">{{ m.tools_err }} ✗ error</span>{% endif %}</span></div>
+      {% if m.servers %}<div><span class="muted">Servers</span> <span class="num">{% for name, n in m.servers %}{{ name }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</span></div>{% endif %}
+    </div>
+  </div>
+
+  <h2 class="section">Waterfall</h2>
+  {% if m.rows or m.working %}
+  <div class="waterfall">
+    <div class="wf-axis"><span class="wf-label"></span><span class="wf-track">{% for t in m.axis %}<span class="tick" style="left:{{ t.pct }}%">{{ t.label }}</span>{% endfor %}</span></div>
+    {% for r in m.rows %}
+    <div class="wf-row{% if r.error %} error{% endif %}{% if r.new %} new{% endif %}">
+      <span class="wf-label wrap"><span class="step-no">{{ r.step }}</span> {{ r.label }}{% if r.error %} <span class="bad">✗</span>{% endif %}</span>
+      <span class="wf-track"><span class="wf-bar {{ r.kind }}{% if r.error %} error{% endif %}" style="left:{{ r.left }}%;width:{{ r.width }}%"
+            title="{{ r.label }} · {{ 'error' if r.error else 'ok' }} · {{ '%.0f'|format(r.ms or 0) }} ms"></span></span>
+    </div>
+    {% endfor %}
+    {% if m.working %}
+    <div class="wf-row">
+      <span class="wf-label muted">working…</span>
+      <span class="wf-track"><span class="wf-bar working" style="left:{{ m.working.left }}%;width:{{ m.working.width }}%"></span></span>
+    </div>
+    {% endif %}
+    <div class="legend muted"><span class="key model"></span> model call <span class="key tool"></span> tool call <span class="key error"></span> error</div>
+  </div>
+  {% else %}
+  <p class="empty">No steps recorded yet.</p>
+  {% endif %}
+
+  {% if not report_html %}
+  <h2 class="section">Steps</h2>
+  {% include "_feed.html" %}
+  {% endif %}
+</section>
