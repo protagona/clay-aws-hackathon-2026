@@ -581,3 +581,21 @@ def test_csp_and_static_allowlist(tmp_path):  # S1
     assert "innerHTML" not in js.text and "eval(" not in js.text
     for bad in ("/static/app.py", "/static/..%2Fapp.py", "/static/monitor.js%00", "/static/"):
         assert c.get(bad).status_code == 404
+
+
+def test_feed_renders_model_markdown_safely(tmp_path):  # increment 5 follow-up: model text as Markdown, inert
+    runs = tmp_path / "runs"
+    d = _seed(runs, "recovered")
+    trace = d["recovered"] / "trace.jsonl"
+    last = max(json.loads(ln)["step"] for ln in trace.read_text().splitlines() if ln.strip())
+    text = ("## Plan\n\n| Dataset | Res |\n|---|---|\n| **NAIP** | 0.6 m |\n\n<script>alert(1)</script> "
+            "[x](javascript:alert(1)) ![i](https://evil.example/i.png)")
+    with open(trace, "a") as fh:
+        fh.write(json.dumps({"step": last + 1, "type": "llm_call", "name": "model", "status": "ok",
+                             "started_at": "2026-10-29T14:03:00.000Z", "duration_ms": 10, "text": text}) + "\n")
+    _, c = _client(runs)
+    html = c.get("/runs/fixture-recovered/live").text
+    feed = html.split('class="feed-md wrap">')[1].split("</div>")[0]  # newest first: the added step
+    assert "<h2>Plan</h2>" in feed and "<table>" in feed and "<strong>NAIP</strong>" in feed
+    assert "<script" not in feed and "&lt;script&gt;" in feed
+    assert 'href="javascript' not in feed.lower() and "<img" not in feed

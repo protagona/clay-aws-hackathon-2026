@@ -253,7 +253,8 @@ See [increment-5.md](increment-5.md).
 - **Live updates:** `GET /runs/{id}/live` returns a server-rendered, autoescaped fragment, and a 60-line same-origin script swaps it in every second. Without scripts, the page falls back to a meta refresh.
 - **Security policy:** the CSP gains only `script-src 'self'` and `connect-src 'self'`.
 - **Verified in a real browser:** headless Chromium over CDP, against live Bedrock runs.
-- **Suite:** 212 passed.
+- **Model text in the feed renders as Markdown.** It uses the same safe renderer as reports: no raw HTML, no images, and only http(s) or relative links. Each step is capped at 20k characters in a scrolling box.
+- **Suite:** 213 passed.
 
 ## Follow-ups
 
@@ -265,7 +266,6 @@ See [increment-5.md](increment-5.md).
 - S3 access logging (F-010) before any non-sandbox use.
 - Compare the judge against human scores (D-6's sanity check passes; human agreement is untested). Add more adversarial prompt-injection fixtures.
 - Screen-reader pass on the UI. Real-browser screenshots are done for the run page (increment 5).
-- Render model text in the run feed as Markdown. It shows raw for now.
 - Clay's real rubric and prompts once they arrive (K-1). Swapping them in is a data-only change.
 - Investigate the `RuntimeWarning: coroutine ... _set_close_event was never awaited` that Strands emits when an MCP server fails to start.
 

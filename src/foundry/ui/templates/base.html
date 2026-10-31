@@ -115,6 +115,11 @@ h2.section { font-size:16px; margin:22px 0 8px; }
 .feed-item.new { animation: fadein .5s ease-out; }
 .feed-head { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; font-size:14px; }
 .feed-text { margin-top:4px; font-size:14px; white-space:pre-wrap; }
+.feed-md { margin-top:4px; font-size:14px; max-height:320px; overflow:auto; }
+.feed-md > :first-child { margin-top:0; } .feed-md > :last-child { margin-bottom:0; }
+.feed-md h1, .feed-md h2, .feed-md h3, .feed-md h4 { font-size:15px; margin:10px 0 4px; }
+.feed-md p, .feed-md ul, .feed-md ol { margin:4px 0; } .feed-md table { font-size:13px; margin:6px 0; }
+.feed-md pre { white-space:pre; }
 .feed-error { margin-top:4px; font-size:13px; color:var(--bad); }
 .feed details { margin-top:4px; font-size:13px; } .feed summary { cursor:pointer; color:var(--accent); }
 .feed pre { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; max-height:240px; overflow:auto; white-space:pre-wrap; font-size:12px; margin:6px 0 0; }

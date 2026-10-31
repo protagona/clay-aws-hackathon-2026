@@ -18,7 +18,7 @@
       {% if s.invalid %}<span class="pill warn">invalid</span>{% endif %}
     </div>
     {% if s.error %}<div class="feed-error wrap">{{ s.error[:400] }}</div>{% endif %}
-    {% if s.type == "llm_call" and s.text %}<div class="feed-text wrap">{{ s.text[:600] }}{% if s.text|length > 600 %}…{% endif %}</div>
+    {% if s.type == "llm_call" and s.text %}<div class="feed-md wrap">{{ s.text | markdown }}</div>
     {% elif s.type != "tool_call" and s.text %}<div class="feed-text wrap">{{ s.text[:400] }}</div>{% endif %}
     {% if s.type == "tool_call" and (s.args or s.result_preview) %}
     <details data-step="{{ s.step }}"><summary>Arguments and result</summary>

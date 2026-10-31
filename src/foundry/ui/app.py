@@ -21,6 +21,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 
 from foundry.batch import spread
 from foundry.config import ConfigError, load_config
@@ -32,6 +33,8 @@ from foundry.ui.monitor import monitor
 from foundry.ui.render import render
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
+TEMPLATES.env.filters["markdown"] = lambda text: Markup(render(text[:FEED_TEXT_MAX]))  # same safe renderer as reports
+FEED_TEXT_MAX = 20_000  # characters of a model step rendered in the feed
 CONFIG_STEM_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 JOB_ID_RE = re.compile(r"^[a-f0-9]{16}$")
 BATCH_ID_RE = re.compile(r"^b-\d{8}-\d{6}-[a-f0-9]{4}$")
