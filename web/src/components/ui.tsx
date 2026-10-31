@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
 import { ringColor } from "../format";
 
 export function Panel({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -60,6 +60,49 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 
 export function Skeleton({ className = "h-24" }: { className?: string }) {
   return <div className={`animate-pulse rounded-2xl bg-slate-200/70 dark:bg-slate-800 ${className}`} />;
+}
+
+/** Increment 12: every page opens with a title and a one-line caption saying what the page is for. */
+export function PageHeader({ title, caption, children }: { title: ReactNode; caption: ReactNode; children?: ReactNode }) {
+  return (
+    <header className="flex flex-wrap items-end gap-x-4 gap-y-2">
+      <div className="min-w-0">
+        <h1 className="break-words text-2xl font-semibold">{title}</h1>
+        <p data-caption className="mt-1 text-sm text-slate-500 dark:text-slate-400">{caption}</p>
+      </div>
+      {children && <div className="ml-auto flex flex-wrap items-center gap-2">{children}</div>}
+    </header>
+  );
+}
+
+/** A numbered section: number, heading, one-line caption and a rule, then its content (charts and tables in a Panel). */
+export function Section({ n, title, caption, actions, children }: { n?: number; title: ReactNode; caption: ReactNode; actions?: ReactNode; children?: ReactNode }) {
+  const id = useId();
+  return (
+    <section aria-labelledby={id}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-slate-200 pb-2 dark:border-slate-800">
+        {n !== undefined && <span className="font-mono text-xs text-slate-400 dark:text-slate-500" aria-hidden="true">{String(n).padStart(2, "0")}</span>}
+        <h2 id={id} className="text-base font-semibold">{title}</h2>
+        <p data-caption className="text-sm text-slate-500 dark:text-slate-400">{caption}</p>
+        {actions && <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">{actions}</div>}
+      </div>
+      {children !== undefined && <div className="pt-4">{children}</div>}
+    </section>
+  );
+}
+
+/** The run panel's smaller, unnumbered section (a group, not a page section). */
+export function SubSection({ title, caption, children }: { title: ReactNode; caption: ReactNode; children: ReactNode }) {
+  const id = useId();
+  return (
+    <div role="group" aria-labelledby={id}>
+      <div className="border-b border-slate-200 pb-1.5 dark:border-slate-800">
+        <h3 id={id} className="text-sm font-semibold">{title}</h3>
+        <p data-caption className="text-xs text-slate-500 dark:text-slate-400">{caption}</p>
+      </div>
+      <div className="pt-3">{children}</div>
+    </div>
+  );
 }
 
 export function Kpi({ label, value, sub, accent }: { label: string; value: ReactNode; sub?: ReactNode; accent?: boolean }) {

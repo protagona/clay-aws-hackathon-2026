@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, del, getSession, put } from "../api";
 import { useToast } from "../components/toasts";
-import { ErrorBanner, Panel, Pill, Skeleton } from "../components/ui";
+import { ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton } from "../components/ui";
 import type { DraftView, Rubric, RubricCriterion } from "../types";
 import { usePoll } from "../usePoll";
 
@@ -95,18 +95,24 @@ export default function RubricDraft() {
     navigate("/rubric");
   }
 
-  if (q.error) return <main className="p-8"><ErrorBanner message={q.error} /></main>;
-  if (!q.data || !body) return <main className="p-8"><Skeleton className="h-96" /></main>;
+  const header = (
+    <PageHeader title="Review draft" caption="Check the drafted criteria against the source, fix anything wrong, then activate.">
+      {status && (status.valid ? <Pill tone="emerald">✓ Valid: ready to activate</Pill> : <Pill tone="rose">✗ Invalid</Pill>)}
+      <Link to="/rubric" className="text-sm text-sky-600">← Rubric</Link>
+    </PageHeader>
+  );
+  if (q.error) return <main className="space-y-6 px-4 py-6 sm:px-8">{header}<ErrorBanner message={q.error} /></main>;
+  if (!q.data || !body) return <main className="space-y-6 px-4 py-6 sm:px-8">{header}<Skeleton className="h-96" /></main>;
   const m = q.data.meta;
   return (
-    <main className="grid gap-6 px-4 py-6 sm:px-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-      <div className="space-y-4 min-w-0">
-        <div className="flex flex-wrap items-center gap-3"><Link to="/rubric" className="text-sm text-sky-600">← Rubric</Link>
-          <h1 className="text-lg font-semibold">Review draft</h1>
-          {status && (status.valid ? <Pill tone="emerald">✓ Valid: ready to activate</Pill> : <Pill tone="rose">✗ Invalid</Pill>)}</div>
+    <main className="space-y-8 px-4 py-6 sm:px-8">
+      {header}
+      <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <Section n={1} title="Criteria" caption="Edit any field. Problems show next to the field.">
+      <div className="min-w-0 space-y-4">
         {status && !status.valid && status.error && !status.field && <p role="alert" className="text-sm text-rose-600">✗ {status.error}</p>}
         {m.notes.length > 0 && (
-          <Panel className="border-l-4 border-amber-400 p-4"><div className="text-sm font-semibold">Model notes</div>
+          <Panel className="border-l-4 border-amber-400 p-4"><div className="text-sm font-semibold">Notes from the model</div>
             <ul className="mt-1 list-disc pl-5 text-sm">{m.notes.map((n, i) => <li key={i}>{n}</li>)}</ul></Panel>
         )}
         <Panel className="p-5"><RubricForm body={body} onChange={setBody} error={status?.valid ? null : status?.error ?? null} field={status?.field ?? null} /></Panel>
@@ -114,18 +120,23 @@ export default function RubricDraft() {
           <button className="btn-ghost" disabled={busy} onClick={() => save(false)}>Save</button>
           <button className="btn-primary" disabled={busy} onClick={() => save(true)}>Approve and activate</button>
           <button className="btn-danger" onClick={discard}>Discard draft</button>
-          <span className="text-xs text-slate-500">Future evaluations use the activated rubric; past runs keep theirs.</span>
+          <span className="text-xs text-slate-500">New runs are scored with the activated rubric; past runs keep theirs.</span>
         </div>
       </div>
-      <Panel className="h-fit p-5 lg:sticky lg:top-24">
-        <h2 className="font-semibold">Source</h2>
-        <p className="mt-1 break-words text-sm">{m.source.kind} · {m.source.label}</p>
+      </Section>
+      <div className="lg:sticky lg:top-24">
+      <Section n={2} title="Source" caption="What the draft was made from.">
+      <Panel className="p-5">
+        <p className="break-words text-sm">{m.source.kind} · {m.source.label}</p>
         <p className="text-xs text-slate-500">{m.source.format} · {m.source.bytes.toLocaleString()} bytes · sha256 {m.source.sha256.slice(0, 12)}…</p>
         {q.data.source_text !== null ? <pre className="mt-3 max-h-[28rem] overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-3 text-xs dark:bg-slate-800">{q.data.source_text}</pre>
           : <a className="mt-3 inline-block text-sm text-sky-600 underline" href={`/api/rubric/drafts/${encodeURIComponent(id)}/source?task=adb`}>Open source</a>}
         <p className="mt-3 text-xs text-slate-500">Drafted by {m.model ?? "— (already a rubric)"}{m.prompt_id && ` · prompt ${m.prompt_id}`}{m.usage && ` · ${m.usage.tokens_in} in / ${m.usage.tokens_out} out`}{m.usage?.cost_usd !== undefined && ` · $${m.usage.cost_usd.toFixed(3)}`}</p>
         {m.raw_reply && <details className="mt-2 text-xs"><summary className="cursor-pointer text-sky-600">Raw model reply</summary><pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap">{m.raw_reply.slice(0, 8000)}</pre></details>}
       </Panel>
+      </Section>
+      </div>
+      </div>
     </main>
   );
 }

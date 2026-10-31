@@ -636,11 +636,11 @@ def _compare_rows(a: dict, b: dict) -> list[dict]:
     """Rows of the compare table: label, A, B, and B - A, from untrusted files (every number is type-checked)."""
     rows = []
 
-    def add(label, va, vb, fmt="{:.2f}", indent=False, show=None):
+    def add(label, va, vb, fmt="{:.2f}", indent=False, show=None, better="higher"):
         show = show or (lambda v: fmt.format(v))
         delta = _signed(vb - va, fmt) if va is not None and vb is not None else ""
         rows.append({"label": label, "a": "—" if va is None else show(va), "b": "—" if vb is None else show(vb),
-                     "delta": delta, "indent": indent})
+                     "delta": delta, "indent": indent, "better": better})  # which way is an improvement (increment 12)
 
     def sc(side, *keys):
         v = side["scores"]
@@ -673,13 +673,13 @@ def _compare_rows(a: dict, b: dict) -> list[dict]:
         def frac(v):
             return f"{v[0]:g}/{v[1]:g}" if v[1] is not None else f"{v[0]:g}"
         rows.append({"label": k, "a": frac(va) if va else "—", "b": frac(vb) if vb else "—", "indent": True,
-                     "delta": _signed(vb[0] - va[0], "{:g}") if va and vb else ""})
-    add("Cost", a["cost"], b["cost"], "${:.3f}")
-    add("Model calls", a["model_calls"], b["model_calls"], "{:g}")
-    add("Tool calls (errors)", a["tool_calls"], b["tool_calls"], "{:g}")
+                     "delta": _signed(vb[0] - va[0], "{:g}") if va and vb else "", "better": "higher"})
+    add("Cost", a["cost"], b["cost"], "${:.3f}", better="lower")
+    add("Model calls", a["model_calls"], b["model_calls"], "{:g}", better=None)
+    add("Tool calls (failed)", a["tool_calls"], b["tool_calls"], "{:g}", better=None)
     rows[-1]["a"] = f"{a['tool_calls']} ({a['tool_errors']})"
     rows[-1]["b"] = f"{b['tool_calls']} ({b['tool_errors']})"
-    add("Duration", a["duration"], b["duration"], "{:.0f} s")
+    add("Duration", a["duration"], b["duration"], "{:.0f} s", better="lower")
     return rows
 
 

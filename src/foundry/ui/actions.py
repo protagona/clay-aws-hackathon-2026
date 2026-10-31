@@ -119,7 +119,7 @@ def start_evaluate(st, run_id: str) -> None:
     path = need_run(st, run_id)
     run = core._read_run(path)
     if run.get("status") == "running":
-        raise UiError(409, f"Run {run_id} is still running. If it crashed, evaluate it from the CLI with --force.")
+        raise UiError(409, f"Run {run_id} is still running. If it crashed, score it from the CLI: foundry evaluate runs/{run_id} --force.")
     try:
         token = lock.acquire(path, owner="ui")
     except lock.LockHeld as exc:
@@ -426,7 +426,7 @@ def run_rubric(st, run_id: str) -> dict:
     path = need_run(st, run_id)
     copy = path / "rubric.json"
     if not core._regular(copy):
-        raise UiError(404, "This run has no rubric copy (not evaluated yet)")
+        raise UiError(404, "This run has no rubric copy (not scored yet)")
     task = (core._read_run(path) or {}).get("task_id")
     store = rubric_store(st, task if isinstance(task, str) and task in core._task_ids(st) else "adb")
     return _rubric_with_meta(store, copy)

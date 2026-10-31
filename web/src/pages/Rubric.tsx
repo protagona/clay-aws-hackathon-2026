@@ -3,8 +3,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { ApiError, getSession, post, upload } from "../api";
 import { Dropzone } from "../components/Dropzone";
 import { useToast } from "../components/toasts";
-import { ErrorBanner, Panel, Pill, Skeleton, Spinner, Tabs } from "../components/ui";
+import { ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton, Spinner, Tabs } from "../components/ui";
 import type { RubricOverview, Session } from "../types";
+import { pretty } from "../format";
 import { usePoll } from "../usePoll";
 
 type Kind = "file" | "text" | "url" | "mcp";
@@ -66,19 +67,21 @@ export default function Rubric() {
   const ready = kind === "file" ? !!file : kind === "text" ? !!text.trim() : kind === "url" ? !!url.trim() : !!mcp.trim();
   const d = ov.data;
   return (
-    <main className="grid gap-6 px-4 py-6 sm:px-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <div className="space-y-6">
-        {ov.error && <ErrorBanner message={ov.error} onRetry={ov.reload} />}
+    <main className="space-y-8 px-4 py-6 sm:px-8">
+      <PageHeader title="Rubric" caption="The rules the judge uses to score each run's output." />
+      {ov.error && <ErrorBanner message={ov.error} onRetry={ov.reload} />}
+      <div className="grid items-start gap-10 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="space-y-10">
+        <Section n={1} title="Active rubric" caption="Used to score new runs. Past runs keep the rubric that scored them.">
         <Panel className="p-5">
-          <h1 className="text-lg font-semibold">Active rubric</h1>
-          {!d ? <Skeleton className="mt-3 h-24" /> : d.active ? (<>
-            <p className="mt-1"><Link className="font-semibold text-sky-700 dark:text-sky-400" to="/rubric/active">{d.active.rubric_id}</Link> v{d.active.version} · {d.active.criteria.length} criteria · <Link className="text-sm text-sky-600" to="/rubric/active">View full rubric →</Link></p>
-            <div className="mt-3 flex flex-wrap gap-2">{d.active.criteria.map((c) => <Pill key={c.id}>{c.id} · 1–{c.max} · ×{c.weight}</Pill>)}</div>
-            <p className="mt-3 text-xs text-slate-500">Future evaluations use the active rubric. Past runs keep the rubric they were scored with.</p>
+          {!d ? <Skeleton className="h-24" /> : d.active ? (<>
+            <p><Link className="font-semibold text-sky-700 dark:text-sky-400" to="/rubric/active">{d.active.rubric_id}</Link> v{d.active.version} · {d.active.criteria.length} criteria · <Link className="text-sm text-sky-600" to="/rubric/active">View full rubric →</Link></p>
+            <div className="mt-3 flex flex-wrap gap-2">{d.active.criteria.map((c) => <Pill key={c.id}>{c.name || pretty(c.id)} · 1–{c.max} · weight {c.weight}</Pill>)}</div>
           </>) : <p className="mt-2 text-sm text-rose-600">✗ No valid rubric.json for this task.</p>}
         </Panel>
+        </Section>
+        <Section n={2} title="History" caption="Earlier rubrics. Activate one to switch back.">
         <Panel className="overflow-x-auto p-2">
-          <h2 className="px-3 pt-2 font-semibold">History</h2>
           {d && d.versions.length === 0 ? <p className="px-3 py-2 text-sm text-slate-500">No history yet; the current rubric is archived on the first activation.</p> : (
             <table className="table"><thead><tr><th>Version</th><th>Rubric</th><th>Activated</th><th>From</th><th>Runs</th><th></th></tr></thead>
               <tbody>{d?.versions.map((v) => (
@@ -89,11 +92,11 @@ export default function Rubric() {
               ))}</tbody></table>
           )}
         </Panel>
+        </Section>
       </div>
-      <div className="space-y-6">
+      <div className="space-y-10">
+        <Section n={3} title="Import a rubric" caption="A model turns your document into a draft. Nothing changes until you review and activate it.">
         <Panel className="p-5">
-          <h2 className="text-lg font-semibold">Import a rubric</h2>
-          <p className="mb-4 text-sm text-slate-500">A model drafts structured criteria from the source; you review and edit the draft before anything changes.</p>
           <form onSubmit={draft} className="space-y-4">
             <Tabs<Kind> value={kind} onChange={setKind} tabs={[{ id: "file", label: "File" }, { id: "text", label: "Text" }, { id: "url", label: "URL" }, { id: "mcp", label: "MCP tool" }]} />
             {kind === "file" && <Dropzone accept=".pdf,.docx,.xlsx,.csv,.md,.markdown,.txt,.html,.htm,.json" file={file} onFile={setFile} hint="PDF, Word, Excel (every tab), CSV, Markdown, text, HTML or JSON · up to 4.5 MB" />}
@@ -102,7 +105,7 @@ export default function Rubric() {
             {kind === "mcp" && <div className="grid gap-3 sm:grid-cols-2">
               <label className="field">server/tool<input className="input" placeholder="roda/get_dataset_details" value={mcp} onChange={(e) => setMcp(e.target.value)} /></label>
               <label className="field">Arguments (JSON)<input className="input" placeholder='{"slug": "naip"}' value={args} onChange={(e) => setArgs(e.target.value)} /></label></div>}
-            <label className="field">Config (its judge drafts the rubric)<select className="input" value={config} onChange={(e) => setConfig(e.target.value)}>{session?.configs.map((c) => <option key={c}>{c}</option>)}</select></label>
+            <label className="field">Settings (config) <span className="font-normal text-slate-400">· its judge model writes the draft</span><select className="input" value={config} onChange={(e) => setConfig(e.target.value)}>{session?.configs.map((c) => <option key={c}>{c}</option>)}</select></label>
             {phase !== "idle" && (
               <div className="flex items-center gap-3 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-800 dark:bg-sky-500/10 dark:text-sky-200" role="status">
                 <Spinner label="Working" />
@@ -113,16 +116,20 @@ export default function Rubric() {
             <button className="btn-primary" disabled={!ready || phase !== "idle"}>Draft rubric</button> <span className="text-xs text-slate-500">about $0.01–0.15</span>
           </form>
         </Panel>
+        </Section>
         {d && d.drafts.length > 0 && (
-          <Panel className="p-5"><h2 className="font-semibold">Drafts waiting for review</h2>
-            <ul className="mt-2 space-y-2 text-sm">{d.drafts.map((m) => (
+          <Section n={4} title="Drafts waiting for review" caption="Open a draft to check it and activate it.">
+          <Panel className="p-5">
+            <ul className="space-y-2 text-sm">{d.drafts.map((m) => (
               <li key={m.draft_id} className="flex items-center justify-between gap-3">
                 <span className="truncate" title={m.source.label}>{m.source.label}</span>
                 <span className="flex shrink-0 items-center gap-2">{m.valid ? <Pill tone="emerald">✓ valid</Pill> : <Pill tone="rose">✗ invalid</Pill>}
                   <Link className="text-sky-600" to={`/rubric/drafts/${m.draft_id}`}>Review</Link></span>
               </li>))}</ul>
           </Panel>
+          </Section>
         )}
+      </div>
       </div>
     </main>
   );

@@ -1,6 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 import { RubricView } from "../components/RubricView";
-import { ErrorBanner, Pill, Skeleton } from "../components/ui";
+import { ErrorBanner, PageHeader, Pill, Section, Skeleton } from "../components/ui";
 import type { Rubric } from "../types";
 import { usePoll } from "../usePoll";
 
@@ -11,19 +11,21 @@ export default function RubricVersion({ kind = "history" }: { kind?: "history" |
     : kind === "run" ? `/api/runs/${encodeURIComponent(id)}/rubric`
     : `/api/rubric/history/${encodeURIComponent(file)}?task=adb`;
   const q = usePoll<{ rubric: Rubric; active: boolean; sha256?: string }>(url, () => null);
-  if (q.error) return <main className="p-8"><ErrorBanner message={q.error} /></main>;
-  if (!q.data) return <main className="p-8"><Skeleton className="h-64" /></main>;
+  const caption = kind === "active" ? "The rubric used to score new runs." : kind === "run" ? `The exact rubric that scored run ${id}.` : "An earlier version of the rubric.";
+  const back = <Link to={kind === "run" ? `/runs/${encodeURIComponent(id)}` : "/rubric"} className="text-sm text-sky-600">← {kind === "run" ? "Run" : "Rubric"}</Link>;
+  if (q.error) return <main className="space-y-6 px-4 py-6 sm:px-8"><PageHeader title="Rubric" caption={caption}>{back}</PageHeader><ErrorBanner message={q.error} onRetry={q.reload} /></main>;
+  if (!q.data) return <main className="space-y-6 px-4 py-6 sm:px-8"><PageHeader title="Rubric" caption={caption}>{back}</PageHeader><Skeleton className="h-64" /></main>;
   const r = q.data.rubric;
   return (
-    <main className="space-y-4 px-4 py-6 sm:px-8">
-      <div className="flex flex-wrap items-center gap-3">
-        <Link to={kind === "run" ? `/runs/${encodeURIComponent(id)}` : "/rubric"} className="text-sm text-sky-600">← {kind === "run" ? "Run" : "Rubric"}</Link>
-        <h1 className="text-lg font-semibold">{r.rubric_id} v{r.version}</h1>
+    <main className="space-y-8 px-4 py-6 sm:px-8">
+      <PageHeader title={<span className="break-all">{r.rubric_id} v{r.version}</span>} caption={<span className="break-all">{caption}</span>}>
         {q.data.active && <Pill tone="emerald">✓ active</Pill>}
-        {kind === "run" && <span className="text-xs text-slate-500">the exact copy that scored run {id}</span>}
         {q.data.sha256 && <span className="font-mono text-xs text-slate-400">sha256 {q.data.sha256.slice(0, 12)}…</span>}
-      </div>
-      <RubricView rubric={r} />
+        {back}
+      </PageHeader>
+      <Section title="Criteria" caption="Each criterion is scored on its own scale. The levels say what each score means.">
+        <RubricView rubric={r} />
+      </Section>
     </main>
   );
 }

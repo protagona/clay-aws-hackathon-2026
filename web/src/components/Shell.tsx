@@ -59,10 +59,10 @@ export function Shell({ children }: { children: ReactNode }) {
           <div className="ml-auto flex items-center gap-3">
             {session?.rubric && (
               <NavLink to="/rubric" className="hidden font-mono text-xs text-slate-500 lg:inline" title="Active rubric">
-                rubric {session.rubric.id} · v{session.rubric.version}
+                Scoring with {session.rubric.id} v{session.rubric.version}
               </NavLink>
             )}
-            {session?.aws_profile && <span className="hidden text-xs text-slate-500 xl:inline" title="AWS profile">AWS {session.aws_profile}</span>}
+            {session?.aws_profile && <span className="hidden text-xs text-slate-500 xl:inline" title="AWS profile">AWS profile {session.aws_profile}</span>}
             <button className="btn-ghost" onClick={() => setDark(!dark)} aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}>
               {dark ? "☀" : "◐"}
             </button>
@@ -112,12 +112,13 @@ function NewRunDialog({ open, onClose, session }: { open: boolean; onClose: () =
   return (
     <Dialog open={open} title="New run" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
-        <label className="field">Prompt
+        <p data-caption className="text-sm text-slate-500">Run one prompt with one set of settings.</p>
+        <label className="field">Prompt <span className="font-normal text-slate-400">· the question the agent answers</span>
           <select value={prompt} onChange={(e) => setPrompt(e.target.value)} className="input">
             {session?.prompts.map((p) => <option key={p}>{p}</option>)}
           </select>
         </label>
-        <label className="field">Config
+        <label className="field">Settings (config)
           <select value={config} onChange={(e) => setConfig(e.target.value)} className="input">
             {session?.configs.map((c) => <option key={c}>{c}</option>)}
           </select>

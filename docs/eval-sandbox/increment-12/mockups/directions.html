@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clarity directions</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>tailwind.config={darkMode:'class'}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>body{font-family:Inter,system-ui,sans-serif}.mono{font-family:'JetBrains Mono',monospace}</style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+<!-- Increment 12 design review: three ways to make each section of the Dashboard self-explaining.
+     Placeholder data copied from the live board on 2026-10-31. -->
+
+<script>
+const models = [["claude-sonnet-4-6",1.00,.98,1.00,"$0.203","12"],["claude-opus-4-6",.99,.96,1.00,"$0.386","10"],["kimi-k3",.97,.91,1.00,"$0.143","19"],["kimi-k3 · pipeline",.93,.91,.97,"$0.289","4"],["zai.glm-5",.93,.85,1.00,"$0.105","6"],["claude-haiku-4-5",.92,.87,.96,"$0.066","6"],["nova-2-lite",.84,.72,.92,"$0.018","6"]];
+function bars(withHead){
+  return (withHead?`<div class="grid grid-cols-[200px_1fr_56px_72px_56px] gap-3 px-1 pb-2 text-[11px] uppercase tracking-wider text-slate-500"><span>Model</span><span>Mean score <span class="normal-case tracking-normal">(line = lowest to highest)</span></span><span class="text-right">Score</span><span class="text-right">Cost / run</span><span class="text-right">Runs</span></div>`:"")+
+  models.map(([m,v,lo,hi,c,n])=>`<div class="grid grid-cols-[200px_1fr_56px_72px_56px] items-center gap-3 px-1 py-1.5 text-sm"><span class="text-sky-400">${m}</span><div class="relative h-2 rounded-full bg-slate-800"><div class="h-2 rounded-full bg-sky-500" style="width:${v*100}%"></div><div class="absolute top-1/2 h-px bg-white" style="left:${lo*100}%;width:${(hi-lo)*100}%"></div></div><span class="text-right font-semibold tabular-nums">${v.toFixed(2)}</span><span class="text-right text-slate-400 tabular-nums">${c}</span><span class="text-right text-slate-400 tabular-nums">${n}</span></div>`).join("");
+}
+function scatter(){
+  let dots="";const pts=[[3,85],[4,82],[10,92],[14,96],[20,93],[27,100],[29,96],[35,97],[40,100],[45,92],[52,96],[58,100],[63,93],[70,91],[78,96],[88,100],[95,96]];
+  pts.forEach(([x,y])=>dots+=`<circle cx="${40+x*8.6}" cy="${10+(1-((y-70)/30))*150}" r="5" fill="#38bdf8"/>`);
+  return `<svg viewBox="0 0 900 190" class="w-full"><g stroke="#1e293b">${[0,1,2,3].map(i=>`<line x1="40" x2="890" y1="${10+i*50}" y2="${10+i*50}"/>`).join("")}</g>
+  <g fill="#64748b" font-size="11">${["1.00","0.90","0.80","0.70"].map((t,i)=>`<text x="0" y="${14+i*50}">${t}</text>`).join("")}<text x="40" y="186">$0.00</text><text x="440" y="186">$0.30</text><text x="850" y="186">$0.60</text></g>${dots}</svg>`;
+}
+function struggles(caption){
+  const col=(t,c,rows)=>`<div><div class="text-sm font-medium">${t}</div>${caption?`<div class="mb-2 text-xs text-slate-500">${c}</div>`:'<div class="mb-2"></div>'}${rows.map(([a,b,w])=>`<div class="flex items-center gap-3 py-1 text-xs"><span class="flex-1 text-slate-300">${a}</span><div class="h-1.5 w-24 rounded-full bg-slate-800"><div class="h-1.5 rounded-full bg-sky-500" style="width:${w}%"></div></div><span class="w-8 text-right tabular-nums">${b}</span></div>`).join("")}</div>`;
+  return `<div class="grid grid-cols-3 gap-8">${col("Tool errors","Failed tool calls, by tool",[["roda/get_dataset_details","5",100],["roda/sample_dataset","1",20],["stac/search_items","1",20]])}${col("Skipped workflow steps","Required steps a run left out",[["adb-005 · stage 3","2",100]])}${col("Weakest output criteria","Average judge score, lowest first",[["Method","88%",88],["Feasibility","89%",89],["Data fit","93%",93],["Limitations","95%",95]])}</div>`;
+}
+const kpi=(l,v,s)=>`<div class="rounded-2xl bg-slate-900 p-4 ring-1 ring-slate-800"><div class="text-xs text-slate-400">${l}</div><div class="mt-1 text-2xl font-semibold tabular-nums">${v}</div><div class="text-xs text-slate-500">${s}</div></div>`;
+const kpis=(subs)=>`<div class="grid grid-cols-4 gap-3">${kpi("Runs","75",subs?"all scored with the active rubric":"")}${kpi("Average score","0.93",subs?"0 = poor, 1 = perfect":"")}${kpi("Best model","sonnet-4-6",subs?"1.00 average":"")}${kpi("Spent","$13.48",subs?"agent runs + judging":"runs + evaluations")}</div>`;
+</script>
+
+<div class="sticky top-0 z-10 flex gap-2 border-b border-slate-800 bg-slate-950/95 px-8 py-3 text-sm backdrop-blur">
+  <a href="#A" class="rounded-full bg-slate-800 px-3 py-1">A · Captioned panels</a>
+  <a href="#B" class="rounded-full bg-slate-800 px-3 py-1">B · Sections with dividers (recommended)</a>
+  <a href="#C" class="rounded-full bg-slate-800 px-3 py-1">C · Question headings</a>
+  <button onclick="document.documentElement.classList.toggle('dark')" class="ml-auto rounded-lg px-2 ring-1 ring-slate-700">◐</button>
+</div>
+
+<!-- ============ B (recommended): page header, then numbered sections split by a rule; artifacts sit in panels ============ -->
+<section id="B" class="mx-auto max-w-[1376px] px-8 py-10">
+  <div class="mb-1 text-xs font-medium uppercase tracking-widest text-sky-400">Direction B · recommended</div>
+  <header class="mb-8">
+    <h1 class="text-2xl font-semibold">Dashboard</h1>
+    <p class="mt-1 text-sm text-slate-400">How each model scored, what it cost, and where agents went wrong.</p>
+  </header>
+  <div class="space-y-10" id="b-body"></div>
+</section>
+
+<!-- ============ A: the same page, every panel gets a title and a caption; no new structure ============ -->
+<section id="A" class="mx-auto mt-16 max-w-[1376px] border-t-4 border-slate-800 px-8 py-10">
+  <div class="mb-1 text-xs font-medium uppercase tracking-widest text-sky-400">Direction A</div>
+  <header class="mb-6"><h1 class="text-2xl font-semibold">Dashboard</h1><p class="mt-1 text-sm text-slate-400">How each model scored, what it cost, and where agents went wrong.</p></header>
+  <div class="space-y-5" id="a-body"></div>
+</section>
+
+<!-- ============ C: section headings are the questions an observer asks, captions are the answers ============ -->
+<section id="C" class="mx-auto mt-16 max-w-[1376px] border-t-4 border-slate-800 px-8 py-10">
+  <div class="mb-1 text-xs font-medium uppercase tracking-widest text-sky-400">Direction C</div>
+  <header class="mb-8"><h1 class="text-2xl font-semibold">Dashboard</h1><p class="mt-1 text-sm text-slate-400">How each model scored, what it cost, and where agents went wrong.</p></header>
+  <div class="space-y-10" id="c-body"></div>
+</section>
+
+<script>
+const sec=(n,title,cap,body,extra="")=>`<section><div class="flex items-baseline gap-3 border-b border-slate-800 pb-2"><span class="mono text-xs text-slate-500">${n}</span><h2 class="text-base font-semibold">${title}</h2><p class="text-sm text-slate-400">${cap}</p>${extra}</div><div class="pt-4">${body}</div></section>`;
+const panel=(b)=>`<div class="rounded-2xl bg-slate-900 p-5 ring-1 ring-slate-800">${b}</div>`;
+const filter=`<div class="ml-auto flex items-center gap-2 text-xs text-slate-400">Scored with <span class="rounded-lg bg-slate-900 px-2 py-1 ring-1 ring-slate-700">Active rubric ▾</span><a class="text-sky-400">View rubric →</a></div>`;
+document.getElementById("b-body").innerHTML=
+  sec("01","Summary","All runs scored with the active rubric.",kpis(true),filter)+
+  sec("02","Model ranking","Average score per model. Higher is better.",panel(bars(true)))+
+  sec("03","Cost vs score","Each dot is one run. Up and to the left is best: high score, low cost.",panel(scatter()))+
+  sec("04","Where agents struggle","The most common problems across all runs.",panel(struggles(true)));
+
+const apanel=(t,c,b,extra="")=>`<div class="rounded-2xl bg-slate-900 p-5 ring-1 ring-slate-800"><div class="flex items-start"><div><h2 class="font-semibold">${t}</h2><p class="text-xs text-slate-500">${c}</p></div>${extra}</div><div class="mt-4">${b}</div></div>`;
+document.getElementById("a-body").innerHTML= kpis(true)+
+  apanel("Model ranking","Average score per model. Higher is better.",bars(true))+
+  apanel("Cost vs score","Each dot is one run. Up and to the left is best.",scatter())+
+  apanel("Where agents struggle","The most common problems across all runs.",struggles(true));
+
+const q=(title,ans,body)=>`<section><h2 class="text-lg font-semibold">${title}</h2><p class="mt-0.5 text-sm text-slate-300"><span class="rounded bg-sky-500/15 px-1.5 py-0.5 text-sky-300">Answer</span> ${ans}</p><div class="mt-4">${body}</div></section>`;
+document.getElementById("c-body").innerHTML=
+  q("How are we doing overall?","75 runs averaged 0.93 for $13.48.",kpis(true))+
+  q("Which model scores best?","claude-sonnet-4-6 leads with 1.00; nova-2-lite is last with 0.84.",panel(bars(true)))+
+  q("Is a higher score worth the cost?","Most runs score above 0.90 for under $0.30.",panel(scatter()))+
+  q("Where do agents fail?","Mostly roda/get_dataset_details errors and weak Method plans.",panel(struggles(true)));
+</script>
+</body>
+</html>

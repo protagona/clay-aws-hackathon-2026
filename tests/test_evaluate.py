@@ -216,7 +216,7 @@ def test_concurrent_evaluation_refused(tmp_path, fixture_run):
 
     run = fixture_run("clean")
     token = lock.acquire(run)
-    with pytest.raises(EvaluateError, match="already being evaluated"):
+    with pytest.raises(EvaluateError, match="already being scored"):
         _ev(tmp_path, run)
     s = _ev(tmp_path / "b", run, lock_token=token)  # the holder of the token may evaluate
     assert s["overall"] is not None and not (run / ".evaluating").exists()

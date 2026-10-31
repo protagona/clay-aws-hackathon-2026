@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Direction B refined</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>tailwind.config={darkMode:'class'}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>body{font-family:Inter,system-ui,sans-serif}.mono{font-family:'JetBrains Mono',monospace}</style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+<!-- Increment 12: direction B (page title + caption; numbered sections with a heading, caption and rule;
+     artifacts in panels) applied to the Runs board, the run panel, a batch and Compare. Placeholder data. -->
+<script>
+const sec=(n,title,cap,body,extra="")=>`<section><div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-slate-800 pb-2">${n?`<span class="mono text-xs text-slate-500">${n}</span>`:""}<h2 class="text-base font-semibold">${title}</h2><p class="text-sm text-slate-400">${cap}</p>${extra}</div><div class="pt-4">${body}</div></section>`;
+const sub=(title,cap,body)=>`<section><div class="border-b border-slate-800 pb-1.5"><h3 class="text-sm font-semibold">${title}</h3><p class="text-xs text-slate-400">${cap}</p></div><div class="pt-3">${body}</div></section>`;
+const panel=(b,c="p-5")=>`<div class="rounded-2xl bg-slate-900 ${c} ring-1 ring-slate-800">${b}</div>`;
+const kpi=(l,v,s,acc)=>`<div class="rounded-2xl bg-slate-900 p-4 ring-1 ring-slate-800"><div class="text-xs text-slate-400">${l}</div><div class="mt-1 text-2xl font-semibold tabular-nums ${acc?"text-sky-400":""}">${v}</div><div class="text-xs text-slate-500">${s}</div></div>`;
+const ring=(v,s=44)=>`<div class="relative shrink-0" style="width:${s}px;height:${s}px"><svg viewBox="0 0 36 36" class="h-full w-full -rotate-90"><circle cx="18" cy="18" r="15" fill="none" stroke="#334155" stroke-width="4"/><circle cx="18" cy="18" r="15" fill="none" stroke="#10b981" stroke-width="4" stroke-linecap="round" stroke-dasharray="${v*94.25} 94.25"/></svg><span class="absolute inset-0 grid place-content-center text-[11px] font-semibold">${v>=1?"1.00":v.toFixed(2).replace(/^0/,"")}</span></div>`;
+const card=(p,m,v,w,o,c)=>`<div class="rounded-2xl bg-slate-900 p-4 ring-1 ring-slate-800"><div class="flex justify-between"><div><div class="font-semibold">${p}</div><div class="text-xs text-slate-400">${m}</div></div>${ring(v)}</div><div class="mt-3 flex justify-between text-xs text-slate-400"><span>Workflow ${w} · Output ${o}</span><span>${c}</span></div></div>`;
+const col=(t,color,cap,n,body)=>`<div><div class="flex items-baseline justify-between px-1"><h3 class="text-xs font-semibold uppercase tracking-wider ${color}">${t}</h3><span class="mono text-xs text-slate-500">${n}</span></div><p class="mb-2 px-1 text-xs text-slate-500">${cap}</p>${body}</div>`;
+const empty=`<div class="rounded-2xl border border-dashed border-slate-700 p-6 text-center text-sm text-slate-500">None right now</div>`;
+const gauge=(l,v,max,pct)=>`<div class="rounded-xl bg-slate-900 p-3 ring-1 ring-slate-800"><div class="text-xs text-slate-400">${l}</div><div class="mono mt-0.5 text-sm">${v}<span class="text-slate-500">/${max}</span></div><div class="mt-2 h-1.5 rounded-full bg-slate-800"><div class="h-1.5 rounded-full bg-sky-500" style="width:${pct}%"></div></div></div>`;
+const head=(t,c,extra="")=>`<header class="mb-8 flex items-end gap-4"><div><h1 class="text-2xl font-semibold">${t}</h1><p class="mt-1 text-sm text-slate-400">${c}</p></div>${extra}</header>`;
+const label=(t)=>`<div class="mb-3 mt-16 border-t-4 border-slate-800 pt-6 text-xs font-medium uppercase tracking-widest text-sky-400">${t}</div>`;
+</script>
+
+<div class="flex">
+<main class="min-w-0 flex-1 px-8 py-8" id="runs"></main>
+<aside class="w-[540px] shrink-0 border-l border-slate-800 bg-slate-950 px-6 py-5" id="drawer"></aside>
+</div>
+<div class="px-8 pb-16" id="rest"></div>
+
+<script>
+document.getElementById("runs").innerHTML =
+ `<div class="mb-3 text-xs font-medium uppercase tracking-widest text-sky-400">Runs board · run panel open</div>`+
+ head("Runs","Every agent run, grouped by where it is. Click a run to see its details.")+
+ `<div class="space-y-10">`+
+ sec("01","At a glance","Counts and totals for the runs shown below.",
+   `<div class="grid grid-cols-2 gap-3 xl:grid-cols-4">${kpi("Runs","19","of 74 · +17 today")}${kpi("Average score","0.97","19 scored · 0 = poor, 1 = perfect")}${kpi("In progress","0","0 running · 0 being scored",true)}${kpi("Spent","$3.33","agent runs + judging")}</div>`)+
+ sec("02","Runs by status","Filter to narrow the board and the totals above.",
+   `<div class="mb-4 flex gap-2 text-sm"><span class="rounded-full bg-slate-900 px-3 py-1.5 ring-1 ring-slate-700">kimi-k3 ▾</span><span class="rounded-full bg-slate-900 px-3 py-1.5 ring-1 ring-slate-700">All prompts ▾</span><span class="w-48 rounded-full bg-slate-900 px-3 py-1.5 text-slate-500 ring-1 ring-slate-700">Search runs…</span></div>
+    <div class="grid grid-cols-2 gap-4">
+    ${col("Running","text-sky-400","The agent is working now.","0",empty)}
+    ${col("Being scored","text-amber-400","The judge is grading the result.","0",empty)}
+    ${col("Scored","text-slate-300","Finished and graded. Ring = overall score.","19",card("adb-005","kimi-k3",.96,"1.00","0.92","$0.115")+`<div class="h-3"></div>`+card("adb-006","kimi-k3",1,"1.00","1.00","$0.143"))}
+    ${col("Needs attention","text-rose-400","Failed, or not scored yet.","0",empty)}
+    </div>`)+`</div>`;
+
+document.getElementById("drawer").innerHTML =
+ `<div class="flex items-start justify-between"><div><div class="text-xs text-slate-400">adb-005 · kimi-k3 · pipeline</div><div class="mt-0.5 font-semibold">Compare at least two open sources of medium-resolution multispectral imagery…</div></div><span class="ml-3 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs text-emerald-300 ring-1 ring-emerald-500/30">succeeded</span></div>
+  <div class="mt-4 flex gap-5 border-b border-slate-800 text-sm"><span class="border-b-2 border-sky-500 pb-2">Overview</span><span class="text-slate-400">Timeline</span><span class="text-slate-400">Steps 31</span><span class="text-slate-400">Report</span><span class="text-slate-400">Rubric</span></div>
+  <div class="mt-5 space-y-7">`+
+  sub("Scores","How the judge graded this run, from 0 to 1.",`<div class="flex gap-6">${["Overall","Workflow","Output"].map((l,i)=>`<div class="text-center">${ring([.97,.93,1][i],64)}<div class="mt-1 text-xs text-slate-400">${l}</div></div>`).join("")}<div class="self-center text-xs text-slate-500">Workflow: how the agent worked.<br>Output: how good its plan is.<br>Rubric adb-rubric-v0 v0.1</div></div>`)+
+  sub("Limits used","How much of each budget the run used.",`<div class="grid grid-cols-3 gap-2">${gauge("Model calls","10","12",83)}${gauge("Time","38s","300s",13)}${gauge("Input tokens","106k","200k",53)}</div><div class="mt-2 text-xs text-slate-400">Cost $0.270 · 7.2k tokens out · 17 tool calls, all ok</div>`)+
+  sub("Agents","Time each agent took, in order.",`<div class="space-y-1.5 text-xs">${[["planner",4,10,"5.5s"],["executor",16,40,"19.2s"],["checker",57,30,"12.5s"]].map(([a,l,w,t])=>`<div class="flex items-center gap-2"><span class="w-16 text-slate-400">${a}</span><div class="relative h-2 flex-1 rounded-full bg-slate-800"><div class="absolute h-2 rounded-full bg-sky-500" style="left:${l}%;width:${w}%"></div></div><span class="w-10 text-right text-slate-400">${t}</span></div>`).join("")}</div>`)+
+  sub("Latest steps","The last things the agent did. All steps are on the Steps tab.",panel(`<div class="text-sm"><span class="mono text-xs text-slate-500">31</span> <span class="rounded bg-violet-500/15 px-1.5 text-xs text-violet-300">checker</span> verdict <span class="ml-1 rounded-full bg-emerald-500/10 px-2 text-xs text-emerald-300">✓ approve</span></div>`,"p-3"))+
+ `</div>`;
+
+document.getElementById("rest").innerHTML =
+ label("Batch page")+head("Batch b-20261031-095647-0119","24 runs across 4 models, all finished. $5.76 of the $10.10 cap spent.",`<a class="mb-1 ml-auto text-sm text-sky-400">← All batches</a>`)+
+ `<div class="space-y-10">`+
+ sec("01","Results by model","Average overall score per model. Spread needs 2+ runs.",panel(`<table class="w-full text-sm"><tr class="text-left text-xs text-slate-500"><th class="pb-2">Model</th><th>Succeeded</th><th>Average</th><th>Lowest</th><th>Highest</th><th>Spread</th><th>Cost / run</th></tr><tr><td class="py-1.5">claude-opus-4-6</td><td>6/6</td><td class="font-semibold">0.99</td><td>0.96</td><td>1.00</td><td>0.02</td><td>$0.420</td></tr><tr><td class="py-1.5">kimi-k3</td><td>6/6</td><td class="font-semibold">0.97</td><td>0.92</td><td>1.00</td><td>0.03</td><td>$0.167</td></tr></table>`))+
+ sec("02","Every run","One row per run. Click a prompt to open the run.",panel(`<table class="w-full text-sm"><tr class="text-left text-xs text-slate-500"><th class="pb-2">Model</th><th>Prompt</th><th>Status</th><th>Overall</th><th>Workflow</th><th>Output</th><th>Model calls</th><th>Tool calls</th><th>Cost</th></tr><tr><td class="py-1.5">claude-sonnet-4-6</td><td class="text-sky-400">adb-005</td><td>succeeded</td><td>0.99</td><td>0.99</td><td>1.00</td><td>4</td><td>10 <span class="text-rose-400">(1 failed)</span></td><td>$0.235</td></tr></table>`))+`</div>`+
+ label("Compare page")+head("Compare two runs","Pick two runs to see their scores, cost and steps side by side.")+
+ `<div class="space-y-10">`+
+ sec("01","Scores and cost","B minus A. Green means B did better.",panel(`<table class="w-full text-sm"><tr class="text-left text-xs text-slate-500"><th class="pb-2"></th><th>A · zai.glm-5</th><th>B · kimi-k3 · pipeline</th><th>Difference</th></tr><tr><td class="py-1.5 font-medium">Overall</td><td>1.00</td><td>0.97</td><td class="text-rose-400">−0.03</td></tr><tr><td class="py-1.5 font-medium">Cost</td><td>$0.099</td><td>$0.270</td><td class="text-rose-400">+$0.172</td></tr></table>`))+
+ sec("02","Steps side by side","Every step each run took, in order.",panel(`<div class="text-sm text-slate-400">Step · Agent · Kind (model / tool / agent) · Name · Status · Time</div>`))+`</div>`;
+</script>
+</body>
+</html>

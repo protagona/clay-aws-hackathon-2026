@@ -1,6 +1,6 @@
 // Run views shared by the drawer and the compare page: gauges, waterfall, step feed. Pure presentation.
 import { useState } from "react";
-import { money } from "../format";
+import { money, seconds } from "../format";
 import type { Monitor, Row, Step } from "../types";
 import { Pill } from "./ui";
 
@@ -18,11 +18,9 @@ export function Gauges({ m }: { m: Monitor }) {
           )}
         </div>
       ))}
-      <div className="grid grid-cols-2 gap-x-4 text-sm sm:col-span-3 sm:grid-cols-4">
-        <div><span className="text-slate-500">Cost </span><span className="font-medium tabular-nums">{money(m.cost)}</span></div>
-        <div><span className="text-slate-500">Out tokens </span><span className="font-medium">{m.tokens_out}</span></div>
-        <div><span className="text-slate-500">Tools </span><span className="font-medium">{m.tools_ok} ok{m.tools_err > 0 && <span className="text-rose-600"> · {m.tools_err} ✗</span>}</span></div>
-        {m.servers.length > 0 && <div className="truncate"><span className="text-slate-500">Servers </span>{m.servers.map(([n, c]) => `${n} ${c}`).join(" · ")}</div>}
+      <div className="space-y-0.5 text-sm text-slate-600 sm:col-span-3 dark:text-slate-300">
+        <div>Cost <span className="font-medium tabular-nums">{money(m.cost)}</span> · {m.tokens_out} tokens out · {m.tools_ok + m.tools_err} tool calls{m.tools_err > 0 ? <span className="text-rose-600">, {m.tools_err} failed</span> : ", all ok"}</div>
+        {m.servers.length > 0 && <div className="break-words text-xs text-slate-500">Servers: {m.servers.map(([n, c]) => `${n} ${c}`).join(" · ")}</div>}
       </div>
     </div>
   );
@@ -46,7 +44,7 @@ export function Waterfall({ m }: { m: Monitor }) {
               {r.kind === "agent" ? (
                 <><strong>{r.label}</strong>{r.verdict === "approve" && <span className="text-emerald-600"> ✓ approve</span>}{r.verdict === "revise" && <span className="text-rose-600"> ✗ revise</span>}
                   <span className="text-slate-400"> · {r.calls} call{r.calls === 1 ? "" : "s"} · {r.secs}s</span></>
-              ) : (<><span className="mr-1 font-mono text-slate-400">{r.step}</span>{r.label}{r.error && <span className="text-rose-600"> ✗</span>}</>)}
+              ) : (<><span className="mr-1.5 font-mono text-slate-400">{r.step}</span>{" "}{r.label}{r.error && <span className="text-rose-600"> ✗</span>}</>)}
             </span>
             <span className="relative h-3.5">
               <span className={`absolute top-0.5 h-2.5 rounded ${barTone(r)}`} style={{ left: `${r.left}%`, width: `${r.width}%` }}
@@ -61,8 +59,8 @@ export function Waterfall({ m }: { m: Monitor }) {
           </div>
         )}
         <div className="mt-2 flex gap-4 text-slate-500">
-          <span><i className="mr-1 inline-block h-2 w-3 rounded bg-sky-600" />model</span>
-          <span><i className="mr-1 inline-block h-2 w-3 rounded bg-teal-500" />tool</span>
+          <span><i className="mr-1 inline-block h-2 w-3 rounded bg-sky-600" />model call</span>
+          <span><i className="mr-1 inline-block h-2 w-3 rounded bg-teal-500" />tool call</span>
           <span><i className="mr-1 inline-block h-2 w-3 rounded bg-rose-500" />error</span>
         </div>
       </div>
@@ -74,13 +72,13 @@ function StepBody({ s }: { s: Step }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      {s.error && <div className="mt-1 break-words text-sm text-rose-600">{s.error.slice(0, 400)}</div>}
+      {s.error && <div className="mt-1 break-words text-sm text-rose-600" data-content>{s.error.slice(0, 400)}</div>}
       {s.type === "llm_call" && s.text_html && <div className="prose-sm mt-1 max-h-80 overflow-auto break-words" dangerouslySetInnerHTML={{ __html: s.text_html }} />}
-      {s.type === "llm_call" && !s.text_html && s.text && <div className="mt-1 whitespace-pre-wrap break-words text-sm">{s.text}</div>}
+      {s.type === "llm_call" && !s.text_html && s.text && <div className="mt-1 whitespace-pre-wrap break-words text-sm" data-content>{s.text}</div>}
       {s.type === "note" && s.name === "verdict" && (
         <div className="mt-1"><Pill tone={s.text === "approve" ? "emerald" : s.text === "revise" ? "rose" : "amber"}>{s.text === "approve" ? "✓ approve" : s.text === "revise" ? "✗ revise" : `? ${s.text}`}</Pill></div>
       )}
-      {s.type === "note" && s.name !== "verdict" && s.text && <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">{s.text}</div>}
+      {s.type === "note" && s.name !== "verdict" && s.text && <div className="mt-1 text-sm text-slate-600 dark:text-slate-300" data-content>{s.text}</div>}
       {s.type === "tool_call" && (s.args || s.result_preview) && (
         <div className="mt-1">
           <button className="text-xs text-sky-600 hover:underline" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "▾" : "▸"} Arguments and result</button>
@@ -111,9 +109,9 @@ export function StepFeed({ m, limit }: { m: Monitor; limit?: number }) {
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="font-mono text-slate-400">{s.step}</span>
             {agent && <Pill tone="violet">{agent}</Pill>}
-            <span className="font-medium text-sm">{s.type === "tool_call" ? `${s.server ? `${s.server}/` : ""}${s.name}` : s.type === "llm_call" ? "model" : s.name}</span>
-            {s.type === "llm_call" && <span className="text-slate-500">{(s.duration_ms / 1000).toFixed(1)}s · {s.tokens_in ?? 0} in → {s.tokens_out ?? 0} out{s.cost_usd != null && ` · ${money(s.cost_usd, 4)}`}</span>}
-            {s.type === "tool_call" && <span className="text-slate-500">{Math.round(s.duration_ms)} ms</span>}
+            <span className="font-medium text-sm">{s.type === "tool_call" ? `${s.server ? `${s.server}/` : ""}${s.name}` : s.type === "llm_call" ? "model call" : s.name}</span>
+            {s.type === "llm_call" && <span className="text-slate-500">{(s.duration_ms / 1000).toFixed(1)}s · {s.tokens_in ?? 0} tokens in → {s.tokens_out ?? 0} out{s.cost_usd != null && ` · ${money(s.cost_usd, 4)}`}</span>}
+            {s.type === "tool_call" && <span className="text-slate-500">{seconds(s.duration_ms)}</span>}
             {s.status === "error" ? <Pill tone="rose">✗ error</Pill> : s.type !== "note" && <Pill tone="emerald">ok</Pill>}
             {s.retry_of != null && <span className="text-slate-500">retry of {s.retry_of}</span>}
             {s.invalid && <Pill tone="amber">invalid</Pill>}

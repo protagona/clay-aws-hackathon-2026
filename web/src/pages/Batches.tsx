@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ApiError, getSession, post } from "../api";
 import { useToast } from "../components/toasts";
-import { Empty, ErrorBanner, Panel, Pill, Skeleton } from "../components/ui";
+import { Empty, ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton } from "../components/ui";
 import { money, shortModel } from "../format";
 import type { BatchSummary, Session } from "../types";
 import { usePoll } from "../usePoll";
@@ -41,14 +41,16 @@ export default function Batches() {
   }
 
   return (
-    <main className="grid gap-6 px-4 py-6 sm:px-8 lg:grid-cols-[minmax(0,420px)_1fr]">
-      <Panel className="h-fit p-5">
-        <h1 className="mb-4 text-lg font-semibold">New batch</h1>
+    <main className="space-y-8 px-4 py-6 sm:px-8">
+      <PageHeader title="Batches" caption="Run several prompts on several models at once, then compare the results." />
+      <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,420px)_1fr]">
+      <Section n={1} title="New batch" caption="Each model runs each prompt, once per repeat.">
+      <Panel className="p-5">
         <form onSubmit={start} className="space-y-4">
-          <label className="field">Base config
+          <label className="field">Settings (config)
             <select className="input" value={config} onChange={(e) => setConfig(e.target.value)}>{session?.configs.map((c) => <option key={c}>{c}</option>)}</select>
           </label>
-          <fieldset><legend className="field">Models (none = the config's own)</legend>
+          <fieldset><legend className="field">Models <span className="font-normal text-slate-400">· leave empty to use the config's model</span></legend>
             <div className="mt-1 flex flex-wrap gap-2">{session?.models.map((m) => (
               <label key={m} className={`chip cursor-pointer text-xs ${models.includes(m) ? "ring-2 ring-sky-500" : ""}`}>
                 <input type="checkbox" className="sr-only" checked={models.includes(m)} onChange={() => setModels(toggle(models, m))} />{shortModel(m)}</label>
@@ -61,29 +63,32 @@ export default function Batches() {
             ))}</div>
           </fieldset>
           <div className="grid grid-cols-3 gap-3">
-            <label className="field">Repeats<input className="input" type="number" min={1} max={5} value={repeats} onChange={(e) => setRepeats(+e.target.value)} /></label>
-            <label className="field">Parallel<input className="input" type="number" min={1} max={4} value={concurrency} onChange={(e) => setConcurrency(+e.target.value)} /></label>
-            <label className="field">Cost cap $<input className="input" type="number" min={0.1} max={50} step={0.5} value={maxCost} onChange={(e) => setMaxCost(+e.target.value)} /></label>
+            <label className="field">Repeats<span className="block text-xs font-normal text-slate-400">runs per model and prompt</span><input className="input" type="number" min={1} max={5} value={repeats} onChange={(e) => setRepeats(+e.target.value)} /></label>
+            <label className="field">At once<span className="block text-xs font-normal text-slate-400">runs side by side</span><input className="input" type="number" min={1} max={4} value={concurrency} onChange={(e) => setConcurrency(+e.target.value)} /></label>
+            <label className="field">Stop at ($)<span className="block text-xs font-normal text-slate-400">cost cap</span><input className="input" type="number" min={0.1} max={50} step={0.5} value={maxCost} onChange={(e) => setMaxCost(+e.target.value)} /></label>
           </div>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={evaluate} onChange={(e) => setEvaluate(e.target.checked)} /> Evaluate each run</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={evaluate} onChange={(e) => setEvaluate(e.target.checked)} /> Score each run with the judge</label>
           {error && <p role="alert" className="text-sm text-rose-600">✗ {error}</p>}
           <button className="btn-primary" disabled={busy || prompts.length === 0}>{busy ? "Starting…" : "Start batch"}</button>
         </form>
       </Panel>
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Batches</h2>
+      </Section>
+      <Section n={2} title="Past batches" caption="Newest first. Click one to see its results.">
+      <div className="space-y-3">
         {list.error && <ErrorBanner message={list.error} onRetry={list.reload} />}
         {!list.data ? <Skeleton className="h-40" /> : list.data.batches.length === 0 ? <Empty title="No batches yet">Pick prompts and models on the left.</Empty> : (
           <ul className="space-y-3">{list.data.batches.map((b) => (
             <li key={b.id}><Link to={`/batches/${b.id}`} className="block rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200 transition hover:shadow-md dark:bg-slate-900 dark:ring-slate-800">
-              <div className="flex items-center justify-between gap-3"><span className="font-mono text-sm">{b.id}</span>
+              <div className="flex items-center justify-between gap-3"><span className="break-all font-mono text-sm">{b.id}</span>
                 <Pill tone={b.status === "running" ? "sky" : b.status === "finished" ? "emerald" : "slate"}>{b.status}</Pill></div>
               <div className="mt-2 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800"><div className={`h-1.5 rounded-full ${b.status === "running" ? "working" : "bg-sky-500"}`} style={{ width: `${b.jobs ? (b.done / b.jobs) * 100 : 0}%` }} /></div>
               <div className="mt-2 flex justify-between text-xs text-slate-500"><span>{b.done}/{b.jobs} runs · {b.models.map(shortModel).join(", ")}</span><span>{money(b.spent, 2)}{b.max_cost ? ` of ${money(b.max_cost, 2)}` : ""}</span></div>
             </Link></li>
           ))}</ul>
         )}
-      </section>
+      </div>
+      </Section>
+      </div>
     </main>
   );
 }

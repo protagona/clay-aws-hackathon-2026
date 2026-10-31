@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, post } from "../api";
 import { Board } from "../components/Board";
 import { AgentBars, Gauges, StepFeed, Waterfall } from "../components/run";
 import { useToast } from "../components/toasts";
-import { Empty, ErrorBanner, Kpi, Pill, ScoreRing, Skeleton, Spinner, Tabs } from "../components/ui";
-import { clock, money, score, shortModel } from "../format";
+import { Empty, ErrorBanner, Kpi, PageHeader, Pill, ScoreRing, Section, Skeleton, Spinner, SubSection, Tabs } from "../components/ui";
+import { clock, money, shortModel, statusWord } from "../format";
 import { RubricView } from "../components/RubricView";
 import type { Card, Criterion, Kpis, RunDetail, Rubric, RunsResponse } from "../types";
 import { boardInterval, runInterval, usePoll } from "../usePoll";
@@ -28,7 +28,7 @@ export default function Runs() {
   async function evaluate(runId: string) {
     try {
       await post(`/api/runs/${encodeURIComponent(runId)}/evaluate`);
-      toast({ tone: "info", text: `Evaluating ${runId}…` });
+      toast({ tone: "info", text: `Scoring ${runId}…` });
       board.reload();
       setEvalTick((n) => n + 1);  // the open drawer re-polls at once and shows "Evaluating…"
     } catch (e) {
@@ -40,32 +40,37 @@ export default function Runs() {
   const k = useMemo(() => board.data && (filtered ? totals(runs) : board.data.kpis), [board.data, filtered, runs]);
   const all = board.data?.kpis.runs ?? 0;
   return (
-    <main className={`space-y-6 px-4 py-6 sm:px-8 ${id ? "min-[900px]:mr-[540px]" : ""}`}>
+    <main className={`space-y-10 px-4 py-6 sm:px-8 ${id ? "min-[900px]:mr-[540px]" : ""}`}>
+      <PageHeader title="Runs" caption="Every agent run, grouped by where it is. Click a run to see its details." />
       {board.error && <ErrorBanner message={`Reconnecting… (${board.error})`} onRetry={board.reload} />}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Key numbers">
-        {k ? (<>
-          <Kpi label="Runs" value={k.runs} sub={<>{filtered && `of ${all} · `}{k.today ? <span className="text-emerald-600">+{k.today} today</span> : "none today"}</>} />
-          <Kpi label="Mean overall" value={score(k.mean)} sub={`active rubric · ${k.scored} scored`} />
-          <Kpi label="Live now" value={k.live} accent sub={`${k.running} running · ${k.evaluating} evaluating`} />
-          <Kpi label="Spent" value={money(k.spent, 2)} sub="runs + evaluations" />
-        </>) : [0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}
-      </section>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <label className="sr-only" htmlFor="f-model">Model</label>
-        <select id="f-model" className="chip" value={model} onChange={(e) => setModel(e.target.value)}>
-          <option value="">All models</option>{models.map((m) => <option key={m} value={m}>{shortModel(m)}</option>)}
-        </select>
-        <label className="sr-only" htmlFor="f-prompt">Prompt</label>
-        <select id="f-prompt" className="chip" value={prompt} onChange={(e) => setPrompt(e.target.value)}>
-          <option value="">All prompts</option>{prompts.map((p) => <option key={p}>{p}</option>)}
-        </select>
-        <label className="sr-only" htmlFor="f-q">Search runs</label>
-        <input id="f-q" className="chip w-56" placeholder="Search runs…" value={q} onChange={(e) => setQ(e.target.value)} />
-        {board.data && board.data.live > 0 && <span className="ml-auto flex items-center gap-2 text-xs text-sky-600"><Spinner label="Live" /> live · updating every 2 s</span>}
-      </div>
-      {board.loading && !board.data ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-40" />)}</div>
-        : board.data && board.data.runs.length === 0 ? <Empty title="No runs yet">Click <strong>▶ New run</strong> to start one, or run <code>foundry run --config config/offline.toml --prompt adb-001</code>.</Empty>
-        : <Board runs={runs} selected={id} onEvaluate={evaluate} />}
+      <Section n={1} title="At a glance" caption="Counts and totals for the runs shown below.">
+        <div role="group" aria-label="Key numbers" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {k ? (<>
+            <Kpi label="Runs" value={k.runs} sub={<>{filtered && `of ${all} · `}{k.today ? <span className="text-emerald-600">+{k.today} today</span> : "none today"}</>} />
+            <Kpi label="Average score" value={k.mean === null ? "—" : k.mean.toFixed(2)} sub={`${k.scored} scored · active rubric`} />
+            <Kpi label="In progress" value={k.live} accent sub={`${k.running} running · ${k.evaluating} being scored`} />
+            <Kpi label="Spent" value={money(k.spent, 2)} sub="agent runs + judging" />
+          </>) : [0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}
+        </div>
+      </Section>
+      <Section n={2} title="Runs by status" caption="Filter to narrow the board and the totals above."
+        actions={board.data && board.data.live > 0 && <span className="flex items-center gap-2 text-xs text-sky-600"><Spinner label="Live" /> live · updating every 2 s</span>}>
+        <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+          <label className="sr-only" htmlFor="f-model">Model</label>
+          <select id="f-model" className="chip" value={model} onChange={(e) => setModel(e.target.value)}>
+            <option value="">All models</option>{models.map((m) => <option key={m} value={m}>{shortModel(m)}</option>)}
+          </select>
+          <label className="sr-only" htmlFor="f-prompt">Prompt</label>
+          <select id="f-prompt" className="chip" value={prompt} onChange={(e) => setPrompt(e.target.value)}>
+            <option value="">All prompts</option>{prompts.map((p) => <option key={p}>{p}</option>)}
+          </select>
+          <label className="sr-only" htmlFor="f-q">Search runs</label>
+          <input id="f-q" className="chip w-56 max-w-full" placeholder="Search runs…" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        {board.loading && !board.data ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-40" />)}</div>
+          : board.data && board.data.runs.length === 0 ? <Empty title="No runs yet">Click <strong>▶ New run</strong> to start one, or run <code>foundry run --config config/offline.toml --prompt adb-001</code>.</Empty>
+          : <Board runs={runs} selected={id} onEvaluate={evaluate} />}
+      </Section>
       {id && <RunDrawer id={id} onEvaluate={evaluate} refresh={evalTick} />}
     </main>
   );
@@ -96,9 +101,9 @@ function RunRubric({ id, scored, criteria }: { id: string; scored: boolean; crit
   if (!data) return <Skeleton className="h-48" />;
   return (
     <div className="space-y-3">
-      <p className="text-xs text-slate-500">{scored
+      <p data-caption className="text-xs text-slate-500">{scored
         ? <>Scored with <strong>{data.rubric.rubric_id} v{data.rubric.version}</strong> (the copy saved with this run). <Link className="text-sky-600" to={`/rubric/runs/${encodeURIComponent(id)}`}>Open full page</Link></>
-        : <>Not evaluated yet: this run will be scored with the active rubric, <strong>{data.rubric.rubric_id} v{data.rubric.version}</strong>.</>}</p>
+        : <>Not scored yet: this run will be scored with the active rubric, <strong>{data.rubric.rubric_id} v{data.rubric.version}</strong>.</>}</p>
       <RubricView rubric={data.rubric} scores={scored ? criteria ?? null : null} />
     </div>
   );
@@ -127,10 +132,10 @@ export function RunDrawer({ id, onEvaluate, refresh = 0 }: { id: string; onEvalu
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate text-xs text-slate-500">{d ? `${d.run.prompt_id} · ${d.run.model.id}${d.run.agents?.mode === "pipeline" ? " · pipeline" : ""}` : id}</div>
-            <div className="mt-0.5 line-clamp-2 font-semibold">{d?.run.prompt ?? id}</div>
+            <div className="mt-0.5 line-clamp-2 font-semibold" data-content>{d?.run.prompt ?? id}</div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {d && <Pill tone={tone}>{status === "running" && <span className="h-1.5 w-1.5 rounded-full bg-sky-500" aria-hidden="true" />}{status}</Pill>}
+            {d && <Pill tone={tone}>{status === "running" && <span className="h-1.5 w-1.5 rounded-full bg-sky-500" aria-hidden="true" />}{statusWord(status)}</Pill>}
             <span className="font-mono text-sm tabular-nums">{d?.m.start_ms ? clock(d.m.start_ms) : d?.m.elapsed}</span>
             <Link to={`/compare?a=${encodeURIComponent(id)}`} className="btn-ghost sm:hidden" aria-label="Compare with another run">⇄</Link>
             <Link to="/" className="btn-ghost" aria-label="Close run details">✕</Link>
@@ -147,29 +152,46 @@ export function RunDrawer({ id, onEvaluate, refresh = 0 }: { id: string; onEvalu
       <div className="space-y-5 p-6">
         {run.error && !d && <ErrorBanner message={run.error === "Run not found" ? "Run not found" : run.error} onRetry={run.reload} />}
         {!d && !run.error && <Skeleton className="h-64" />}
-        {d && tab === "overview" && (<>
-          {d.scores && (
-            <div className="flex flex-wrap gap-4">
-              <ScoreRing value={d.scores.overall} size={72} label="overall" />
-              <ScoreRing value={d.scores.workflow.score} size={72} label="workflow" />
-              <ScoreRing value={d.scores.output.score} size={72} label="output" />
-              <div className="self-center text-xs text-slate-500">Overall · Workflow · Output{d.rubric_info && <><br />rubric {d.rubric_info.id} v{d.rubric_info.version}</>}</div>
-            </div>
-          )}
-          <Gauges m={d.m} />
-          {d.m.rows.some((r) => r.kind === "agent") && <div><h3 className="mb-2 text-sm font-medium">Agents</h3><AgentBars m={d.m} /></div>}
-          <div><h3 className="mb-2 text-sm font-medium">Latest steps</h3><StepFeed m={d.m} limit={4} /></div>
-        </>)}
-        {d && tab === "timeline" && <Waterfall m={d.m} />}
-        {d && tab === "steps" && <StepFeed m={d.m} />}
+        {d && tab === "overview" && (<div className="space-y-7">
+          <SubSection title="Scores" caption="How the judge graded this run, from 0 to 1.">
+            <RunScores d={d} id={id} onEvaluate={onEvaluate} />
+          </SubSection>
+          <SubSection title="Limits used" caption="How much of each budget the run used."><Gauges m={d.m} /></SubSection>
+          {d.m.rows.some((r) => r.kind === "agent") && <SubSection title="Agents" caption="Time each agent took, in order."><AgentBars m={d.m} /></SubSection>}
+          <SubSection title="Latest steps" caption="The last things the agent did. All steps are on the Steps tab."><StepFeed m={d.m} limit={4} /></SubSection>
+        </div>)}
+        {d && tab === "timeline" && <><TabCaption>Each bar is one step, placed by when it ran. Longer bars took longer.</TabCaption><Waterfall m={d.m} /></>}
+        {d && tab === "steps" && <><TabCaption>Every step in order: what the model said and which tools it called.</TabCaption><StepFeed m={d.m} /></>}
         {d && tab === "rubric" && <RunRubric id={id} scored={!!d.scores} criteria={d.scores?.output.criteria} />}
         {d && tab === "report" && (d.report_html
-          ? <article className="report" dangerouslySetInnerHTML={{ __html: d.report_html }} />
-          : <Empty title={d.evaluating ? "Evaluating…" : d.interrupted ? "Evaluation was interrupted" : "Not evaluated yet"}>
-              {d.evaluating ? <Spinner label="Evaluating" /> : d.run.status !== "running" &&
-                <button className="btn-primary mt-2" onClick={() => onEvaluate(id)}>Evaluate this run</button>}
+          ? <><TabCaption>The judge's written report on this run.</TabCaption><article className="report" dangerouslySetInnerHTML={{ __html: d.report_html }} /></>
+          : <Empty title={d.evaluating ? "Being scored…" : d.interrupted ? "Scoring was interrupted" : "Not scored yet"}>
+              {d.evaluating ? <Spinner label="Being scored" /> : d.run.status !== "running" &&
+                <button className="btn-primary mt-2" onClick={() => onEvaluate(id)}>Score this run</button>}
             </Empty>)}
       </div>
     </aside>
   );
+}
+
+const TabCaption = ({ children }: { children: React.ReactNode }) => <p data-caption className="text-xs text-slate-500 dark:text-slate-400">{children}</p>;
+
+/** The Overview's Scores block, in order of precedence: being scored, interrupted, scored, running, not scored. */
+function RunScores({ d, id, onEvaluate }: { d: RunDetail; id: string; onEvaluate: (id: string) => void }) {
+  if (d.evaluating) return <p className="flex items-center gap-2 text-sm text-amber-600"><Spinner label="Being scored" /> Being scored…</p>;
+  const button = <button className="btn-primary" onClick={() => onEvaluate(id)}>Score this run</button>;
+  if (d.interrupted) return <div className="flex flex-wrap items-center gap-3 text-sm"><span>Scoring was interrupted.</span>{button}</div>;
+  if (d.scores) return (
+    <div className="flex flex-wrap items-center gap-5">
+      {([["Overall", d.scores.overall], ["Workflow", d.scores.workflow.score], ["Output", d.scores.output.score]] as const).map(([label, v]) => (
+        <div key={label} className="text-center"><ScoreRing value={v} size={64} label={label.toLowerCase()} /><div className="mt-1 text-xs text-slate-500">{label}</div></div>))}
+      <div className="text-xs text-slate-500">
+        {d.scores.overall === null && <div className="mb-1 font-medium text-amber-600">Partly scored: some criteria couldn't be scored.</div>}
+        Workflow: how the agent worked.<br />Output: how good its plan is.
+        {d.rubric_info && <><br />Rubric {d.rubric_info.id} v{d.rubric_info.version}</>}
+      </div>
+    </div>
+  );
+  if (d.run.status === "running") return <p className="text-sm text-slate-500">Scores appear after the run finishes and is graded.</p>;
+  return <div className="flex flex-wrap items-center gap-3 text-sm"><span>Not scored yet.</span>{button}</div>;
 }

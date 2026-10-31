@@ -191,7 +191,7 @@ export interface CompareSide {
 export interface Compare {
   a: CompareSide;
   b: CompareSide;
-  rows: { label: string; a: string; b: string; delta: string; indent: boolean }[];
+  rows: { label: string; a: string; b: string; delta: string; indent: boolean; better?: "higher" | "lower" | null }[];
 }
 
 export interface BatchSummary {

@@ -193,7 +193,7 @@ def test_evaluate_from_ui_holds_and_releases_lock(tmp_path):  # AC25, AC29
     (job,) = app.state.ui.jobs.values()
     second = c.post("/runs/fixture-recovered/evaluate", data={"csrf": _csrf(app)})
     if job.exit_code is None:  # the lock is taken before the subprocess starts, so a second click is refused
-        assert second.status_code == 409 and "already being evaluated" in second.text
+        assert second.status_code == 409 and "already being scored" in second.text
     assert _wait(lambda: job.exit_code is not None and not lock.is_locked(d["recovered"]))
     assert job.exit_code == 0, job.log.read_text()
     assert (d["recovered"] / "scores.json").exists()
@@ -484,7 +484,7 @@ def test_compare_page_rows_and_timelines(tmp_path):  # C1
     assert rows["Overall"][:2] == ("0.83", "0.80") and rows["Overall"][2] == "−0.04"
     assert rows["Workflow"] == ("1.00", "0.93", "−0.07") and rows["reliability"] == ("1.00", "0.50", "−0.50")
     assert rows["sequence"] == ("1.00", "1.00", "0")
-    assert rows["Tool calls (errors)"][:2] == ("2 (0)", "4 (2)") and rows["Tool calls (errors)"][2] == "+2"
+    assert rows["Tool calls (failed)"][:2] == ("2 (0)", "4 (2)") and rows["Tool calls (failed)"][2] == "+2"
     assert any(k in rows for k in ("data-fit", "method"))  # one row per rubric criterion, as n/max
     assert re.search(r"<td>\d+/\d+</td>", page)
     assert page.index("A timeline") < page.index("B timeline")

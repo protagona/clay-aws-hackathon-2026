@@ -49,13 +49,13 @@ def acquire(run_dir: Path, owner: str = "cli") -> str:
         except FileExistsError:
             data = read(run_dir)
             if data and _alive(int(data.get("pid", 0))):
-                raise LockHeld(f"Run {run_dir.name} is already being evaluated.") from None
+                raise LockHeld(f"Run {run_dir.name} is already being scored.") from None
             path.unlink(missing_ok=True)
             continue
         with os.fdopen(fd, "w") as f:
             f.write(payload)
         return token
-    raise LockHeld(f"Run {run_dir.name} is already being evaluated.")
+    raise LockHeld(f"Run {run_dir.name} is already being scored.")
 
 
 def holds(run_dir: Path, token: str) -> bool:

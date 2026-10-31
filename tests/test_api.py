@@ -405,3 +405,19 @@ def test_card_kpi_shares_add_up_to_the_totals(tmp_path):  # increment 11, K3: th
     counted = [s["overall"] for s in shares.values() if s["overall"] is not None]
     assert len(counted) == k["scored"] == 1 and sum(counted) / len(counted) == pytest.approx(k["mean"])
     assert shares["fixture-failed"]["spent"] == pytest.approx(0.25) and shares["broken"] == {"spent": 0.0, "overall": None}
+
+
+def test_compare_rows_say_which_way_is_better(tmp_path):  # increment 12, C6: a cost increase must not read as an improvement
+    runs = tmp_path / "runs"
+    _seed(runs, "clean", "recovered")
+    for name in ("fixture-clean", "fixture-recovered"):
+        evaluate(runs / name, load(eval_config(tmp_path / f"e-{name}")))
+    _, c, _ = _client(tmp_path)
+    rows = c.get("/api/compare?a=fixture-clean&b=fixture-recovered").json()["rows"]
+    better = {r["label"]: r["better"] for r in rows}
+    assert better["Overall"] == better["Workflow"] == better["Output"] == "higher"
+    assert better["Cost"] == better["Duration"] == "lower"
+    assert better["Model calls"] is None and better["Tool calls (failed)"] is None
+    indented = [r for r in rows if r["indent"]]
+    assert indented and all(r["better"] == "higher" for r in indented)  # workflow components and output criteria
+    assert any(r["label"] == "data-fit" for r in indented)

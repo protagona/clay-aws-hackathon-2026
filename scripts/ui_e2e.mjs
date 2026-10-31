@@ -55,6 +55,87 @@ async function until(expr, what, ms = 120000) {
 }
 const fail = (msg) => { console.error(`FAIL: ${msg}`); ws.close(); proc.kill(); process.exit(1); };
 
+// Shorthand an observer can't decode (increment 12, C5). Matched case-insensitively against visible UI text, leaving out
+// what agents and the judge wrote (the report, model replies, rubric text, prompt text: [data-content], .report, pre).
+const BANNED = [/\bllm_call\b/, /\btool_call\b/, /\bagent_step\b/, /\bstdev\b/, /Δ/, /mean overall/, /live now/, /nothing here/, /judging…/,
+  /\bW [01]\./, /prices from/, /\bvariant\b/, /leaderboard/, /missed workflow stages/, /evaluate →/, /evaluate this run/, /not evaluated/,
+  /evaluation was interrupted/, /runs \+ evaluations/, /\bevaluating\b/, /\bincomplete\b/];
+const BANNED_HEADERS = ["ms", "stdev", "mean", "min", "max", "variant", "#", "δ (b − a)"];
+const SCAN = `(() => {
+  const root = (document.querySelector('dialog[open]') ?? document.body).cloneNode(true);
+  root.querySelectorAll('[data-content], .report, .prose-sm, pre, option, script, style').forEach((n) => n.remove());
+  const text = root.textContent.toLowerCase();
+  const heads = [...document.querySelectorAll('th')].map((t) => t.textContent.trim().toLowerCase());
+  const h1 = [...document.querySelectorAll('main h1')].filter((h) => !h.closest('.report')).length;  // the judge's report has its own
+  const caption = !!document.querySelector('main header [data-caption]');
+  const bad = [...document.querySelectorAll('main section[aria-labelledby]')].filter((sec) => {
+    const h = document.getElementById(sec.getAttribute('aria-labelledby'));
+    return !h || h.tagName !== 'H2' || !sec.querySelector('[data-caption]');
+  }).map((sec) => sec.getAttribute('aria-labelledby'));
+  return { text, heads, h1, caption, bad, overflow: document.documentElement.scrollWidth > window.innerWidth + 1 };
+})()`;
+
+async function scan(what, { page = true } = {}) {
+  const r = await js(SCAN);
+  for (const re of BANNED) { const m = r.text.match(re); if (m) fail(`${what}: shows "${m[0]}"`); }
+  const head = r.heads.find((h) => BANNED_HEADERS.includes(h)); if (head !== undefined) fail(`${what}: table header "${head}"`);
+  if (page && r.h1 !== 1) fail(`${what}: ${r.h1} page titles (want 1)`);
+  if (page && !r.caption) fail(`${what}: no caption under the page title`);
+  if (r.bad.length) fail(`${what}: a section without an h2 heading and caption`);
+  if (r.overflow) fail(`${what}: horizontal page scroll`);
+}
+
+async function clarity(scoredRun) {
+  const api = async (path) => { try { const r = await fetch(base + path); return r.ok ? r.json() : null; } catch { return null; } };
+  const batch = (await api("/api/batches"))?.batches?.[0]?.id;
+  // A rubric draft to visit: upload the active rubric as JSON (no model call), discard it afterwards.
+  let draft = null;
+  try {
+    const csrf = (await api("/api/session")).csrf;
+    const active = (await api("/api/rubric/active?task=adb")).rubric;
+    const form = new FormData(); form.append("task", "adb"); form.append("kind", "file"); form.append("config", "offline");
+    form.append("file", new Blob([JSON.stringify(active)], { type: "application/json" }), "rubric.json");
+    const r = await fetch(base + "/api/rubric/drafts", { method: "POST", body: form, headers: { "x-csrf-token": csrf, origin: base } });
+    if (r.ok) draft = { id: (await r.json()).draft_id, csrf };
+  } catch { /* the draft page is then skipped */ }
+  const rub = await api("/api/rubric?task=adb");
+  const routes = [["board", "/"], ["batches", "/batches"], ["dashboard", "/dashboard"], ["rubric", "/rubric"], ["active rubric", "/rubric/active"],
+    ["run's rubric", `/rubric/runs/${encodeURIComponent(scoredRun)}`], ["import", "/import"], ["compare (empty)", "/compare"],
+    ["compare", `/compare?a=${encodeURIComponent(scoredRun)}&b=${encodeURIComponent(scoredRun)}`], ["not found", "/nope"]];
+  const opt = [["batch", batch && `/batches/${batch}`], ["history version", rub?.versions?.[0]?.file && `/rubric/history/${rub.versions[0].file}`],
+    ["rubric draft", rub?.drafts?.[0]?.draft_id && `/rubric/drafts/${rub.drafts[0].draft_id}`]];
+  for (const [name, path] of opt) if (path) routes.push([name, path]); else console.log(`SKIP ${name}: none available`);
+  const tabs = ["Overview", "Timeline", "Steps", "Report", "Rubric"];
+  for (const [w, dark] of [[1440, false], [1440, true], [375, false], [375, true]]) {
+    await send("Emulation.setDeviceMetricsOverride", { width: w, height: 900, deviceScaleFactor: 1, mobile: w < 600 });
+    await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: dark ? "dark" : "light" }] });
+    const at = `${w}px ${dark ? "dark" : "light"}`;
+    for (const [name, path] of routes) {
+      await send("Page.navigate", { url: base + path });
+      await until("!!document.querySelector('main h1') && !document.querySelector('.animate-pulse')", `${name} to load`, 20000);
+      await sleep(300);
+      await scan(`${name} (${at})`);
+    }
+    await send("Page.navigate", { url: `${base}/runs/${encodeURIComponent(scoredRun)}` });
+    await until(`!!document.querySelector('aside[aria-label="Run details"] [role=tab]')`, "the run panel", 20000);
+    for (const t of tabs) {
+      await js(`[...document.querySelectorAll('aside [role=tab]')].find(x => x.textContent.startsWith('${t}')).click()`);
+      await sleep(500);
+      await scan(`run panel ${t} tab (${at})`);
+      const cap = await js(`!!document.querySelector('aside [data-caption]')`);
+      if (!cap) fail(`run panel ${t} tab (${at}): no caption`);
+    }
+    await js("[...document.querySelectorAll('button')].find(b => b.textContent.includes('New run')).click()");
+    await until("!!document.querySelector('dialog[open]')", "the New run dialog");
+    await scan(`New run dialog (${at})`, { page: false });
+    if (!(await js("!!document.querySelector('dialog[open] [data-caption]')"))) fail(`New run dialog (${at}): no caption`);
+  }
+  await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+  await send("Emulation.setEmulatedMedia", { features: [] });
+  if (draft) await fetch(`${base}/api/rubric/drafts/${draft.id}?task=adb`, { method: "DELETE", headers: { "x-csrf-token": draft.csrf, origin: base } });
+  console.log(`clarity: ${routes.length} pages, the run panel's ${tabs.length} tabs and the New run dialog pass at 1440 and 375 px, light and dark`);
+}
+
 try {
   await send("Page.enable");
   await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
@@ -76,6 +157,11 @@ try {
   const card = (col) => `!!document.querySelector('section[aria-label="${col}"] a[href="/runs/${encodeURIComponent(runId)}"]')`;
   await until(card("Needs attention"), "the card in Needs attention (not evaluated)");
   console.log("card is in Needs attention");
+  // Increment 12: the unscored states read in plain words too (the card's button, the drawer's "Not scored yet").
+  const btn = await js(`document.querySelector('section[aria-label="Needs attention"] a[href="/runs/${encodeURIComponent(runId)}"]').closest('li').querySelector('button')?.textContent`);
+  if (btn !== "Score it →") fail(`the unscored card's button reads "${btn}"`);
+  await until(`[...document.querySelectorAll('aside[aria-label="Run details"] button')].some(b => b.textContent === 'Score this run')`, "Score this run in the drawer", 20000);
+  await scan("unscored run on the board and in the run panel");
   await js(`document.querySelector('section[aria-label="Needs attention"] a[href="/runs/${encodeURIComponent(runId)}"]').closest('li').querySelector('button').click()`);
   await until(card("Scored"), "the card in Scored");
   const ring = await js(`document.querySelector('section[aria-label="Scored"] a[href="/runs/${encodeURIComponent(runId)}"] [role=img]')?.getAttribute('aria-label')`);
@@ -97,6 +183,9 @@ try {
     writeFileSync(join(out, "drawer-rubric-tab-light-1440.png"), Buffer.from(shot.result.data, "base64"));
   }
 
+  // Increment 12: every page explains itself (C1, C2, C5, C8), at phone and desktop width, light and dark.
+  await clarity(runId);
+
   if (out) {
     mkdirSync(out, { recursive: true });
     for (const [w, dark] of [[1440, false], [1440, true], [375, false], [375, true]]) {
@@ -107,7 +196,7 @@ try {
         await send("Page.navigate", { url: base + path });
         await sleep(1800);
         const overflow = await js("document.documentElement.scrollWidth > window.innerWidth + 1");
-        if (overflow) console.log(`WARN: horizontal page scroll on ${name} at ${w}px`);
+        if (overflow) fail(`horizontal page scroll on ${name} at ${w}px`);
         if (name === "drawer") {  // the drawer's close button must be on top, not under the header (verify finding)
           const ok = await js(`(() => { const b = document.querySelector('aside[aria-label="Run details"] a[aria-label="Close run details"]');
             if (!b) return false; const r = b.getBoundingClientRect(); const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);

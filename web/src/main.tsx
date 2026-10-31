@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Shell } from "./components/Shell";
 import { ToastProvider } from "./components/toasts";
-import { Skeleton } from "./components/ui";
+import { PageHeader, Skeleton } from "./components/ui";
 import "./index.css";
 import Runs from "./pages/Runs";
 
@@ -37,7 +37,7 @@ createRoot(document.getElementById("root")!).render(
               <Route path="/rubric/active" element={<RubricVersion kind="active" />} />
               <Route path="/rubric/runs/:id" element={<RubricVersion kind="run" />} />
               <Route path="/import" element={<Import />} />
-              <Route path="*" element={<div className="p-8 text-slate-500">Page not found. <a className="text-sky-600 underline" href="/">Back to runs</a></div>} />
+              <Route path="*" element={<main className="space-y-4 px-4 py-6 sm:px-8"><PageHeader title="Page not found" caption="This address doesn't match any page." /><a className="text-sky-600 underline" href="/">Back to runs</a></main>} />
             </Routes>
           </Suspense>
         </Shell>

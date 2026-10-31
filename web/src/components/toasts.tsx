@@ -56,7 +56,7 @@ export function jobToasts(jobs: Job[], seen: Set<string>, since: number): Toast[
     if (j.alive || seen.has(j.id) || !j.finished_at || j.finished_at < since) continue;
     seen.add(j.id);
     const ok = j.exit_code === 0;
-    const what = j.kind === "evaluate" ? "Evaluation" : j.kind === "batch" ? "Batch" : "Run";
+    const what = j.kind === "evaluate" ? "Scoring" : j.kind === "batch" ? "Batch" : "Run";
     out.push({
       id: j.id, tone: ok ? "ok" : j.failed ? "bad" : "info",
       text: ok ? `${what} finished: ${j.run_id}` : j.failed ? `${what} failed: ${j.message ?? j.run_id}` : `${what} ended: ${j.run_id}`,

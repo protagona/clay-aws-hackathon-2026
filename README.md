@@ -53,14 +53,15 @@ It's a TypeScript single-page app (React, Vite, Tailwind) over a FastAPI JSON AP
 
 | Screen | What you can do |
 |---|---|
-| **Runs** | A live board. Runs move through **Running → Evaluating → Scored / Needs attention** as they progress, with headline numbers, filters and search. **▶ New run** starts one; **Evaluate →** scores one. Click a card for the slide-over monitor: gauges, agent bars, timeline, steps and the report. |
+| **Runs** | A live board. Runs move through **Running → Being scored → Scored / Needs attention** as they progress, with headline numbers that follow the filters and search. **▶ New run** starts one; **Score it →** sends one to the judge. Click a card for the run panel: scores, limits used, agent bars, timeline, steps, the report and the rubric that scored it. |
 | **Batches** | Start a batch (models × prompts × repeats, with a cost cap), then watch the per-model table and the runs fill in. |
-| **Dashboard** | Leaderboard, cost vs score (hover for details), and where agents struggle, filtered by rubric. |
+| **Dashboard** | Model ranking, cost vs score (hover for details), and where agents struggle, filtered by rubric. |
 | **Rubric** | Import a rubric from a file (drag and drop), text, a URL or an MCP tool; review the draft; activate it; roll back. |
 | **Import** | Drop an OTLP/JSON trace, or start the live OpenTelemetry receiver and watch runs arrive. |
-| **Compare** | Two runs side by side: deltas and both timelines (from a run's **Compare ↗**). |
+| **Compare** | Two runs side by side: differences (green when B did better) and both runs' steps (from a run's **Compare ↗**). |
 
-- **Pop-up notifications** tell you when a run or evaluation finishes.
+- **Every page explains itself:** a title and one-line caption, then numbered sections, each with a heading and caption.
+- **Pop-up notifications** tell you when a run or its scoring finishes.
 - **Light and dark** follow the system setting; the toggle remembers your choice.
 - **Phone width:** the run monitor becomes a full-screen sheet.
 - **Classic UI:** the server-rendered UI of increments 1–8 is still at **`/classic`**.
