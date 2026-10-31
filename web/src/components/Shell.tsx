@@ -24,7 +24,14 @@ function useTheme() {
     return () => media.removeEventListener("change", on);
   }, [media]);
   const dark = saved ? saved === "dark" : system;
-  useEffect(() => { document.documentElement.classList.toggle("dark", dark); }, [dark]);
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+    // Increment 14: the tab icon follows the app's theme, not only the system's (the media links are the fallback).
+    for (const link of document.querySelectorAll<HTMLLinkElement>('link[rel="icon"]')) {
+      link.href = link.href.replace(/favicon-(light|dark)-/, `favicon-${dark ? "dark" : "light"}-`);
+      link.removeAttribute("media");
+    }
+  }, [dark]);
   const choose = (d: boolean) => {
     setSaved(d ? "dark" : "light");
     try { localStorage.setItem("theme", d ? "dark" : "light"); } catch { /* storage blocked */ }
@@ -45,7 +52,8 @@ export function Shell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
         <div className="flex h-16 items-center gap-4 px-4 sm:px-8">
           <NavLink to="/" className="flex items-center gap-2 font-semibold">
-            <span className="h-7 w-7 rounded-lg bg-gradient-to-br from-sky-500 to-teal-400" aria-hidden="true" />
+            <img src="/assets/brand/logo-light-v1.png" width={32} height={32} alt="" className="dark:hidden" />
+            <img src="/assets/brand/logo-dark-v1.png" width={32} height={32} alt="" className="hidden dark:block" />
             <span>Foundry<span className="font-normal text-slate-400"> / eval</span></span>
           </NavLink>
           <nav aria-label="Sections" className="hidden rounded-xl bg-slate-100 p-1 text-sm md:flex dark:bg-slate-900">

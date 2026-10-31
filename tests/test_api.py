@@ -421,3 +421,15 @@ def test_compare_rows_say_which_way_is_better(tmp_path):  # increment 12, C6: a 
     indented = [r for r in rows if r["indent"]]
     assert indented and all(r["better"] == "higher" for r in indented)  # workflow components and output criteria
     assert any(r["label"] == "data-fit" for r in indented)
+
+
+def test_logo_and_tab_icons_served(tmp_path):  # increment 14, L2/L3: TF mark, charcoal on light and cyan on dark
+    _, c, _ = _client(tmp_path)
+    for name in ("logo-light-v1", "logo-dark-v1", "favicon-light-16-v1", "favicon-light-32-v1",
+                 "favicon-dark-16-v1", "favicon-dark-32-v1"):
+        r = c.get(f"/assets/brand/{name}.png")
+        assert r.status_code == 200 and r.headers["content-type"] == "image/png" and r.content[:8] == b"\x89PNG\r\n\x1a\n"
+    html = c.get("/").text
+    assert 'href="/assets/brand/favicon-light-32-v1.png" media="(prefers-color-scheme: light)"' in html
+    assert 'href="/assets/brand/favicon-dark-32-v1.png" media="(prefers-color-scheme: dark)"' in html
+    assert "data:image" not in html

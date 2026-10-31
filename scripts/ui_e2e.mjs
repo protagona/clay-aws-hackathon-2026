@@ -183,6 +183,26 @@ try {
     writeFileSync(join(out, "drawer-rubric-tab-light-1440.png"), Buffer.from(shot.result.data, "base64"));
   }
 
+  // Increment 14: the TF logo and tab icon follow the theme (charcoal on light, cyan on dark).
+  for (const dark of [false, true]) {
+    await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: dark ? "dark" : "light" }] });
+    await js("localStorage.removeItem('theme')");
+    await send("Page.navigate", { url: base + "/" });
+    await until("!!document.querySelector('main h1')", "the board");
+    const seen = await js(`[...document.querySelectorAll('header img')].filter(i => getComputedStyle(i).display !== 'none' && i.complete && i.naturalWidth > 0).map(i => i.getAttribute('src'))`);
+    const want = `/assets/brand/logo-${dark ? "dark" : "light"}-v1.png`;
+    if (seen.length !== 1 || seen[0] !== want) fail(`header logo in ${dark ? "dark" : "light"}: ${JSON.stringify(seen)}`);
+    const icons = await js(`[...document.querySelectorAll('link[rel=icon]')].map(l => l.getAttribute('href'))`);
+    if (!icons.length || !icons.every((h) => h.includes(`favicon-${dark ? "dark" : "light"}-`))) fail(`tab icon in ${dark ? "dark" : "light"}: ${icons}`);
+  }
+  await js(`document.querySelector('header button[aria-label^="Switch to"]').click()`);  // the app's own toggle, from dark
+  await sleep(200);
+  const flipped = await js(`[...document.querySelectorAll('link[rel=icon]')].every(l => l.getAttribute('href').includes('favicon-light-'))`);
+  if (!flipped) fail("the tab icon didn't follow the theme toggle");
+  await js("localStorage.removeItem('theme')");
+  await send("Emulation.setEmulatedMedia", { features: [] });
+  console.log("logo and tab icon follow the theme");
+
   // Increment 12: every page explains itself (C1, C2, C5, C8), at phone and desktop width, light and dark.
   await clarity(runId);
 

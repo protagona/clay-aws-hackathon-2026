@@ -252,3 +252,21 @@ describe("run panel score states (increment 12, C3)", () => {
     expect(screen.getByText(/Partly scored/)).toBeTruthy();
   });
 });
+
+describe("logo (increment 14)", () => {
+  it("shows the charcoal mark on light and the cyan mark on dark", async () => {
+    const { Shell } = await import("./components/Shell");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ csrf: "x", configs: [], prompts: [], models: [], tasks: [], rubric: null, aws_profile: null }), { status: 200 })));
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} }));
+    const icon = document.createElement("link"); icon.rel = "icon"; icon.href = "/assets/brand/favicon-dark-32-v1.png"; document.head.appendChild(icon);
+    const { container } = render(<MemoryRouter><Shell><p>page</p></Shell></MemoryRouter>);
+    const light = container.querySelector('img[src="/assets/brand/logo-light-v1.png"]');
+    const dark = container.querySelector('img[src="/assets/brand/logo-dark-v1.png"]');
+    expect(light?.className).toContain("dark:hidden");
+    expect(dark?.className).toContain("hidden dark:block");
+    expect(light?.getAttribute("alt")).toBe("");
+    expect(icon.href).toContain("favicon-light-32-v1.png");  // the tab icon follows the app's (light) theme
+    icon.remove();
+    vi.unstubAllGlobals();
+  });
+});
