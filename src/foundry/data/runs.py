@@ -117,3 +117,70 @@ class RunDir:
     def clean_stale_staging(self) -> None:
         for d in self.path.glob(".eval-*"):
             shutil.rmtree(d, ignore_errors=True)
+
+
+# --- safe readers of untrusted run files (increment 16: moved here from ui/app.py, unchanged) ------------------
+
+
+def is_regular(path: Path) -> bool:
+    """A regular file, never a symlink (run directories are untrusted)."""
+    return path.is_file() and not path.is_symlink()
+
+
+def read_json(path: Path) -> dict | None:
+    if not is_regular(path):
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def read_run(path: Path) -> dict | None:
+    """run.json as a dict with the fields the UI shows, or None if it's missing, a symlink, or malformed."""
+    f = path / "run.json"
+    if not is_regular(f):
+        return None
+    try:
+        run = json.loads(f.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(run, dict) or not isinstance(run.get("model"), dict):
+        return None
+    if not all(isinstance(run.get(k), str) for k in ("prompt_id", "status")):
+        return None
+    return run
+
+
+def num(value) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def float_or_none(v) -> float | None:
+    try:
+        return float(v) if v not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def read_scores(path: Path) -> dict | None:
+    """scores.json reduced to the numbers the UI shows; None if missing, a symlink, or malformed."""
+    f = path / "scores.json"
+    if not is_regular(f):
+        return None
+    try:
+        raw = json.loads(f.read_text())
+        return {**raw, "overall": num(raw.get("overall")),
+                "workflow": {**raw["workflow"], "score": num(raw["workflow"].get("score"))},
+                "output": {**raw["output"], "score": num(raw["output"].get("score"))}}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def run_dirs(runs_dir: Path) -> list[Path]:
+    """Every run directory: real directories (no symlinks, no dot-dirs) with a valid run id as their name."""
+    if not runs_dir.is_dir():
+        return []
+    return [d for d in runs_dir.iterdir()
+            if not d.is_symlink() and d.is_dir() and not d.name.startswith(".") and is_valid_run_id(d.name)]

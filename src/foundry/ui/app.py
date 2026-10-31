@@ -7,7 +7,6 @@ Origin (when sent) and the per-process CSRF token. At most one UI-started run at
 from __future__ import annotations
 
 import hmac
-import json
 import re
 import secrets
 import subprocess
@@ -27,7 +26,12 @@ from foundry.batch import spread
 from foundry.config import ConfigError, load_config
 from foundry.contract import evaluation_interrupted
 from foundry.data import locks as lock
-from foundry.data.runs import RunDir, is_valid_run_id
+from foundry.data import batches as data_batches
+from foundry.data import project as data_project
+from foundry.data import runs as data_runs
+from foundry.data.batches import BATCH_ID_RE  # noqa: F401 (still read as core.BATCH_ID_RE until slice 5)
+from foundry.data.project import CONFIG_STEM_RE
+from foundry.data.runs import RunDir
 from foundry.data.tasks import parse_prompts
 from foundry.ui import dashboard
 from foundry.ui.render import render
@@ -35,9 +39,7 @@ from foundry.ui.render import render
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).with_name("templates")))
 TEMPLATES.env.filters["markdown"] = lambda text: Markup(render(text[:FEED_TEXT_MAX]))  # same safe renderer as reports
 FEED_TEXT_MAX = 20_000  # characters of a model step rendered in the feed
-CONFIG_STEM_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 JOB_ID_RE = re.compile(r"^[a-f0-9]{16}$")
-BATCH_ID_RE = re.compile(r"^b-\d{8}-\d{6}-[a-f0-9]{4}$")
 STATIC = {"monitor.js": "text/javascript"}  # the only files /classic/static serves
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; "
        "img-src 'self' data:; font-src 'self'; form-action 'self'; frame-ancestors 'none'")
@@ -517,16 +519,6 @@ def _spawn(st: UiState, kind: str, run_id: str, label: str, args: list[str], loc
     return job
 
 
-def _read_json(path: Path) -> dict | None:
-    if not _regular(path):
-        return None
-    try:
-        data = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
 def _model_choices(st: UiState) -> list[str]:
     """Models offered for batches: every agent model and priced model in the configs (an allowlist)."""
     out: set[str] = set()
@@ -539,50 +531,6 @@ def _model_choices(st: UiState) -> list[str]:
             out.add(cfg.model.id)
             out.update(cfg.prices)
     return sorted(out)
-
-
-def _task_ids(st: UiState) -> list[str]:
-    return sorted(p.parent.name for p in (st.root / "tasks").glob("*/prompts.jsonl") if CONFIG_STEM_RE.match(p.parent.name))
-
-
-def _batch_list(st: UiState) -> list[dict]:
-    if not st.batches_dir.is_dir():
-        return []
-    out = []
-    for d in st.batches_dir.iterdir():
-        if not (d.is_dir() and BATCH_ID_RE.match(d.name)):
-            continue
-        meta = _read_json(d / "batch.json") or {}
-        rows = _batch_rows(st, d)
-        out.append({"id": d.name, "status": meta.get("status", "starting"), "jobs": meta.get("jobs", len(rows)),
-                    "done": sum(r["status"] not in ("pending", "") for r in rows),
-                    "spent": sum(r["cost"] for r in rows if isinstance(r["cost"], float)),
-                    "max_cost": meta.get("max_cost"), "models": meta.get("models") or meta.get("configs") or []})
-    return sorted(out, key=lambda b: b["id"], reverse=True)
-
-
-def _batch_rows(st: UiState, path: Path) -> list[dict]:
-    import csv
-
-    f = path / "summary.csv"
-    if not _regular(f):
-        return []
-    rows = []
-    with open(f, newline="") as fh:
-        for r in csv.DictReader(fh):
-            run_dir = Path(r.get("run_dir") or "")
-            link = run_dir.name if r.get("run_dir") and (st.runs_dir / run_dir.name).is_dir() \
-                and is_valid_run_id(run_dir.name) else None
-            rows.append({**r, "link": link, "cost": _num(_float(r.get("cost_usd"))),
-                         "overall_f": _num(_float(r.get("overall")))})
-    return rows
-
-
-def _float(v) -> float | None:
-    try:
-        return float(v) if v not in (None, "") else None
-    except ValueError:
-        return None
 
 
 def _variant_stats(rows: list[dict]) -> list[dict]:
@@ -684,10 +632,6 @@ def _compare_rows(a: dict, b: dict) -> list[dict]:
     return rows
 
 
-def _configs(st: UiState) -> list[str]:
-    return sorted(p.stem for p in (st.root / "config").glob("*.toml") if CONFIG_STEM_RE.match(p.stem))
-
-
 def _prompt_ids(st: UiState) -> list[str]:
     """Active (not archived) prompt ids of every task the configs use, read from this UI's own root."""
     ids: list[str] = []
@@ -709,44 +653,6 @@ def _eval_config_for(st: UiState, run: dict) -> str:
     return "config/offline.toml"
 
 
-def _regular(path: Path) -> bool:
-    return path.is_file() and not path.is_symlink()
-
-
-def _read_run(path: Path) -> dict | None:
-    """run.json as a dict with the fields the UI shows, or None if it's missing, a symlink, or malformed."""
-    f = path / "run.json"
-    if not _regular(f):
-        return None
-    try:
-        run = json.loads(f.read_text())
-    except (OSError, ValueError):
-        return None
-    if not isinstance(run, dict) or not isinstance(run.get("model"), dict):
-        return None
-    if not all(isinstance(run.get(k), str) for k in ("prompt_id", "status")):
-        return None
-    return run
-
-
-def _num(value) -> float | None:
-    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
-
-
-def _scores(path: Path) -> dict | None:
-    """scores.json reduced to the numbers the UI shows; None if missing, a symlink, or malformed."""
-    f = path / "scores.json"
-    if not _regular(f):
-        return None
-    try:
-        raw = json.loads(f.read_text())
-        return {**raw, "overall": _num(raw.get("overall")),
-                "workflow": {**raw["workflow"], "score": _num(raw["workflow"].get("score"))},
-                "output": {**raw["output"], "score": _num(raw["output"].get("score"))}}
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return None
-
-
 def _short(score) -> str:
     return "—" if score is None else f"{score:.2f}".removeprefix("0")
 
@@ -756,13 +662,6 @@ def _when(iso: str | None) -> str:
         return datetime.strptime(iso.replace("Z", "+0000"), "%Y-%m-%dT%H:%M:%S.%f%z").strftime("%m-%d %H:%M")
     except (AttributeError, ValueError):
         return ""
-
-
-def _run_dirs(st: UiState) -> list[Path]:
-    if not st.runs_dir.is_dir():
-        return []
-    return [d for d in st.runs_dir.iterdir()
-            if not d.is_symlink() and d.is_dir() and not d.name.startswith(".") and is_valid_run_id(d.name)]
 
 
 def _cards(st: UiState) -> list[dict]:
@@ -793,3 +692,32 @@ def _cards(st: UiState) -> list[dict]:
                       "when": _when(started), "footer": f"{run.get('task_id', '?')} · …{d.name[-4:]}",
                       "started_at": started})
     return sorted(cards, key=lambda c: c["started_at"], reverse=True)
+
+
+# --- increment 16 slice 2: the readers live in foundry.data now; these wrappers keep today's callers until slice 5 --
+_regular = data_runs.is_regular
+_read_json = data_runs.read_json
+_read_run = data_runs.read_run
+_num = data_runs.num
+_float = data_runs.float_or_none
+_scores = data_runs.read_scores
+
+
+def _run_dirs(st: UiState) -> list[Path]:
+    return data_runs.run_dirs(st.runs_dir)
+
+
+def _batch_list(st: UiState) -> list[dict]:
+    return data_batches.batch_list(st.batches_dir, st.runs_dir)
+
+
+def _batch_rows(st: UiState, path: Path) -> list[dict]:
+    return data_batches.batch_rows(path, st.runs_dir)
+
+
+def _configs(st: UiState) -> list[str]:
+    return data_project.config_stems(st.root)
+
+
+def _task_ids(st: UiState) -> list[str]:
+    return data_project.task_ids(st.root)
