@@ -176,7 +176,8 @@ export function RunDrawer({ id, onEvaluate, refresh = 0 }: { id: string; onEvalu
 
 const TabCaption = ({ children }: { children: React.ReactNode }) => <p data-caption className="text-xs text-slate-500 dark:text-slate-400">{children}</p>;
 
-/** The Overview's Scores block, in order of precedence: being scored, interrupted, scored, running, not scored. */
+/** The Overview's Scores block, in order of precedence: being scored, scoring interrupted, scored, run interrupted,
+ * running, not scored. */
 function RunScores({ d, id, onEvaluate }: { d: RunDetail; id: string; onEvaluate: (id: string) => void }) {
   if (d.evaluating) return <p className="flex items-center gap-2 text-sm text-amber-600"><Spinner label="Being scored" /> Being scored…</p>;
   const button = <button className="btn-primary" onClick={() => onEvaluate(id)}>Score this run</button>;
@@ -190,6 +191,12 @@ function RunScores({ d, id, onEvaluate }: { d: RunDetail; id: string; onEvaluate
         Workflow: how the agent worked.<br />Output: how good its plan is.
         {d.rubric_info && <><br />Rubric {d.rubric_info.id} v{d.rubric_info.version}</>}
       </div>
+    </div>
+  );
+  if (d.run.status === "interrupted") return (  // its worker stopped (a timeout or a crash): aws-deploy spec S3
+    <div className="space-y-3 text-sm">
+      <p>This run was interrupted: it stopped before finishing, after a timeout or a crash. The steps it recorded are kept, and you can still score them.</p>
+      {button}
     </div>
   );
   if (d.run.status === "running") return <p className="text-sm text-slate-500">Scores appear after the run finishes and is graded.</p>;

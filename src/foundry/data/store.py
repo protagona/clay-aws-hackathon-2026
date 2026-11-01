@@ -219,6 +219,11 @@ class AwsStore:
                                config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}))
         self.ddb = boto3.client("dynamodb", region_name=region)
 
+    @property
+    def upload_origin(self) -> str:
+        """Where presigned POSTs go: the bucket's regional virtual-hosted endpoint (the page's CSP allows it)."""
+        return f"https://{self.bucket}.s3.{self.region}.amazonaws.com"
+
     # objects
     def put_object(self, key: str, data: bytes, if_none_match: bool = True) -> str:
         kw = {"IfNoneMatch": "*"} if if_none_match else {}

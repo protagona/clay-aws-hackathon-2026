@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ApiError, getSession, post, upload } from "../api";
+import { ApiError, getSession, post, uploadFile } from "../api";
 import { Dropzone } from "../components/Dropzone";
 import { useToast } from "../components/toasts";
 import { PageHeader, Panel, Pill, Section } from "../components/ui";
@@ -16,7 +16,8 @@ export default function Import() {
   const [config, setConfig] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const rec = usePoll<ReceiverStatus>("/api/receiver", (d) => (d?.running ? 2000 : 10000));
+  // The receiver only exists on a laptop (aws-deploy I7): don't poll for one the deployment doesn't have.
+  const rec = usePoll<ReceiverStatus>(session?.receiver ? "/api/receiver" : null, (d) => (d?.running ? 2000 : 10000));
   const toast = useToast();
   const navigate = useNavigate();
   useEffect(() => { getSession().then(setSession); }, []);
@@ -24,15 +25,11 @@ export default function Import() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!file) return;
-    const form = new FormData();
-    form.append("file", file);
-    form.append("task", task);
-    form.append("prompt_id", promptId);
-    form.append("config", config);
     setError(null);
     setProgress(0);
     try {
-      const { runs } = await upload<ImportResponse>("/api/import", form, setProgress);
+      const upload_id = await uploadFile("trace", file, setProgress);
+      const { runs } = await post<ImportResponse>("/api/import/by-upload", { upload_id, task, prompt_id: promptId, config });
       toast({ tone: "ok", text: `Imported ${runs.length} run${runs.length === 1 ? "" : "s"}` });
       navigate(runs.length === 1 ? `/runs/${runs[0]}` : "/");
     } catch (err) {
@@ -65,18 +62,18 @@ export default function Import() {
       <Section n={1} title="Where imported runs go" caption="Imported runs are filed under this task and prompt id.">
         <Panel className="p-5">{common}</Panel>
       </Section>
-      <div className="grid items-start gap-10 lg:grid-cols-2">
+      <div className={`grid items-start gap-10 ${session?.receiver ? "lg:grid-cols-2" : "max-w-3xl"}`}>
       <Section n={2} title="Upload a trace" caption="Drop an OpenTelemetry (OTLP/JSON) file. Each agent run in it becomes a run on the board.">
       <Panel className="p-5">
         <form onSubmit={submit} className="space-y-4">
           <Dropzone accept=".json,.jsonl" file={file} onFile={setFile} hint="OTLP/JSON or JSON Lines · up to 50 MB" />
           {progress !== null && <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800" role="progressbar" aria-valuenow={progress}><div className="h-2 rounded-full bg-sky-500 transition-all" style={{ width: `${progress}%` }} /></div>}
           {error && <p role="alert" className="text-sm text-rose-600">✗ {error}</p>}
-          <button className="btn-primary" disabled={!file || progress !== null}>{progress !== null ? `Uploading… ${progress}%` : "Import"}</button>
+          <button className="btn-primary" disabled={!file || progress !== null}>{progress === null ? "Import" : progress < 100 ? `Uploading… ${progress}%` : "Importing…"}</button>
         </form>
       </Panel>
       </Section>
-      <Section n={3} title="Live receiver" caption="Point an OpenTelemetry-instrumented agent here. Each run it sends shows up on the board."
+      {session?.receiver && <Section n={3} title="Live receiver" caption="Point an OpenTelemetry-instrumented agent here. Each run it sends shows up on the board."
         actions={rec.data && <Pill tone={rec.data.running ? "emerald" : "slate"}>{rec.data.running ? "● receiving" : "stopped"}</Pill>}>
       <Panel className="p-5">
         {rec.error && <p role="alert" className="text-sm text-rose-600">✗ Can't reach the receiver status: {rec.error}</p>}
@@ -88,7 +85,7 @@ export default function Import() {
           </div>
         )}
       </Panel>
-      </Section>
+      </Section>}
       </div>
     </main>
   );

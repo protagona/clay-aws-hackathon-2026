@@ -64,7 +64,8 @@ def make_router(ws: Workspace, csrf: str, access=None) -> APIRouter:
     def session(request: Request):
         out = {"csrf": expected_csrf(request, csrf, access) or "", "configs": configs.config_names(ws),
                "prompts": configs.prompt_ids(ws), "models": configs.model_choices(ws), "tasks": configs.task_ids(ws),
-               "rubric": rubrics.active_label(ws, "adb"), "aws_profile": configs.aws_profile()}
+               "rubric": rubrics.active_label(ws, "adb"), "aws_profile": configs.aws_profile(),
+               "receiver": ws.receiver_enabled}
         if access is not None:
             out["user"] = request.state.auth[1]
         return out

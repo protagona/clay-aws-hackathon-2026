@@ -53,6 +53,8 @@ def import_upload(ws: Workspace, filename: str, path: Path, task: str, prompt_id
 
 
 def receiver_start(ws: Workspace, task: str, prompt_id: str, config: str) -> None:
+    if not ws.receiver_enabled:
+        raise ServiceError(409, "Not available in this deployment; import trace files instead")
     check_import_form(ws, task, prompt_id, config)
     with ws.lock:
         if ws.receiver is None:

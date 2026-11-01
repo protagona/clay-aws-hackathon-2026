@@ -610,6 +610,7 @@ export interface Session {
   tasks: string[];
   rubric: RubricLabel | null;
   aws_profile: string | null;
+  receiver?: boolean;
 }
 
 export interface Spread {

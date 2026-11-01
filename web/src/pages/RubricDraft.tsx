@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiError, del, getSession, put } from "../api";
+import { ApiError, del, get, getSession, isStale, put } from "../api";
 import { useToast } from "../components/toasts";
-import { ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton } from "../components/ui";
+import { ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton, STALE } from "../components/ui";
 import type { DraftSaveResult, DraftView, Rubric, RubricCriterion } from "../types";
 import { usePoll } from "../usePoll";
 
@@ -58,6 +58,8 @@ export default function RubricDraft() {
   const { id = "" } = useParams();
   const q = usePoll<DraftView>(`/api/rubric/drafts/${encodeURIComponent(id)}?task=adb`, () => null);
   const [body, setBody] = useState<Rubric | null>(null);
+  const [base, setBase] = useState<number | null>(null);  // the project version edits are made against (cloud only)
+  const [stale, setStale] = useState(false);
   const [status, setStatus] = useState<{ valid: boolean; error: string | null; field: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -66,6 +68,8 @@ export default function RubricDraft() {
     if (q.data) {
       setBody({ ...q.data.body, criteria: q.data.body.criteria ?? [] });
       setStatus({ valid: q.data.meta.valid, error: q.data.meta.error, field: null });
+      setBase(q.data.base_version ?? null);
+      setStale(false);
     }
   }, [q.data]);
 
@@ -74,15 +78,18 @@ export default function RubricDraft() {
     setBusy(true);
     try {
       const r = await put<DraftSaveResult>(
-        `/api/rubric/drafts/${encodeURIComponent(id)}`, { task: "adb", body, activate });
+        `/api/rubric/drafts/${encodeURIComponent(id)}`, { task: "adb", body, activate, base_version: base });
       setStatus(r);
+      // Saving changed the project version: later saves are made against it (the form keeps what's typed).
+      get<DraftView>(`/api/rubric/drafts/${encodeURIComponent(id)}?task=adb`).then((v) => setBase(v.base_version ?? null)).catch(() => {});
       if (r.activated) {
         toast({ tone: "ok", text: `Activated ${body.rubric_id} v${body.version}` });
         getSession(true);
         navigate("/rubric");
       } else toast({ tone: r.valid ? "ok" : "info", text: r.valid ? "Saved" : "Saved (still invalid)" });
     } catch (err) {
-      if (err instanceof ApiError) setStatus({ valid: false, error: err.message, field: err.field });
+      if (isStale(err)) setStale(true);
+      else if (err instanceof ApiError) setStatus({ valid: false, error: err.message, field: err.field });
       else toast({ tone: "bad", text: String(err) });
     } finally {
       setBusy(false);
@@ -110,6 +117,7 @@ export default function RubricDraft() {
       <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <Section n={1} title="Criteria" caption="Edit any field. Problems show next to the field.">
       <div className="min-w-0 space-y-4">
+        {stale && <ErrorBanner message={STALE} retryLabel="Reload" onRetry={q.reload} />}
         {status && !status.valid && status.error && !status.field && <p role="alert" className="text-sm text-rose-600">✗ {status.error}</p>}
         {m.notes.length > 0 && (
           <Panel className="border-l-4 border-amber-400 p-4"><div className="text-sm font-semibold">Notes from the model</div>

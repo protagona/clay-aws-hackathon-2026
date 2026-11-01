@@ -64,6 +64,7 @@ class Session(Closed):
     tasks: list[str]
     rubric: RubricLabel | None
     aws_profile: str | None
+    receiver: bool = True  # whether the live trace receiver can be started here (off in the cloud, I7)
 
 
 # --- runs: the board --------------------------------------------------------------------------------------------

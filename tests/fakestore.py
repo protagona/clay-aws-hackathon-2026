@@ -49,6 +49,8 @@ class FakeStore:
         except NotFound:
             return None
 
+    upload_origin = "https://fake-bucket.s3.us-west-2.amazonaws.com"
+
     def presign_post(self, key: str, max_bytes: int, expires: int = 600) -> dict:
         return {"url": "https://fake-bucket.s3.us-west-2.amazonaws.com/", "fields": {"key": key, "max": str(max_bytes)}}
 

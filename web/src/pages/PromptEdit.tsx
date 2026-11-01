@@ -2,10 +2,10 @@
 // The same page at /prompts/new creates a prompt.
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiError, get, getSession, post, put } from "../api";
+import { ApiError, get, getSession, isStale, post, put } from "../api";
 import { StepEditor } from "../components/StepEditor";
 import { useToast } from "../components/toasts";
-import { Empty, ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton } from "../components/ui";
+import { Empty, ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton, STALE } from "../components/ui";
 import { money, score, shortModel } from "../format";
 import type { CreatePromptResponse, PromptDetail, PromptsResponse, ToolMenu } from "../types";
 import { usePoll } from "../usePoll";
@@ -20,12 +20,14 @@ function NewPrompt() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
-  useEffect(() => { get<PromptsResponse>("/api/prompts?task=adb").then((d) => setId((cur) => cur || d.next_id)).catch(() => {}); }, []);
+  const [base, setBase] = useState<number | null>(null);  // the project version this page loaded (cloud only)
+  const load = () => get<PromptsResponse>("/api/prompts?task=adb").then((d) => { setId((cur) => cur || d.next_id); setBase(d.base_version ?? null); }).catch(() => {});
+  useEffect(() => { load(); }, []);
   async function create() {
     setBusy(true);
     setError(null);
     try {
-      const { prompt_id } = await post<CreatePromptResponse>("/api/prompts", { task: "adb", prompt_id: id, prompt: text });
+      const { prompt_id } = await post<CreatePromptResponse>("/api/prompts", { task: "adb", prompt_id: id, prompt: text, base_version: base });
       toast({ tone: "ok", text: `Created ${prompt_id}` });
       getSession(true);
       navigate(`/prompts/${encodeURIComponent(prompt_id)}`);
@@ -43,7 +45,9 @@ function NewPrompt() {
         <Panel className="space-y-4 p-5">
           <label className="field">Id<input className="input max-w-xs font-mono" value={id} placeholder="Pick an id, like adb-007" onChange={(e) => setId(e.target.value)} />{at("prompt_id")}</label>
           <label className="field">Prompt<textarea className="input min-h-40" value={text} maxLength={20000} onChange={(e) => setText(e.target.value)} />{at("prompt")}</label>
-          {error && !error.field && <ErrorBanner message={error.message} />}
+          {error && !error.field && (isStale(error)
+            ? <ErrorBanner message={STALE} retryLabel="Reload" onRetry={() => { setError(null); load(); }} />
+            : <ErrorBanner message={error.message} />)}
           <button className="btn-primary" disabled={busy || !id.trim() || !text.trim()} onClick={create}>{busy ? "Creating…" : "Create"}</button>
         </Panel>
       </Section>
@@ -74,6 +78,8 @@ function EditPrompt({ id }: { id: string }) {
   if (!q.data) return <main className="space-y-6 px-4 py-6 sm:px-8"><PageHeader title={<span className="break-all">{id}</span>} caption="Loading…">{back}</PageHeader><Skeleton className="h-64" /></main>;
   const d = q.data, p = d.prompt;
   const value = text ?? p.prompt;
+  const base_version = d.base_version ?? null;  // sent with every edit: a 409 if someone else changed the project
+  const reload = () => { setText(null); setError(null); setStepError(null); q.reload(); };
   async function act(fn: () => Promise<unknown>, ok: string) {
     setBusy(true);
     setError(null);
@@ -101,17 +107,19 @@ function EditPrompt({ id }: { id: string }) {
           <textarea aria-label="Prompt text" className="input min-h-40 read-only:bg-slate-50 read-only:text-slate-700 dark:read-only:bg-slate-800/60 dark:read-only:text-slate-300" value={value}
             readOnly={d.locked} maxLength={20000} onChange={(e) => setText(e.target.value)} />
           {error && error.field === "prompt" && <p role="alert" className="text-xs text-rose-600">✗ {error.message}</p>}
-          {error && error.field !== "prompt" && <ErrorBanner message={error.message} />}
+          {error && error.field !== "prompt" && (isStale(error)
+            ? <ErrorBanner message={STALE} retryLabel="Reload" onRetry={reload} />
+            : <ErrorBanner message={error.message} />)}
           {d.locked ? (
             d.next_version_id ? <button className="btn-primary" disabled={busy} onClick={() => act(async () => {
-              const { prompt_id } = await post<CreatePromptResponse>(`/api/prompts/${encodeURIComponent(id)}/version`, { task: "adb" });
+              const { prompt_id } = await post<CreatePromptResponse>(`/api/prompts/${encodeURIComponent(id)}/version`, { task: "adb", base_version });
               getSession(true);
               navigate(`/prompts/${encodeURIComponent(prompt_id)}`);
             }, `Created ${d.next_version_id}`)}>Make a new version → {d.next_version_id}</button>
               : <p className="text-xs text-slate-500">The id is too long to version; create a new prompt instead.</p>
           ) : (
             <button className="btn-primary" disabled={busy || value === p.prompt}
-              onClick={() => act(() => put(`/api/prompts/${encodeURIComponent(id)}`, { task: "adb", prompt: value }).then(() => setText(null)), `Saved ${id}`)}>
+              onClick={() => act(() => put(`/api/prompts/${encodeURIComponent(id)}`, { task: "adb", prompt: value, base_version }).then(() => setText(null)), `Saved ${id}`)}>
               {busy ? "Saving…" : "Save"}</button>
           )}
         </Panel>
@@ -127,11 +135,12 @@ function EditPrompt({ id }: { id: string }) {
             onSave={async (stages) => {
               setStepError(null);
               try {
-                await put(`/api/prompts/${encodeURIComponent(id)}/stages`, { task: "adb", stages });
+                await put(`/api/prompts/${encodeURIComponent(id)}/stages`, { task: "adb", stages, base_version });
                 toast({ tone: "ok", text: "Steps saved" });
                 q.reload();
               } catch (e) {
-                setStepError(err(e).message);
+                if (isStale(e)) { reload(); setStepError("Someone else changed this prompt since you opened it; it has been reloaded. Make your change again."); }
+                else setStepError(err(e).message);
               }
             }} />
         </Panel>
@@ -154,7 +163,7 @@ function EditPrompt({ id }: { id: string }) {
       <div className="flex justify-end">
         <button className={p.archived ? "btn-ghost" : "btn-danger"} disabled={busy}
           onClick={() => act(async () => {
-            await post(`/api/prompts/${encodeURIComponent(id)}/archive`, { task: "adb", archived: !p.archived });
+            await post(`/api/prompts/${encodeURIComponent(id)}/archive`, { task: "adb", archived: !p.archived, base_version });
             getSession(true);
           }, p.archived ? `Unarchived ${id}` : `Archived ${id}`)}>{p.archived ? "Unarchive" : "Archive this prompt"}</button>
       </div>

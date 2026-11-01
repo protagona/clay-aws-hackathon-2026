@@ -10,7 +10,8 @@
 //
 // Starts an offline run from the New run dialog, waits for its card in "Needs attention", clicks Evaluate, and
 // waits for it to reach "Scored" with a score ring, all without a page reload. Then screenshots the board and the
-// drawer in light and dark at 1440 and 375 px.
+// drawer in light and dark at 1440 and 375 px. aws-deploy I6: imports a trace and drafts a rubric through the pages'
+// two-step uploads.
 import { spawn } from "node:child_process";
 import { copyFileSync, cpSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -126,6 +127,46 @@ async function scan(what, { page = true } = {}) {
   if (page && !r.caption) fail(`${what}: no caption under the page title`);
   if (r.bad.length) fail(`${what}: a section without an h2 heading and caption`);
   if (r.overflow) fail(`${what}: horizontal page scroll`);
+}
+
+// aws-deploy I6: the Import and Rubric pages send files in two steps (an upload ticket, then the file). Drive both in the
+// browser: a two-span OTLP trace becomes a run, and the active rubric as a JSON file becomes a draft (no model call).
+async function uploads() {
+  const dir = mkdtempSync(join(tmpdir(), "foundry-e2e-up-"));
+  const span = (id, name, t, op, parent = "") => ({ traceId: "0af7651916cd43dd8448eb211c80319c", spanId: id, parentSpanId: parent,
+    name, startTimeUnixNano: String(t * 1e9), endTimeUnixNano: String(t * 1e9 + 1e8), status: {}, events: [],
+    attributes: [{ key: "gen_ai.operation.name", value: { stringValue: op } }] });
+  writeFileSync(join(dir, "trace.json"), JSON.stringify({ resourceSpans: [{ scopeSpans: [{ spans: [
+    span("a1", "invoke_agent e2e", 1, "invoke_agent"), span("a2", "chat", 2, "chat", "a1")] }] }] }));
+  writeFileSync(join(dir, "rubric.json"), JSON.stringify((await (await fetch(base + "/api/rubric/active?task=adb")).json()).rubric));
+  const setFile = async (path) => {
+    const { root } = (await send("DOM.getDocument")).result;
+    const { nodeId } = (await send("DOM.querySelector", { nodeId: root.nodeId, selector: "input[type=file]" })).result;
+    await send("DOM.setFileInputFiles", { nodeId, files: [path] });
+  };
+  const click = (label) => js(`[...document.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(label)}).click()`);
+  try {
+    await send("Page.navigate", { url: base + "/import" });
+    await until("!!document.querySelector('input[type=file]')", "the Import page", 20000);
+    await setFile(join(dir, "trace.json"));
+    await until("[...document.querySelectorAll('button')].some(b => b.textContent === 'Import' && !b.disabled)", "the Import button");
+    await click("Import");
+    const run = await until("location.pathname.startsWith('/runs/otel-') && location.pathname", "the imported run to open", 30000);
+    await send("Page.navigate", { url: base + "/rubric" });
+    await until("!!document.querySelector('input[type=file]') && [...document.querySelectorAll('select option')].some(o => o.value === 'offline')", "the Rubric page", 20000);
+    await js(`(() => { const s = [...document.querySelectorAll('select')].find(x => [...x.options].some(o => o.value === 'offline'));
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, 'offline');
+      s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+    await setFile(join(dir, "rubric.json"));
+    await until("[...document.querySelectorAll('button')].some(b => b.textContent === 'Draft rubric' && !b.disabled)", "the Draft rubric button");
+    await click("Draft rubric");
+    const draft = await until("location.pathname.startsWith('/rubric/drafts/') && location.pathname.split('/').pop()", "the draft to open", 30000);
+    const csrf = (await (await fetch(base + "/api/session")).json()).csrf;
+    await fetch(`${base}/api/rubric/drafts/${draft}?task=adb`, { method: "DELETE", headers: { "x-csrf-token": csrf, origin: base } });
+    console.log(`uploads: a trace imported as ${run.split("/").pop()} and a rubric drafted (${draft}), both in two steps`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 async function clarity(scoredRun) {
@@ -287,6 +328,7 @@ try {
 
   // Increment 12: every page explains itself (C1, C2, C5, C8), at phone and desktop width, light and dark.
   await clarity(runId);
+  await uploads();
 
   if (out) {
     mkdirSync(out, { recursive: true });

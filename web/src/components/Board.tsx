@@ -25,7 +25,7 @@ function RunCard({ c, selected, onEvaluate }: { c: Card; selected: boolean; onEv
           {c.column === "scored" ? <ScoreRing value={c.overall} label="overall" />
             : c.column === "running" ? <Pill tone="sky"><span className="h-1.5 w-1.5 rounded-full bg-sky-500" aria-hidden="true" />running</Pill>
             : c.column === "evaluating" ? <Pill tone="amber">scoring…</Pill>
-            : <Pill tone={c.status === "failed" || c.status === "timeout" || c.unreadable ? "rose" : "slate"}>{c.unreadable ? "unreadable" : statusWord(c.status === "succeeded" ? c.headline : c.status)}</Pill>}
+            : <Pill tone={c.status === "failed" || c.status === "timeout" || c.status === "interrupted" || c.unreadable ? "rose" : "slate"}>{c.unreadable ? "unreadable" : statusWord(c.status === "succeeded" ? c.headline : c.status)}</Pill>}
         </div>
         {c.column === "running" && c.agents_mode === "pipeline" && (
           <div className="mt-3 text-[11px] text-slate-500">{(c.agents_started ?? []).join(" → ") || "starting…"}</div>

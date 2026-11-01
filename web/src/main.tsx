@@ -4,6 +4,7 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Shell } from "./components/Shell";
+import { AuthGate } from "./components/SignIn";
 import { ToastProvider } from "./components/toasts";
 import { PageHeader, Skeleton } from "./components/ui";
 import "./index.css";
@@ -24,6 +25,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
       <ToastProvider>
+        <AuthGate>
         <Shell>
           <Suspense fallback={<div className="p-8"><Skeleton className="h-64" /></div>}>
             <Routes>
@@ -45,6 +47,7 @@ createRoot(document.getElementById("root")!).render(
             </Routes>
           </Suspense>
         </Shell>
+        </AuthGate>
       </ToastProvider>
     </BrowserRouter>
   </StrictMode>,

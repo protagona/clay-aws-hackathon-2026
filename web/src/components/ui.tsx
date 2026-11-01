@@ -40,14 +40,17 @@ export function Spinner({ label = "Loading" }: { label?: string }) {
   return <span role="status" aria-label={label} className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />;
 }
 
-export function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
+export function ErrorBanner({ message, onRetry, retryLabel = "Retry" }: { message: string; onRetry?: () => void; retryLabel?: string }) {
   return (
     <div role="alert" className="flex items-center justify-between gap-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800 ring-1 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-200 dark:ring-rose-500/30">
       <span>✗ {message}</span>
-      {onRetry && <button className="btn-ghost" onClick={onRetry}>Retry</button>}
+      {onRetry && <button className="btn-ghost" onClick={onRetry}>{retryLabel}</button>}
     </div>
   );
 }
+
+/** An edit refused because someone else changed the project since the page loaded (aws-deploy spec S2). */
+export const STALE = "Someone else changed this since you opened it. Reload to see their change, then try again.";
 
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
   return (

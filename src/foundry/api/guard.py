@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from foundry.services.errors import ServiceError
 
-CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; "
+CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'{connect}; "
        "img-src 'self' data:; font-src 'self'; form-action 'self'; frame-ancestors 'none'")
 MULTIPART_PATHS = ("/api/import", "/api/rubric/drafts")
 
@@ -43,7 +43,10 @@ def authenticate(request: Request, access) -> None:
     request.state.auth = ("cookie", name)
 
 
-def install(app: FastAPI, port: int, access=None) -> None:
+def install(app: FastAPI, port: int, access=None, upload_origin: str | None = None) -> None:
+    """`upload_origin`: the state bucket's https origin, the one other place the page may send to (presigned
+    upload POSTs, aws-deploy ADR-10)."""
+    csp = CSP.format(connect=f" {upload_origin}" if upload_origin else "")
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 
     @app.middleware("http")
@@ -76,7 +79,7 @@ def install(app: FastAPI, port: int, access=None) -> None:
                     response = await call_next(request)
                 except Exception:
                     response = refuse(500, "Internal Server Error")
-        response.headers["Content-Security-Policy"] = CSP
+        response.headers["Content-Security-Policy"] = csp
         response.headers["X-Content-Type-Options"] = "nosniff"
         # Not "no-referrer": with it, browsers send `Origin: null` on form POSTs (Fetch spec), which the Origin
         # check above rejects. "same-origin" still sends nothing to other sites.

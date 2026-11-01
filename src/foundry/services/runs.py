@@ -38,6 +38,10 @@ def detail(ws: Workspace, path: Path, seen: int | None = None) -> dict:
     """Everything the run drawer shows, from the run's own files. The report is Markdown (`report_md`); the API
     renders it, and model text, to safe HTML."""
     run = {**data_runs.read_run(path), "run_id": path.name}  # links use the directory name, never run.json's
+    if run.get("status") == "running" and cloud_state.on(ws):
+        job = jobs.of_run(ws, "run", path.name)
+        if job is not None and job.status == "interrupted":  # its worker stopped; run.json will never say so
+            run["status"] = "interrupted"
     scores = data_runs.read_scores(path)
     interrupted = scores is not None and evaluation_interrupted(path)
     report_md = data_runs.read_report(path) if scores is not None and not interrupted else None
@@ -258,7 +262,7 @@ def board_from_index(ws: Workspace) -> tuple[list[dict], dict]:
             if it["run_id"] in evaluating:
                 card["headline"] = "evaluating"
             elif card.get("headline") == "running" and it["run_id"] in interrupted:
-                card["headline"] = "interrupted"
+                card["headline"] = card["status"] = "interrupted"
         out.append(card)
     k = {"spent": spent, "mean": sum(scored) / len(scored) if scored else None, "scored": len(scored), "shares": shares}
     return sorted(out, key=lambda c: c.get("started_at") or "", reverse=True), k

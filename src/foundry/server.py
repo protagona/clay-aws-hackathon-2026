@@ -27,9 +27,10 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
     if cloud is not None:
         store, mirror, backend = cloud
         ws.cloud, ws.backend = (store, mirror), backend
+        ws.receiver_enabled = False
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.ui = ws
-    guard.install(app, port, access)
+    guard.install(app, port, access, upload_origin=cloud[0].upload_origin if cloud is not None else None)
     errors.install(app)
     app.include_router(make_router(ws, guard.new_csrf_token(), access))
     spa.mount(app)

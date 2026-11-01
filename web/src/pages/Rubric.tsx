@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ApiError, getSession, post, upload } from "../api";
+import { ApiError, getSession, isStale, post, uploadFile } from "../api";
 import { Dropzone } from "../components/Dropzone";
 import { useToast } from "../components/toasts";
 import { ErrorBanner, PageHeader, Panel, Pill, Section, Skeleton, Spinner, Tabs } from "../components/ui";
@@ -29,20 +29,15 @@ export default function Rubric() {
 
   async function draft(e: FormEvent) {
     e.preventDefault();
-    const form = new FormData();
-    form.append("task", "adb");
-    form.append("kind", kind);
-    form.append("config", config);
-    if (kind === "file" && file) form.append("file", file);
-    if (kind === "text") form.append("text", text);
-    if (kind === "url") form.append("url", url);
-    if (kind === "mcp") { form.append("mcp", mcp); form.append("args", args); }
     setError(null);
+    setProgress(0);
     setPhase(kind === "file" ? "uploading" : "drafting");
     try {
-      const { draft_id } = await upload<CreateDraftResponse>("/api/rubric/drafts", form, (p) => {
-        setProgress(p);
-        if (p >= 100) setPhase("drafting");
+      const upload_id = kind === "file" && file ? await uploadFile("rubric_source", file, setProgress) : null;
+      setPhase("drafting");
+      const { draft_id } = await post<CreateDraftResponse>("/api/rubric/drafts/by-upload", {
+        task: "adb", kind, config, upload_id, text: kind === "text" ? text : "", url: kind === "url" ? url : "",
+        mcp: kind === "mcp" ? mcp : "", args: kind === "mcp" ? args : "",
       });
       toast({ tone: "ok", text: "Draft ready for review" });
       navigate(`/rubric/drafts/${draft_id}`);
@@ -55,12 +50,13 @@ export default function Rubric() {
 
   async function activate(file: string) {
     try {
-      await post("/api/rubric/history/activate", { task: "adb", file });
+      await post("/api/rubric/history/activate", { task: "adb", file, base_version: ov.data?.base_version ?? null });
       toast({ tone: "ok", text: `Activated ${file}` });
       getSession(true);
       ov.reload();
     } catch (err) {
       toast({ tone: "bad", text: err instanceof ApiError ? err.message : String(err) });
+      if (isStale(err)) ov.reload();  // show what changed; the user can activate again from there
     }
   }
 

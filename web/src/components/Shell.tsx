@@ -1,6 +1,6 @@
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { ApiError, getSession, onSessionChange, post } from "../api";
+import { ApiError, getSession, logout, onSessionChange, post } from "../api";
 import type { Session, StartRunResponse } from "../types";
 import { useToast } from "./toasts";
 import { Dialog } from "./ui";
@@ -99,6 +99,16 @@ function useTheme() {
   return [dark, choose] as const;
 }
 
+/** Who is signed in, and the way out (deployments with auth on; aws-deploy ADR-9). */
+function SignedIn({ user, className }: { user: string; className: string }) {
+  return (
+    <span className={`whitespace-nowrap text-xs text-slate-500 ${className}`}>
+      Signed in as <span className="font-medium text-slate-700 dark:text-slate-300">{user}</span> ·{" "}
+      <button className="text-sky-600 hover:underline" onClick={() => logout()}>Sign out</button>
+    </span>
+  );
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [dark, setDark] = useTheme();
@@ -135,6 +145,7 @@ export function Shell({ children }: { children: ReactNode }) {
               </NavLink>
             )}
             {session?.aws_profile && <span className="hidden text-xs text-slate-500 xl:inline" title="AWS profile">AWS profile {session.aws_profile}</span>}
+            {session?.user && <SignedIn user={session.user} className="hidden md:inline" />}
             <button className="btn-ghost" onClick={() => setDark(!dark)} aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}>
               {dark ? "☀" : "◐"}
             </button>
@@ -146,6 +157,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <NavLink key={n.to} to={n.to} aria-current={on(n.to) ? "page" : undefined} className={phone(on(n.to))}>{n.label}</NavLink>
           ))}
           <SetupMenu active={setup} tabClass={phone} />
+          {session?.user && <SignedIn user={session.user} className="ml-auto self-center" />}
         </nav>
       </header>
       {children}

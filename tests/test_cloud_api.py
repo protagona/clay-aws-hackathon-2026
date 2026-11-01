@@ -101,3 +101,38 @@ def test_scoring_through_the_api_marks_the_card_and_clears_it(cloud):
     assert card["headline"] != "evaluating"
     jobs_list = b.get("/api/jobs").json()["jobs"]
     assert {j["kind"] for j in jobs_list} >= {"run", "evaluate"}
+
+
+def test_a_run_whose_worker_died_reads_as_interrupted(cloud, monkeypatch):
+    import json
+
+    from foundry.data.store import Update
+
+    store, invoked, (a, ha), (b, hb), (w, wm) = cloud
+    clean = fake_runner()
+
+    def dies_mid_run(args, cwd, **kw):  # the last sync before the crash: run.json still says running
+        code, err = clean(args, cwd, **kw)
+        p = __import__("pathlib").Path(args[args.index("--runs-dir") + 1]) / args[args.index("--run-id") + 1] / "run.json"
+        p.write_text(json.dumps({**json.loads(p.read_text()), "status": "running"}))
+        return code, err
+
+    monkeypatch.setattr(jobs, "run_foundry", dies_mid_run)
+    run_id = a.post("/api/runs", headers=ha, json={"prompt_id": "adb-001", "config": "offline"}).json()["run_id"]
+    workers.run_job(w, store, wm, invoked[0])
+    store.write(Update("JOB", invoked[0], set={"status": "interrupted"}))  # what the sweep writes past the deadline
+    card = next(c for c in b.get("/api/runs").json()["runs"] if c["run_id"] == run_id)
+    assert card["headline"] == card["status"] == "interrupted" and card["column"] == "attention"
+    d = b.get(f"/api/runs/{run_id}").json()
+    assert d["run"]["status"] == "interrupted" and d["m"]["live"] is False
+
+
+def test_the_receiver_is_off_and_uploads_may_go_to_the_bucket(cloud, tmp_path):
+    _, _, (a, ha), _, _ = cloud
+    s = a.get("/api/session")
+    assert s.json()["receiver"] is False
+    assert "connect-src 'self' https://fake-bucket.s3.us-west-2.amazonaws.com;" in s.headers["content-security-policy"]
+    r = a.post("/api/receiver/start", headers=ha, json={"task": "adb", "prompt_id": "imported", "config": ""})
+    assert r.status_code == 409 and r.json()["error"] == "Not available in this deployment; import trace files instead"
+    local = TestClient(create_app(tmp_path / "runs", ROOT), base_url=BASE).get("/api/session")
+    assert local.json()["receiver"] is True and "connect-src 'self';" in local.headers["content-security-policy"]

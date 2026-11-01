@@ -1,5 +1,6 @@
-// The only way the UI talks to the server: same-origin JSON with the CSRF header on writes.
-import type { Session } from "./types";
+// The only way the UI talks to the server: same-origin JSON with the CSRF header on writes, plus the upload POST
+// (to this server on a laptop, straight to the state bucket in the cloud: aws-deploy ADR-10).
+import type { AuthMe, Session, UploadTicket } from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -28,8 +29,46 @@ export function onSessionChange(fn: (s: Session) => void): () => void {
   return () => listeners.delete(fn);
 }
 
+// --- sign-in (deployments with auth on, aws-deploy ADR-9; a laptop never answers 401) ----------------------------
+
+const signedOut = new Set<() => void>();
+
+/** Called whenever the server answers 401: the session ended, expired or its token was revoked. */
+export function onSignedOut(fn: () => void): () => void {
+  signedOut.add(fn);
+  return () => signedOut.delete(fn);
+}
+
+function endSession() {
+  session = null;
+  signedOut.forEach((fn) => fn());
+}
+
+/** Sign in with an access token (no CSRF token yet: the server exempts this one write). */
+export async function login(token: string): Promise<AuthMe> {
+  const r = await fetch("/api/auth/login", {
+    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }),
+  });
+  const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  if (!r.ok) throw new ApiError(r.status, body.error ?? `HTTP ${r.status}`);
+  session = null;
+  return body as AuthMe;
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await post("/api/auth/logout");
+  } finally {
+    endSession();
+  }
+}
+
+/** A 409 from an edit made on a page another user's edit has since changed (aws-deploy spec S2). */
+export const isStale = (e: unknown) => e instanceof ApiError && e.status === 409 && e.message.startsWith("Changed by someone else");
+
 async function parse<T>(r: Response): Promise<T> {
   const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  if (r.status === 401) endSession();
   if (!r.ok) throw new ApiError(r.status, body.error ?? `HTTP ${r.status}`, body.field ?? null);
   return body as T;
 }
@@ -57,25 +96,36 @@ export const post = <T>(url: string, body?: unknown) => write<T>("POST", url, bo
 export const put = <T>(url: string, body?: unknown) => write<T>("PUT", url, body);
 export const del = <T>(url: string) => write<T>("DELETE", url);
 
-/** Multipart upload with progress (fetch cannot report upload progress, XHR can). */
-export async function upload<T>(url: string, form: FormData, onProgress?: (pct: number) => void): Promise<T> {
-  const { csrf } = await getSession();
-  return new Promise<T>((resolve, reject) => {
+/**
+ * Send a file in two steps (aws-deploy I6): ask for an upload ticket, then POST the file where it says, with
+ * progress. Returns the upload id that `/api/import/by-upload` and `/api/rubric/drafts/by-upload` take. On a laptop
+ * the ticket points at this server (CSRF header needed); in the cloud at a presigned S3 POST, which must get no
+ * custom header (one would need a CORS preflight) and wants the file as the last field.
+ */
+export async function uploadFile(kind: "trace" | "rubric_source", file: File, onProgress?: (pct: number) => void): Promise<string> {
+  const ticket = await post<UploadTicket>("/api/uploads", { kind, filename: file.name, size: file.size });
+  const local = ticket.url.startsWith("/");
+  const form = new FormData();
+  for (const [k, v] of Object.entries(ticket.fields)) form.append(k, v);
+  form.append("file", file);
+  const csrf = local ? (await getSession()).csrf : null;
+  await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", url);
-    xhr.setRequestHeader("X-CSRF-Token", csrf);
+    xhr.open("POST", ticket.url);
+    if (csrf) xhr.setRequestHeader("X-CSRF-Token", csrf);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(Math.round((e.loaded / e.total) * 100));
     xhr.onload = () => {
-      let body: { error?: string; field?: string } = {};
-      try {
-        body = JSON.parse(xhr.responseText);
-      } catch {
-        body = { error: `HTTP ${xhr.status}` };
-      }
-      if (xhr.status >= 200 && xhr.status < 300) resolve(body as T);
-      else reject(new ApiError(xhr.status, body.error ?? `HTTP ${xhr.status}`, body.field ?? null));
+      if (xhr.status >= 200 && xhr.status < 300) return resolve();
+      if (xhr.status === 401) endSession();
+      let message = `Upload failed (HTTP ${xhr.status})`;
+      if (local) {
+        try { message = JSON.parse(xhr.responseText).error ?? message; } catch { /* not JSON */ }
+      } else if (xhr.responseText.includes("EntityTooLarge")) message = "The file is over the limit.";
+      else if (xhr.responseText.includes("AccessDenied")) message = "The upload link expired; try again.";
+      reject(new ApiError(xhr.status, message));
     };
     xhr.onerror = () => reject(new ApiError(0, "Network error"));
     xhr.send(form);
   });
+  return ticket.upload_id;
 }
