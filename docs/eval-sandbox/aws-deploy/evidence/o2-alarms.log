@@ -1,0 +1,138 @@
+O2, 2026-11-01T13:08:03Z
+--- the function-URL metrics CloudWatch actually holds for the api (dimensions as published):
+[
+    [
+        {
+            "Name": "FunctionName",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd"
+        }
+    ],
+    [
+        {
+            "Name": "FunctionName",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd"
+        },
+        {
+            "Name": "Resource",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd:live"
+        }
+    ],
+    [
+        {
+            "Name": "FunctionName",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd"
+        },
+        {
+            "Name": "ExecutedVersion",
+            "Value": "1"
+        },
+        {
+            "Name": "Resource",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd:live"
+        }
+    ],
+    [
+        {
+            "Name": "FunctionName",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd"
+        },
+        {
+            "Name": "ExecutedVersion",
+            "Value": "6"
+        },
+        {
+            "Name": "Resource",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd:live"
+        }
+    ],
+    [
+        {
+            "Name": "FunctionName",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd"
+        },
+        {
+            "Name": "ExecutedVersion",
+            "Value": "2"
+        },
+        {
+            "Name": "Resource",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd:live"
+        }
+    ],
+    [
+        {
+            "Name": "FunctionName",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd"
+        },
+        {
+            "Name": "ExecutedVersion",
+            "Value": "3"
+        },
+        {
+            "Name": "Resource",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd:live"
+        }
+    ],
+    [
+        {
+            "Name": "FunctionName",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd"
+        },
+        {
+            "Name": "ExecutedVersion",
+            "Value": "5"
+        },
+        {
+            "Name": "Resource",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd:live"
+        }
+    ],
+    [
+        {
+            "Name": "FunctionName",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd"
+        },
+        {
+            "Name": "ExecutedVersion",
+            "Value": "7"
+        },
+        {
+            "Name": "Resource",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd:live"
+        }
+    ],
+    [
+        {
+            "Name": "FunctionName",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd"
+        },
+        {
+            "Name": "ExecutedVersion",
+            "Value": "8"
+        },
+        {
+            "Name": "Resource",
+            "Value": "FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd:live"
+        }
+    ]
+]
+--- UrlRequestCount, FunctionName + Resource=<fn>:live, last 3 h (5-min sums):
+2026-11-01T04:08:00-06:00	12.0
+2026-11-01T05:08:00-06:00	95.0
+2026-11-01T06:08:00-06:00	123.0
+--- the SNS subscription:
+email	arn:aws:sns:us-west-2:283171504459:FoundryDataStack-Alerts91F83244-wGZMeh1ddLbm:e5bc9530-963e-439e-9952-7d4da952f9f9
+--- the alarms and their current state:
+FoundryAppStack-ApiErrorRateFC83CEBC-2Lec3BCiOSdB	OK	True
+FoundryAppStack-ApiInvocations9DE37DE7-l5rYAPmIHnze	OK	True
+FoundryAppStack-ProbeFailed2697F706-NOPopwW8Lz9R	OK	True
+--- firing test: 2026-11-01T13:08:15Z
+2026-11-01T07:08:16.756000-06:00	Successfully executed action arn:aws:sns:us-west-2:283171504459:FoundryDataStack-Alerts91F83244-wGZMeh1ddLbm
+--- SNS delivery (topic metrics, last 30 min):
+--- SNS delivery, read 2026-11-01T13:15:23Z:
+NumberOfMessagesPublished: 1.0
+NumberOfNotificationsDelivered: 1.0
+NumberOfNotificationsFailed: 0.0
+--- the alarm afterwards:
+2026-11-01T07:09:29.810000-06:00	Alarm updated from ALARM to OK
+2026-11-01T07:08:16.712000-06:00	Alarm updated from OK to ALARM

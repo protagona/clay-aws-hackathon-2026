@@ -82,7 +82,7 @@ The sandbox only works on the laptop it was cloned to.
 - **I6: the complete list of differences.** Each is in the API contract.
   - **Contract changes, the same locally and in the cloud:**
     - **Uploads are two-step.** `POST /api/uploads` returns an upload URL and form fields; the client POSTs the file there, and the import or draft call names the upload. In the cloud the URL is presigned for the state bucket (at most 15 minutes, one object); locally it's a route on the same server. Uploads are up to 50 MB, as today.
-    - **Rubric drafting is a job.** `POST /api/rubric/drafts` returns `202 {draft_id, job_id}`, and the page polls until the draft is ready.
+    - **Rubric drafting runs in the request** (amended 2026-11-01, approved by the user at Verify). `POST /api/rubric/drafts/by-upload` returns `201 {draft_id}` when the draft is saved, as locally. A function URL holds a request for up to the function's timeout (300 s), and a 75 s draft was measured through it. The original "drafting is a job, the page polls" existed for CloudFront's 30 s limit, and there is no CloudFront.
   - **Present only when auth is on (cloud):**
     - `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`
     - 401 without credentials
@@ -131,6 +131,7 @@ The sandbox only works on the laptop it was cloned to.
 **State (S1–S5)**
 - **S1: the state store is the system of record.** S3 plus DynamoDB, never a function's local disk. Runs, prompts, expected steps, rubrics, rubric history and drafts survive any redeploy, cold start or stack update.
 - **S2: no lost updates.** Two concurrent edits to the same prompt, rubric draft or history can't both silently win. The second gets 409 "Changed by someone else; reload".
+  - Amended 2026-11-01, approved by the user at Verify: the check applies to edits that carry the `base_version` their page loaded, which the web app always sends. An API call that omits it isn't refused. Only the UI edits project files, and the CLI has no edit commands.
 - **S3: no stuck locks.** Runs, scorings, drafts and tool listings each run as one Lambda invocation, which is capped at 15 minutes. Batches run as a Step Functions workflow (no time cap that matters here).
   - A lock or job record left by an invocation that crashed or timed out stops blocking within **17 minutes** of the job starting: the 15-minute invocation cap plus a 2-minute margin. The cleanup happens at the next read that sees it, so that read is when it shows as interrupted.
 - **S4: seeding.** One documented command copies a local `runs/` and `tasks/` into an **empty** deployment, and the board shows them. If the deployment already holds a run, the seed is skipped as a whole and the command says so.

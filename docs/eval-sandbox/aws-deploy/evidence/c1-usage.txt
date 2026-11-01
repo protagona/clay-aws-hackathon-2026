@@ -1,0 +1,2 @@
+C1 per-run usage: worker invocations (REPORT lines) over the last 3 h
+worker invocations: 13, total 74 s, median 2.2 s, max 21.2 s (2 GB each)

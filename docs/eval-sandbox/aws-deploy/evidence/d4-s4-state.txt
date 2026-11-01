@@ -1,0 +1,16 @@
+D4 state at the new URL, 2026-11-01T13:12:19Z (after destroy 06:2x and redeploy 06:31 UTC; see d4.log)
+smoke at https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws
+96 runs · 90 scored · mean 0.94 · spent $15.751 · 0 live
+BATCH                   STATUS    DONE   SPENT   MODELS
+b-20261101-114337-d3fd  finished  2/2    $0.000  offline.toml
+b-20261101-034001-0985  finished  2/2    $0.000  offline.toml
+b-20261101-022727-ec9e  finished  2/2    $0.000  offline.toml
+b-20261101-021316-2725  finished  2/2    $0.000  offline.toml
+b-20261031-165254-0635  finished  12/12  $2.064  us.moonshotai.kimi-k3
+b-20261031-095647-0119  finished  24/24  $5.762  us.anthropic.claude-opus-4-6-v1, us.anthropic.claude-sonnet-4-6, us.moonshotai.kimi-k3, zai.glm-5
+b-20261031-094852-bd7c  finished  36/36  $2.604  us.amazon.nova-2-lite-v1, us.anthropic.claude-haiku-4-5-20251001-v1, us.anthropic.claude-opus-4-6-v1, us.anthropic.claude-sonnet-4-6, us.moonshotai.kimi-k3, zai.glm-5
+b-20261031-070518-a7e1  finished  4/4    $0.992  bedrock.toml, bedrock-pipeline.toml
+b-20261030-194754-27c4  finished  12/12  $2.242  us.anthropic.claude-sonnet-4-6, us.moonshotai.kimi-k3
+operator CLI login url: https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws
+S4: seeded runs present (run ids from the local runs/ that are on the board):
+77 of 77 local runs are on the board

@@ -1,0 +1,9 @@
+I6 long draft, 2026-11-01T13:12:33Z: kind text, config bedrock, 17992 characters (the deployment spec)
+201 after 4.6 s through the function URL: draft fc4abc2aa4a1, 0 criteria, valid=False, model us.anthropic.claude-opus-4-6-v1, usage {'tokens_in': 6013, 'tokens_out': 66, 'cost_usd': 0.034887}
+discarded
+--- second try, 2026-11-01T13:12:56Z: a 12-area, 10-level scoring guide (520 characters)
+201 after 51.1 s through the function URL: draft f6e5a135f6c0, 12 criteria, valid=True, model us.anthropic.claude-opus-4-6-v1, usage {'tokens_in': 1047, 'tokens_out': 3250, 'cost_usd': 0.095133}
+discarded
+--- third try, 2026-11-01T13:13:58Z: a 20-area, 10-level scoring guide (661 characters)
+201 after 75.0 s through the function URL: draft 96f1328020c0, 20 criteria, valid=True, model us.anthropic.claude-opus-4-6-v1, usage {'tokens_in': 1073, 'tokens_out': 5281, 'cost_usd': 0.151129}
+discarded

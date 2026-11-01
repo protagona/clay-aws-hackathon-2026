@@ -1,0 +1,4 @@
+A1, 2026-11-01T13:11:06Z
+new token answered 200 after 1 s
+Revoked a1-drill (stops working within 60 s).
+revoked token answered 401 after 58 s

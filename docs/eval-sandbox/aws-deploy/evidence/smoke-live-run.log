@@ -1,0 +1,6 @@
+PASS  a live Bedrock run succeeds in the cloud: 2026-11-01T02-14-33Z_adb-001_4a03: succeeded, 18 steps, $0.168, 12 tool calls ok, 1 failed
+PASS  L1: steps of a running run show within 10 s: 17 steps seen while running, worst lag 4.7 s
+PASS  scoring it in the cloud: overall 0.9526
+FAIL  a real rubric draft through the URL: The model could not draft the rubric: Bedrock us.anthropic.claude-opus-4-6-v1: An error occurred (AccessDeniedException) when calling the Converse operation: User: arn:aws:sts::283171504459:assumed-role/FoundryAppStack-ApiServiceRole1BD550DA-uaOAIml7kH0q/FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd is not authorized to perform: bedrock:InvokeModel on resource: arn:aws:bedrock:us-west-2:283171504459:inference-profile/us.anthropic.claude-opus-4-6-v1 because no identity-based policy allows the bedrock:InvokeModel action
+
+1 failed: a real rubric draft through the URL

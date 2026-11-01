@@ -1,0 +1,60 @@
+✓ container engine: podman
+✓ credentials: account 283171504459, region us-west-2
+✓ CDK bootstrap
+  Lambda unreserved concurrency: 972
+▸ deploying build 389ffc3 (cap $30)
+AI agent detected
+WARNING No cross-stack-reference strength configured, defaulting to "strong". We recommend you set feature flag "@aws-cdk/core:defaultCrossStackReferences" to "both", then deploy everywhere, then set it to "weak". Alternatively, set it to "strong" explicitly to lock in the current producer-protecting behavior. (See: https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/README.md#reference-strength) (Construct Annotations)
+   FoundryAppStack
+   Acknowledge with 'Annotation::@aws-cdk/core:crossStackReferencesDefaultStrong'
+
+✨  Synthesis time: 3.13s
+
+FoundryDataStack
+FoundryDataStack: deploying... [1/2]
+
+✅  FoundryDataStack (no changes)
+
+✨  Deployment time: 0s
+
+Outputs:
+FoundryDataStack.AlertEmail = miguel.pereira@protagona.com
+FoundryDataStack.Bucket = foundrydatastack-state1c20cc9a-fluejjxghams
+FoundryDataStack.BudgetUsd = 
+FoundryDataStack.ExportsOutputFnGetAttState1C20CC9AArnF70626CA = arn:aws:s3:::foundrydatastack-state1c20cc9a-fluejjxghams
+FoundryDataStack.ExportsOutputFnGetAttTableCD117FA1ArnE2C8C204 = arn:aws:dynamodb:us-west-2:283171504459:table/FoundryDataStack-TableCD117FA1-7STI1BEWJ2V1
+FoundryDataStack.ExportsOutputRefAlerts91F83244F0271852 = arn:aws:sns:us-west-2:283171504459:FoundryDataStack-Alerts91F83244-wGZMeh1ddLbm
+FoundryDataStack.ExportsOutputRefState1C20CC9AB4E57B9B = foundrydatastack-state1c20cc9a-fluejjxghams
+FoundryDataStack.ExportsOutputRefTableCD117FA1D18A8047 = FoundryDataStack-TableCD117FA1-7STI1BEWJ2V1
+FoundryDataStack.TableName = FoundryDataStack-TableCD117FA1-7STI1BEWJ2V1
+Stack ARN:
+arn:aws:cloudformation:us-west-2:283171504459:stack/FoundryDataStack/79bf9520-d598-11f1-97d7-0adaaa5a1bc1
+FoundryAppStack
+FoundryAppStack: deploying... [2/2]
+
+✅  FoundryAppStack (no changes)
+
+✨  Deployment time: 0s
+
+Outputs:
+FoundryAppStack.ApiFunction = FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd
+FoundryAppStack.BatchLogGroup = FoundryAppStack-BatchLogsA0B94732-X7915GRf2kWV
+FoundryAppStack.Build = 389ffc3
+FoundryAppStack.Cap = 30
+FoundryAppStack.ProbeAlarm = FoundryAppStack-ProbeFailed2697F706-UNUZ8GbdR5LC
+FoundryAppStack.ProbeRule = FoundryAppStack-ProbeScheduleC3BDD144-D0v7HFGg8sII
+FoundryAppStack.StateMachine = arn:aws:states:us-west-2:283171504459:stateMachine:BatchWorkflow7DE35971-KgC2bwHduX3h
+FoundryAppStack.Url = https://xx2kruojkqqypdfpqq6ic7vzpa0gdlhv.lambda-url.us-west-2.on.aws/
+FoundryAppStack.WorkerFunction = FoundryAppStack-Worker11F36D0F-xACdBpRJJT4A
+Stack ARN:
+arn:aws:cloudformation:us-west-2:283171504459:stack/FoundryAppStack/94b59730-d598-11f1-9188-060507005a49
+
+✨  Total time: 7.3s
+
+The session key exists.
+▸ worker: unchanged (version 1)
+▸ api: unchanged (version 1)
+
+▸ serving build 389ffc3 at https://xx2kruojkqqypdfpqq6ic7vzpa0gdlhv.lambda-url.us-west-2.on.aws/ (30 s)
+  first time? add a token: scripts/cloud.sh token add <your name>; then sign in at the URL
+  CLI: curl -O https://xx2kruojkqqypdfpqq6ic7vzpa0gdlhv.lambda-url.us-west-2.on.aws/cli/foundry-remote.pyz && python3 foundry-remote.pyz login https://xx2kruojkqqypdfpqq6ic7vzpa0gdlhv.lambda-url.us-west-2.on.aws/ <token>

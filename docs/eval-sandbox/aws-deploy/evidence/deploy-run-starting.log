@@ -1,0 +1,219 @@
+✓ container engine: podman
+✓ credentials: account 283171504459, region us-west-2
+✓ CDK bootstrap
+  Lambda unreserved concurrency: 972
+▸ deploying build c377169 (cap $30)
+AI agent detected
+WARNING No cross-stack-reference strength configured, defaulting to "strong". We recommend you set feature flag "@aws-cdk/core:defaultCrossStackReferences" to "both", then deploy everywhere, then set it to "weak". Alternatively, set it to "strong" explicitly to lock in the current producer-protecting behavior. (See: https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/README.md#reference-strength) (Construct Annotations)
+   FoundryAppStack
+   Acknowledge with 'Annotation::@aws-cdk/core:crossStackReferencesDefaultStrong'
+
+✨  Synthesis time: 2.94s
+
+FoundryDataStack
+FoundryAppStack: start: Building FoundryAppStack Template
+FoundryAppStack: success: Built FoundryAppStack Template
+FoundryAppStack: start: Building Worker/AssetImage
+STEP 1/13: FROM public.ecr.aws/lambda/python:3.12-arm64
+FoundryDataStack: deploying... [1/2]
+
+✅  FoundryDataStack (no changes)
+
+✨  Deployment time: 0s
+
+Outputs:
+FoundryDataStack.AlertEmail = miguel.pereira@protagona.com
+FoundryDataStack.Bucket = foundrydatastack-state1c20cc9a-fluejjxghams
+FoundryDataStack.BudgetUsd = 0
+FoundryDataStack.CapUsd = 30
+FoundryDataStack.ExportsOutputFnGetAttState1C20CC9AArnF70626CA = arn:aws:s3:::foundrydatastack-state1c20cc9a-fluejjxghams
+FoundryDataStack.ExportsOutputFnGetAttTableCD117FA1ArnE2C8C204 = arn:aws:dynamodb:us-west-2:283171504459:table/FoundryDataStack-TableCD117FA1-7STI1BEWJ2V1
+FoundryDataStack.ExportsOutputRefAlerts91F83244F0271852 = arn:aws:sns:us-west-2:283171504459:FoundryDataStack-Alerts91F83244-wGZMeh1ddLbm
+FoundryDataStack.ExportsOutputRefState1C20CC9AB4E57B9B = foundrydatastack-state1c20cc9a-fluejjxghams
+FoundryDataStack.ExportsOutputRefTableCD117FA1D18A8047 = FoundryDataStack-TableCD117FA1-7STI1BEWJ2V1
+FoundryDataStack.TableName = FoundryDataStack-TableCD117FA1-7STI1BEWJ2V1
+Stack ARN:
+arn:aws:cloudformation:us-west-2:283171504459:stack/FoundryDataStack/79bf9520-d598-11f1-97d7-0adaaa5a1bc1
+FoundryAppStack: start: Publishing FoundryAppStack Template (283171504459-us-west-2-e0cb9e9f)
+STEP 2/13: RUN pip install --no-cache-dir uv==0.13.6
+--> Using cache 915efd8174fbad84b4d06bcdd6bb978ac8e97e5e8a3cd15de21b04931d0a790a
+--> 915efd8174fb
+STEP 3/13: COPY pyproject.toml uv.lock README.md LICENSE ${LAMBDA_TASK_ROOT}/
+--> Using cache 3f2bc6717ab5da76b594908eb1b29af27ff373b5f1a5b3ee44fb8db40965ad47
+--> 3f2bc6717ab5
+STEP 4/13: RUN cd ${LAMBDA_TASK_ROOT} && uv export --frozen --no-dev --no-emit-project --format requirements-txt > /tmp/req.txt     && uv pip install --system --no-cache -r /tmp/req.txt
+--> Using cache 86b7bc887a94a05993682a22421de599240ae7d1ba8167bc96ab33f17d053f81
+--> 86b7bc887a94
+STEP 5/13: COPY src ${LAMBDA_TASK_ROOT}/src
+--> 27c7c39fdea7
+STEP 6/13: RUN cd ${LAMBDA_TASK_ROOT} && uv pip install --system --no-cache --no-deps .
+Using Python 3.12.16 environment at: /var/lang
+FoundryAppStack: success: Published FoundryAppStack Template (283171504459-us-west-2-e0cb9e9f)
+Resolved 1 package in 1ms
+   Building clay-foundry-eval @ file:///var/task
+      Built clay-foundry-eval @ file:///var/task
+Prepared 1 package in 559ms
+Installed 1 package in 20ms
+ + clay-foundry-eval==0.1.0 (from file:///var/task)
+--> a89a7b039c37
+STEP 7/13: ENV UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/opt/uv-tools/bin
+--> 089e087f5193
+STEP 8/13: RUN uv tool install --no-cache awslabs.roda-mcp-server==0.1.7
+Resolved 76 packages in 751ms
+Downloading beartype (1.5MiB)
+Downloading botocore (15.4MiB)
+Downloading pygments (1.2MiB)
+Downloading cryptography (4.5MiB)
+Downloading pydantic-core (2.0MiB)
+ Downloaded pygments
+ Downloaded beartype
+ Downloaded pydantic-core
+ Downloaded cryptography
+ Downloaded botocore
+Prepared 76 packages in 890ms
+Installed 76 packages in 336ms
+ + aiofile==3.12.3
+ + annotated-types==0.8.0
+ + anyio==4.16.0
+ + attrs==26.1.0
+ + authlib==1.9.1
+ + awslabs-roda-mcp-server==0.1.7
+ + beartype==0.23.1
+ + boto3==1.43.123
+ + botocore==1.43.123
+ + cachetools==7.2.8
+ + caio==0.12.10
+ + certifi==2026.10.23
+ + cffi==2.1.1
+ + click==8.5.0
+ + cryptography==50.0.2
+ + cyclopts==5.3.2
+ + dnspython==2.9.1
+ + docstring-parser==0.18.0
+ + email-validator==2.3.0
+ + exceptiongroup==1.3.1
+ + fastmcp==4.1.4
+ + fastmcp-slim==4.1.4
+ + griffelib==2.4.1
+ + h11==0.16.0
+ + h2==4.4.1
+ + hpack==4.2.0
+ + httpcore==1.0.9
+ + httpcore2==2.16.0
+ + httpx==0.28.1
+ + httpx2==2.16.0
+ + hyperframe==6.1.0
+ + idna==3.20
+ + jmespath==1.1.0
+ + joserfc==1.7.7
+ + jsonref==1.1.0
+ + jsonschema==4.26.0
+ + jsonschema-path==0.5.0
+ + jsonschema-specifications==2025.9.1
+ + loguru==0.7.3
+ + markdown-it-py==4.2.0
+ + mcp==2.3.0
+ + mcp-types==2.3.0
+ + mdurl==0.1.2
+ + openapi-pydantic==0.6.0
+ + opentelemetry-api==1.45.2
+ + packaging==26.3
+ + pathable==0.6.0
+ + platformdirs==4.14.2
+ + py-key-value-aio==0.4.6
+ + pycparser==3.12
+ + pydantic==2.14.2
+ + pydantic-core==2.50.2
+ + pydantic-settings==2.16.2
+ + pygments==2.21.0
+ + pyjwt==2.15.1
+ + pyperclip==1.11.0
+ + python-dateutil==2.9.0.post0
+ + python-dotenv==1.2.4
+ + python-multipart==0.0.33
+ + pyyaml==6.0.3
+ + referencing==0.37.0
+ + rich==15.0.0
+ + rich-rst==2.2.0
+ + rpds-py==2026.9.1
+ + s3transfer==0.19.3
+ + six==1.17.0
+ + sse-starlette==3.6.0
+ + starlette==1.10.0
+ + truststore==0.10.5
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.4
+ + uncalled-for==0.4.1
+ + urllib3==2.8.0
+ + uvicorn==0.54.0
+ + watchfiles==1.3.0
+ + websockets==17.4
+Installed 1 executable: awslabs.roda-mcp-server
+warning: `/opt/uv-tools/bin` is not on your PATH. To use installed tools, add the directory to your PATH.
+--> affd9aba7ac9
+STEP 9/13: COPY config /app/config
+--> d6fad49975be
+STEP 10/13: COPY fixtures /app/fixtures
+--> 925e3f10db66
+STEP 11/13: COPY tasks /app/tasks
+--> 9a03cddbec5a
+STEP 12/13: ENV HOME=/tmp UV_CACHE_DIR=/tmp/uv-cache TMPDIR=/tmp FOUNDRY_RUNS_DIR=/tmp/state/runs FOUNDRY_HOME=/tmp/state/project     FOUNDRY_APP_DIR=/app FOUNDRY_S3_URI="" FOUNDRY_MCP_RODA_CMD=/opt/uv-tools/bin/awslabs.roda-mcp-server PYTHONDONTWRITEBYTECODE=1
+--> ce67069d8d0a
+STEP 13/13: CMD ["foundry.lambda_api.handler"]
+COMMIT cdkasset-2527eaa9ad0d2dd7879bde816c3f686a9add1105d628ca73439b6e538d20ff77
+--> 601c706fc61e
+Successfully tagged localhost/cdkasset-2527eaa9ad0d2dd7879bde816c3f686a9add1105d628ca73439b6e538d20ff77:latest
+601c706fc61eff2c20fc92a689a2134897ef4d6e628f5fa750e154738363e5f6
+FoundryAppStack: success: Built Worker/AssetImage
+FoundryAppStack: start: Publishing Worker/AssetImage (283171504459-us-west-2-0e13361d)
+Getting image source signatures
+Copying blob sha256:a7e64d038dd302e1b3473c5bb007e3745c02996610f59a63138568d71ea27711
+Copying blob sha256:289e8c0fecff443e5443bf080a05f8e4595bcfa45f35681c487ad9df056288c9
+Copying blob sha256:45fd01fd6398e918b20f2fdfbf7ef6f5e85cd89dc290151227cff8c0c980625d
+Copying blob sha256:3a099dd3a53f031f8ff27ef47c3eabb00050ba925ffe0f58a64c41786bf3bc71
+Copying blob sha256:b4b6237569ebb677cdd1c4d331eb2f23ef28c9cdfcd27061d57d421987a5d0b7
+Copying blob sha256:e3d61d140f45d7f265cbd5272d92e565039fb2a5a1492f9ba46a78b62b2554d6
+Copying blob sha256:6b0120229eda1308798de702c53fff2a29ed73f9ebaa246cbc31991dc59531ed
+Copying blob sha256:8f664109ce9074011aef48d15e93c5ba0110525fe3197fe58d6336906c63841a
+Copying blob sha256:64f828bcd37d88ebbc970f0aed1bf82aa16a4ad7a40efae50e3b07894b791e80
+Copying blob sha256:e6ba4604b173552cdbb9246a0e9b06f2ada808279a604e4f93d6d3dd8834ba33
+Copying blob sha256:a16b2519e4849f6ae6661ad29e5960b0dbdfdcb8e9fced56c145aa1193b9be9b
+Copying blob sha256:96aafdd018d91b5c652ab97f4693808e853b37ad4893a2be45f3943c7c09ff46
+Copying blob sha256:cb04a1d839de29cbf69b1d26b03f2d48efe9d0aa0114172927dedf2fef5b8acd
+Copying blob sha256:76cd52c08d56e89858658218ec5361aeb263172e2e2dc8021864ffd26d56ae9d
+Copying blob sha256:7beb834312252485025bbd35e5c404e3b5adc1b171967646803187ef9066f7e9
+Copying config sha256:601c706fc61eff2c20fc92a689a2134897ef4d6e628f5fa750e154738363e5f6
+Writing manifest to image destination
+FoundryAppStack: success: Published Worker/AssetImage (283171504459-us-west-2-0e13361d)
+FoundryAppStack
+FoundryAppStack: creating CloudFormation changeset...
+FoundryAppStack: deploying... [2/2]
+
+✅  FoundryAppStack
+
+✨  Deployment time: 81.44s
+
+Outputs:
+FoundryAppStack.ApiFunction = FoundryAppStack-ApiF70053CD-WiAQR6EYkgRP
+FoundryAppStack.BatchLogGroup = FoundryAppStack-BatchLogsA0B94732-W8xURCDifaVm
+FoundryAppStack.Build = c377169
+FoundryAppStack.Cap = 30
+FoundryAppStack.ProbeAlarm = FoundryAppStack-ProbeFailed2697F706-NOPopwW8Lz9R
+FoundryAppStack.ProbeRule = FoundryAppStack-ProbeScheduleC3BDD144-NZvQBYvYpPJP
+FoundryAppStack.StateMachine = arn:aws:states:us-west-2:283171504459:stateMachine:BatchWorkflow7DE35971-st7QqR3D9p4h
+FoundryAppStack.Url = https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/
+FoundryAppStack.WorkerFunction = FoundryAppStack-Worker11F36D0F-UNbye19veOd0
+Stack ARN:
+arn:aws:cloudformation:us-west-2:283171504459:stack/FoundryAppStack/969c4600-d5ef-11f1-8a45-0affc45c4d45
+
+✨  Total time: 118.17s
+
+The session key exists.
+▸ worker: checking version 3
+▸ api: checking version 3
+▸ worker: live → version 3
+▸ api: live → version 3
+
+▸ serving build c377169 at https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/ (184 s)
+  first time? add a token: scripts/cloud.sh token add <your name>; then sign in at the URL
+  CLI: curl -O https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/cli/foundry-remote.pyz && python3 foundry-remote.pyz login https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/ <token>

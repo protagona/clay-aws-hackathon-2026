@@ -1,0 +1,10 @@
+AWSLambda | USW2-Request-ARM | AWS Lambda - Total Requests for ARM - US West (Oregon) | 0.0000002000
+AWSLambda | USW2-Lambda-GB-Second-ARM | AWS Lambda - Total Compute for ARM - US West (Oregon)-Tier-1 | 0.0000133334
+AWSLambda | USW2-Lambda-GB-Second-ARM | AWS Lambda - Total Compute for ARM - US West (Oregon)-Tier-2 | 0.0000120001
+AWSLambda | USW2-Lambda-GB-Second-ARM | AWS Lambda - Total Compute for ARM - US West (Oregon)-Tier-3 | 0.0000106667
+AmazonS3 | USW2-Requests-Tier1 | $0.005 per 1,000 PUT, COPY, POST, or LIST requests | 0.0000050000
+AmazonS3 | USW2-Requests-Tier2 | $0.004 per 10,000 GET and all other requests | 0.0000004000
+AmazonDynamoDB | USW2-WriteRequestUnits | $0.625 per million write request units (Oregon) | 0.0000006250
+AmazonDynamoDB | USW2-ReadRequestUnits | $0.125 per million read request units (Oregon) | 0.0000001250
+AmazonCloudWatch | USW2-DataProcessing-Bytes | $0.50 per GB custom log data ingested in Standard log class - US West (Oregon) | 0.5000000000
+AmazonStates | USW2-StateTransition | $0.000025 per state transition | 0.0000250000

@@ -1,0 +1,10 @@
+C1, 2026-11-01. Prices: c1-prices.txt and the fixed-cost lookups below (AWS Price List API, us-west-2).
+Fixed (idle) per month: ECR 1.65 GB x $0.10 = $0.17; alarms: 4 alarm metrics (the 5xx-rate alarm uses 2) x $0.10 = $0.40;
+  the probe's custom metric $0.30; PutMetricData 8,640 x $0.01/1,000 = $0.09; probe compute 8,640 x 0.79 s x 0.25 GB x
+  $0.0000133334 = $0.02 (mean billed 793 ms over 36 probes); requests, logs, S3 (3.8 MB), DynamoDB (281 KB + PITR) ~ $0.01.
+  Total ~ $1.00 a month (limit $3).
+About 500 runs a month, before Bedrock, at the bounded worst case (AS2: a run <= 300 s; scoring ~60 s), 2 GB arm64:
+  worker 500 x 360 s x 2 GB x $0.0000133334 = $4.80; api polling while watching (1/s for 300 s, ~0.05 s at 2 GB each)
+  ~ $0.20; Lambda requests ~ $0.03; S3 (~150 PUT + ~600 GET per run) ~ $0.50; DynamoDB (~200 WRU + ~1,500 RRU per run)
+  ~ $0.16; logs (~200 KB per run, $0.50/GB) ~ $0.05.  Total ~ $5.70 (limit $10); typical runs (60 s + 30 s scoring) ~ $1.50.
+Measured worker usage: c1-usage.txt. Bedrock is limited by A5's cap.

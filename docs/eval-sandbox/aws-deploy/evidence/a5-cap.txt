@@ -1,0 +1,6 @@
+A5, 2026-11-01T13:12:14Z
+ledger committed: 1.749853
+ledger set to 29.99
+foundry-remote: This month's spend is $29.99 of the $30.00 cap; new runs are paused until 2026-12-01.
+CLI exit=1
+ledger restored: 1.749853

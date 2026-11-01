@@ -1,0 +1,18 @@
+S3, 2026-11-01 (sandbox). Command outputs as printed; transcribed from the session.
+
+Worker reserved concurrency set to 0, so two runs' async invocations were throttled; Lambda dropped both
+(AsyncEventsDropped = 2 at 11:44 UTC), so neither worker ever ran.
+
+Forced case: run 2026-11-01T11-44-20Z_adb-001_97fd, its job's deadline moved to the past:
+  c230cbc44b55e86f  run    2026-11-01T11-44-20Z_adb-001_97fd  running
+  deadline moved to the past
+  c230cbc44b55e86f  run    2026-11-01T11-44-20Z_adb-001_97fd  failed   interrupted: the worker stopped before finishing (timeout or
+Natural case: run 2026-11-01T11-44-28Z_adb-001_5fde, queued 11:44:28, deadline untouched (11:44:28 + 32 min = 12:16:28):
+  12:12:26  f99e84a115783088  run    2026-11-01T11-44-28Z_adb-001_5fde  running
+  12:16:36  f99e84a115783088  run    2026-11-01T11-44-28Z_adb-001_5fde  failed  interrupted: the worker stopped before finishing (timeout or
+  Started 2026-11-01T12-16-38Z_adb-001_c0e9      <- the run slot was free again
+  2026-11-01T12-16-38Z_adb-001_c0e9   status   succeeded · 00:05 · —
+
+Since dc68961 a job that started counts its deadline from its start (17 minutes; RUN_LIMIT_S + MARGIN_S), tested in
+tests/test_cloud_jobs.py::test_a_started_job_that_dies_frees_its_slot_17_minutes_after_it_started. A job that never
+starts keeps the 32-minute deadline (15 minutes of event age, then the 17).

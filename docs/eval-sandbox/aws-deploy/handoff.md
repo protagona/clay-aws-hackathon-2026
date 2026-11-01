@@ -1,6 +1,6 @@
 # Serverless AWS deployment — Handoff
 
-**Spec:** ./spec.md   **Design:** ./design.md   **Runbook:** ../../deploy.md   **Date:** 2026-11-01   **Track:** Full
+**Spec:** ./spec.md   **Design:** ./design.md   **Runbook:** ../../deploy.md   **Evidence:** ./evidence/   **Date:** 2026-11-01   **Track:** Full
 
 ## What shipped
 
@@ -13,98 +13,120 @@
 3. **Access:**
    - **Tokens:** named, stored as hashes, managed with `cloud.sh token`. A token works for a browser sign-in (HMAC session cookie plus stateless CSRF) or as an `X-Foundry-Token` header.
    - **Limits:** sign-in is rate-limited per address (an IPv6 /64 counts as one address).
-   - **Monthly spend cap:** $30 by default. Each job reserves its worst-case cost before it starts and settles to the real cost when it finishes.
-4. **The web app** (slice 7):
+   - **Monthly spend cap:** $30 by default. Each job reserves its worst-case cost before it starts and settles to the real cost when it finishes. A batch item whose worker dies is charged its worst case.
+4. **The web app:**
    - sign-in, and "Signed in as … · Sign out"
    - two-step uploads, straight to the bucket in the cloud
    - edits that carry the page's project version, with a Reload banner on a conflict
-   - interrupted runs shown as interrupted
+   - interrupted runs shown as interrupted, and a just-started run shown as "Starting…"
    - no live receiver in the cloud
-5. **A CLI with a token alone** (slice 8): `foundry-remote.pyz`, served by the deployment at `/cli/foundry-remote.pyz`. It uses only the standard library and needs Python 3.10+; from a clone it's `foundry remote`.
-6. **Infrastructure and operations** (slice 9):
+5. **A CLI with a token alone:** `foundry-remote.pyz`, served at `/cli/foundry-remote.pyz`. It uses only the standard library and needs Python 3.10+; from a clone it's `foundry remote`.
+6. **Infrastructure and operations:**
    - `FoundryDataStack` (retained) and `FoundryAppStack`
-   - `scripts/cloud.sh`: preflight, a safe deploy (publish, check, then move alias `live`), status, tokens, seed, gc, logs, stop/start, destroy
+   - `scripts/cloud.sh`: preflight, a safe deploy (both new versions checked before either alias moves), status, tokens, seed, gc, logs, stop/start, destroy
    - `scripts/cloud_ops.py`, `scripts/cloud_smoke.py`
    - `docs/deploy.md`
 7. **The sandbox deployment** (account 283171504459, us-west-2):
-   - URL: **https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/** (new since the D4 drill; `scripts/cloud.sh status` prints it).
-   - It holds the 77 seeded runs and 5 batches, plus my test runs.
-   - The only token is `smoke`, which I used for testing. Add your own with `scripts/cloud.sh token add <name>`, and revoke `smoke` when you no longer need it.
+   - URL: **https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/** (`scripts/cloud.sh status` prints it).
+   - Build `8cb28c0`, both aliases on version 6.
+   - It holds the 77 seeded runs and 5 batches, plus test runs (see Deferred).
+   - The only token is `smoke`, which I used for testing. Add your own with `scripts/cloud.sh token add <name>`, and revoke `smoke` when you're done with it.
 
 ## Decisions
 
-All recorded in `design.md`, under "Build notes":
-- **Drafting and imports stay synchronous** in the api function (300 s, 2 GB), not worker jobs. The 30 s CloudFront limit they were designed around doesn't apply, since there's no CloudFront.
-- **Safe rollout through CloudFormation parameters:** each alias's version is a stack parameter that `cloud.sh` keeps in step with Lambda, so a deploy with no change changes nothing.
-- **The CLI's `.pyz` is built on demand** from the installed source, not stored: Vite empties `web_dist` on every build.
-- **`base_version` is optional** in requests, and the web app always sends it.
-- **The api role may call Bedrock,** because drafts run inside the request (found live).
-- **The worker may list the bucket,** so a missing object reads as not found (404), not access denied (403).
+- **Spec amended at Verify, with your approval:**
+  - **I6:** rubric drafting runs in the request and returns `201`.
+  - **S2:** the conflict check applies to edits that send `base_version`, which the web app always does.
+- **Recorded in `design.md`, under "Build notes":**
+  - imports stay synchronous
+  - the alias versions are CloudFormation parameters kept in step by `cloud.sh`
+  - the `.pyz` is built on demand from the installed source
+  - no GSI (a base-table query instead)
+  - the api role may call Bedrock, because drafts run in the request
+  - the worker may list the bucket, so a missing object reads as not found (404), not access denied (403)
+  - probe and alarm details
 
 ## Verification
 
-**Suites:**
-- **Python:** 426 passed, plus 4 `network` tests deselected. One timing test once failed because the laptop slept mid-run (the system log shows the wake at the exact second the test's step "ended"); it passes on rerun.
-- **Vitest:** 34 passed.
-- **Local browser e2e:** both scripts pass. `ui_e2e.mjs` now also imports a trace and drafts a rubric through the pages' two-step uploads.
+**Suites (final run, before Verify pass 2):**
+- **Python:** 429 passed, plus 4 `network` tests deselected.
+- **Vitest:** 37 passed.
+- **Local browser e2e:** both scripts pass. `ui_e2e.mjs` also imports a trace and drafts a rubric through the pages' two-step uploads.
 
-**The live deployment.** Every check ran against the real sandbox:
+**The live deployment.** Every row ran against the real sandbox, and each names its raw output in `./evidence/`:
 
-| AC | Evidence |
-|---|---|
-| D1, D2 | first deploy from the checkout: 309 s, URL printed, names from stack outputs |
-| D3 | a second deploy with no change: both stacks "no changes", no version published (30 s) |
-| D4 | `cloud.sh destroy`: app stack gone, data stack intact; `cloud.sh deploy` (267 s) reattached it at a new URL: the same `smoke` token, all 92 runs, the batches and job records, and the operator's CLI login updated to the new URL |
-| D5 | code-change deploys serving the new build in 136–184 s (8 deploys). One took 67 min: the image push to ECR stalled while the laptop was asleep and on about 200 ms round trips to us-west-2 |
-| O4, rollout | a build with a broken `/healthz` failed its check, `live` stayed on the previous version, and the URL kept answering the old build |
-| S5 | a live Bedrock run started on version 1 and finished after the deploy moved `live` to version 2 |
-| L1 | a live Bedrock run: 17 steps seen while running, worst lag 4.7 s (limit 10 s) |
-| I1 | headless Chrome against the URL: sign-in, the board (91 cards), dashboard, batches, rubric, and an import through the page's presigned S3 upload under the real CSP; no page errors |
-| I2, A2–A4 | no token → 401; wrong token → 401; cookie flags `Secure`, `HttpOnly`, `SameSite=Strict`; a cookie write without CSRF → 403; a foreign Origin → 403 |
-| I3, O3 | the `.pyz` downloaded with curl, `login` with a token alone, `runs --json`, `jobs` |
-| I5 | 13 tools, no server errors (RODA built into the image) |
-| I6 | an import through a presigned bucket POST; a real Bedrock rubric draft through the URL (3 criteria, 35 s) |
-| I7 | `receiver` false in the session; the start route answers 409 |
-| A1 | a revoked token refused after 59 s (limit 60 s) |
-| A5 | with the month's ledger set to $29.99, a Bedrock run start → 409 "This month's spend is $29.99 of the $30.00 cap; new runs are paused until 2026-12-01" (CLI exit 1); the ledger restored to its exact value |
-| A6 | wrong sign-ins → 429 after the limit |
-| S2 | two edits from the same version: the second gets 409 "Changed by someone else; reload" |
-| S3 | a run whose worker never ran became `interrupted` 8 s after its deadline with nothing forced, and the next run started at once and succeeded |
-| S4 | `cloud.sh seed`: 77 runs, 5 batches, the project in 2 min 51 s; the board shows them |
-| batches | a 2-item batch on Step Functions: finished, 2/2 succeeded |
-| scoring | a live run scored in the cloud: overall 0.95 |
-| S-4 | server-side: board p50 about 30 ms (limit 300); dashboard cold 2,184 ms with 86 runs (limit 3,000), warm 64–116 ms (limit 500) |
-| O4, restore | **files:** deleting a run's objects didn't break it (records name exact versions); the runbook's delete-marker removal restored them. **Records:** a run's TREE item deleted, gone from the board; a point-in-time restore to a new table (about 12 min), the item copied back per the runbook, back on the board; the restore table deleted |
-| X1 | synth tests: no EC2, EFS or load balancer resources |
-| X2 | six idle overnight hours: the api ran 12 times an hour (the probe), the worker 0 times |
-| C1 | about $1.00 a month fixed (Price List API, us-west-2): ECR $0.17, alarms $0.40 (4 alarm metrics), the probe metric $0.30, `PutMetricData` $0.09, probe compute $0.02, the rest about $0.01 |
+| AC | Result | Evidence |
+|---|---|---|
+| D1, D2 | the first deploy from the checkout: 309 s, URL printed; names from stack outputs. The account has no default VPC in us-west-2 (`describe-vpcs`: 0) | deploy-first.log |
+| D3 | a second deploy with no change: both stacks "no changes", no version published (30 s) | deploy-d3-no-change.log |
+| D4 | `destroy`: the app stack is gone and the data stack intact; `deploy` reattached the data at a new URL: the same `smoke` token, 96 runs (77 of 77 seeded), every batch, the operator's CLI login updated | d4-destroy-redeploy.log, d4-s4-state.txt |
+| D5 | code-change deploys serving the new build in 136–186 s (10 deploys). One took 67 min while the laptop slept mid-push and had about 200 ms round trips to us-west-2 | deploy-*.log |
+| O4 | **a broken worker** (it fails its health event): neither alias moved; worker and api stayed on version 4 and `/healthz` kept answering the old build. **A broken `/healthz`** (before the fix): `live` stayed on the previous version | o4-broken-worker.log, deploy-o4-broken-healthz.log |
+| O4 restore | **deleted objects:** the run kept working, and the runbook's delete-marker removal made the files current again. **A lost record:** a point-in-time restore (about 12 min), copied back, back on the board, the restore table deleted | o4-restore-drill.txt |
+| O2 | the alarm metrics' dimensions confirmed from CloudWatch (`FunctionName` + `Resource=<fn>:live`, with data). A forced alarm: action executed, SNS published 1 and delivered 1 (0 failed), back to OK at the next evaluation | o2-alarms.log |
+| S5 | a live Bedrock run started on version 1 and finished after the deploy moved `live` to version 2 | deploy-s5-during-run.log, smoke-live-run.log |
+| L1 | a live Bedrock run: 17 steps seen while running, worst lag 4.7 s (limit 10 s) | smoke-live-run.log |
+| I1 | headless Chrome against the URL. Passed: <br>• sign-in; New run from the dialog <br>• the run's panel, followed live to the end <br>• its Timeline, Steps, Report, Rubric and Overview tabs <br>• scoring from the panel (0.83) <br>• Compare (27 rows); prompts (11); the tool picker (13 tools) <br>• batches, dashboard <br>• a rubric draft from the page (2 criteria), then discarded <br>• an import through the page's presigned upload under the real CSP (earlier drive) <br>No page errors beyond the expected ones | ui/drive2.log, ui/*.png |
+| I2, A2–A4 | no token → 401; wrong token → 401; cookie `Secure`, `HttpOnly`, `SameSite=Strict`; a cookie write without CSRF → 403; a foreign Origin → 403 | smoke-offline.log |
+| I3, O3 | the `.pyz` downloaded with curl, `login` with a token alone, `runs --json`, `jobs` | smoke-offline.log |
+| I5 | 13 tools, no server errors | smoke-offline.log |
+| I6 | an import through a presigned bucket POST. A draft through the URL that took **75 s** (20 criteria, valid, $0.15) | smoke-offline.log, i6-long-draft.txt |
+| I7 | `receiver` false in the session; the start route returns 409 | smoke-offline.log |
+| A1 | a new token worked after 1 s; the revoked token was refused after 58 s (limit 60 s) | a1-revoke.txt |
+| A5 | with the month's ledger at $29.99: a Bedrock start → 409 "This month's spend is $29.99 of the $30.00 cap; new runs are paused until 2026-12-01" (CLI exit 1); the ledger restored to its exact value | a5-cap.txt |
+| A6 | wrong sign-ins → 429 "Too many attempts; wait a minute" past the limit | a6-ratelimit.txt |
+| S2 | two edits from the same version: the second gets 409 "Changed by someone else; reload" | smoke-offline.log |
+| S3 | runs whose worker never ran became `interrupted` at their deadline (one forced, one natural: 8 s after it), and the slot freed at once. A job that started and died is now swept 17 minutes after its start (unit-tested) | s3-interrupted.txt |
+| S4 | the seed (77 runs, 5 batches, the project) in 2 min 51 s; all 77 on the board | d4-s4-state.txt |
+| batches | a 2-item batch on Step Functions: finished, 2/2 succeeded | smoke-offline.log |
+| S-4 | server-side, 96 runs: board about 40 ms (limit 300); dashboard cold 2,413 ms (limit 3,000), warm 94–171 ms (limit 500) | s4-timings.txt |
+| X1 | synth tests: no EC2, EFS or load balancer resources | tests/test_infra.py |
+| X2 | six idle overnight hours: the api ran 12 times an hour (the probe), the worker 0 times | x2-idle.txt |
+| C1 | idle about $1.00 a month (limit $3); about 500 runs a month about $5.70 at the bounded worst case (limit $10), about $1.50 typical; Bedrock limited by A5 | c1-cost.txt, c1-prices.txt, c1-usage.txt |
 
-**Bugs the live checks found** (each fixed with a regression test that fails without the fix):
-1. A rubric draft got `AccessDeniedException`: the api role had no Bedrock statements.
-2. A batch read "stopped, 0/2" right after finishing. Finalize finished the job before pushing `batch.json`, and the batch view read the job last.
-3. Importing the same trace twice was a bare 500 (`FileExistsError`). Now it's a 409 naming the run, and in the cloud another instance's import isn't overwritten.
-4. Unhandled request errors were turned into 500s without a log line. They're logged now (O1).
-5. A cold API instance pulled every run one at a time (26–34 s). Pulls now run in parallel: 6.3 s for 86 runs from the laptop, 2.2 s inside Lambda.
+**Bugs found live, each fixed with a regression test that fails without the fix:**
+1. A draft got `AccessDeniedException`: the api role had no Bedrock statements.
+2. A batch read "stopped": Finalize finished the job before pushing `batch.json`, and the view read the job last.
+3. Re-importing a trace was a bare 500. It's now a 409, and another instance's import isn't overwritten.
+4. Unhandled request errors weren't logged.
+5. Cold pulls ran one run at a time (26–34 s). They're now parallel.
 6. A signed-out page polled `/api/jobs`.
+7. The Rubric page's source tabs submitted the form (on a laptop too).
+8. A just-started run showed "Run not found" for its first seconds in the cloud.
 
 ## Gates
 
-- **Define and Design:** signed off by you before Build (see `design.md`).
-- **Verify gate:** see "Verify gate record" below.
+- **Define and Design:** signed off by you before Build.
+- **Verify, pass 1 (subagent): 8 blockers.** Each resolution:
+  1. **S3 was 32 minutes, not 17:** a claim now sets the deadline from the start; tested.
+  2. **A failed deploy could leave a mixed version live:** both versions are now checked before either moves; drilled live with a broken worker.
+  3. **Dead batch items cost $0:** the per-item worst case is recorded at start and charged at Finalize; tested.
+  4. **No alarm had fired:** dimensions confirmed and an alarm fired through to email delivery.
+  5. **I6 differed from the spec, with no draft over 60 s:** spec amended with your approval, and a 75 s draft recorded.
+  6. **I1 had pages untested:** every main path driven in the cloud, which found bugs 7 and 8.
+  7. **No D4 output:** recorded.
+  8. **No C1 figure for 500 runs:** priced and recorded.
+
+  Minor findings fixed: the cap and budget survive `destroy`, and `--cap 0` sticks; log groups are retained; the runbook's region and `--output json`; a restored record's version bump; the CLI's filename escaping; regression tests for the parallel pull and for no polling before sign-in. The rest are listed under Deferred.
+- **Verify, pass 2:** see the commit that follows this handoff.
 
 ## Deferred and follow-ups
 
-- **A job whose invocation Lambda drops** (seen with the worker's reserved concurrency at 0) keeps the run slot for up to 32 minutes, until its deadline. The fix: an on-failure destination that finishes the job at once.
-- **Not proven live:**
-  - an alarm actually emailing. Confirm the SNS subscription email first; `aws cloudwatch set-alarm-state` can fire a test.
-  - `--budget`
+- **A job whose invocation Lambda drops** (seen with the worker's reserved concurrency at 0) holds the run slot until its 32-minute deadline. The fix: an on-failure destination that finishes the job at once.
+- **IAM, state-machine and alarm changes take effect at deploy,** whatever the alias. "The previous version keeps serving" covers code and environment only.
+- **Reserved concurrency** (20/8, set when the account has at least 128 unreserved) and the alias moves are made by `cloud.sh`, outside the template.
+- **The supply chain:** the base image isn't pinned by digest, and RODA's dependencies below the top level aren't locked. gitleaks ran on every commit with no leaks; no dependency or IaC scanner ran.
+- **Tags** are `project` and `owner`, with no cost-centre tag.
+- **ECR keeps every image** (about 0.3 GB per changed deploy). A lifecycle rule would belong to the CDK bootstrap's repository.
+- **The first full idle week's bill** (C1's "under $0.75"): check it in Cost Explorer a week from now.
+- **Not exercised live:**
+  - a 50 MB import
   - `stop`/`start`
-- **The first full idle week's bill** (spec C1, "under $0.75"): check it in Cost Explorer a week from now.
-- **ECR keeps every image version** (about 0.3 GB of new layers per changed deploy). An ECR lifecycle rule on the CDK assets repository would cap it, but that repository belongs to the CDK bootstrap, not this app.
+  - `--budget`
+  - the pentest, which needs your OK on its scope
 - **My test data is in the sandbox:**
   - the smoke runs (`adb-001` with `scripted-a`, the `otel-imported-*` runs)
   - one archived smoke prompt
   - the batches `b-20261101-*`
 
-  They're visible on the board. Remove them by hand if you want a clean demo.
-- **The pentest** (the offensive security pass) didn't run: it needs your OK on its scope.
+  Remove them by hand for a clean demo.

@@ -1,0 +1,12 @@
+X2: invocations per hour while idle (overnight 05:00-11:00 UTC, 2026-11-01), from CloudWatch
+FoundryAppStack-ApiF70053CD-dJ3VjsTA1wqd:
+  2026-11-01T00:00:00-05:00	12.0
+  2026-11-01T01:00:00-05:00	12.0
+  2026-11-01T01:00:00-06:00	12.0
+  2026-11-01T02:00:00-06:00	12.0
+  2026-11-01T03:00:00-06:00	12.0
+  2026-11-01T04:00:00-06:00	12.0
+  (no lines = no invocations)
+FoundryAppStack-Worker11F36D0F-xACdBpRJJT4A:
+  (no lines = no invocations)
+probe schedule: every 5 minutes = 12 an hour

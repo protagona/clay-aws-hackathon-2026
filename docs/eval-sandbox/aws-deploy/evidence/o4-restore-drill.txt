@@ -1,0 +1,23 @@
+O4 restore drill, 2026-11-01 (sandbox, table FoundryDataStack-TableCD117FA1-7STI1BEWJ2V1). Command outputs as printed;
+transcribed from the session because the commands ran in a terminal rather than to a log.
+
+1. Deleted objects (run 2026-10-30T13-44-23Z_adb-003_fdbd, 8 objects): a fresh Mirror pull before, after deleting all 8
+   current objects (delete markers), and after the runbook's delete-marker removal:
+     fresh pull: OK, 8 files
+     8
+     deleted (delete markers)
+     fresh pull: OK, 8 files        <- records name exact version ids, which S3 still serves behind a delete marker
+     --- restore, as docs/deploy.md says
+     fresh pull: OK, 8 files
+
+2. A lost record, restored with point-in-time recovery (run otel-imported-34e02111dd39-b1, a smoke-test import):
+     restore point 2026-11-01T11:54:44Z
+     run#otel-imported-34e02111dd39-b1          <- delete-item --return-values ALL_OLD, at 11:55:11
+     on the board: False
+     latest restorable: 2026-11-01T05:54:49.081000-06:00   (11:54:49Z)
+     CREATING                                    <- restore-table-to-point-in-time, started 11:59:49Z
+     (ACTIVE at 12:12:26Z)
+     restored item: run#otel-imported-34e02111dd39-b1 version 1
+     copied back
+     on the board: True
+     DELETING                                    <- the restore table removed
