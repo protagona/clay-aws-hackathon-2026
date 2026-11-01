@@ -317,3 +317,19 @@ class AwsStore:
             self.ddb.transact_write_items(TransactItems=items, **kw)
         except self.ddb.exceptions.TransactionCanceledException as exc:
             raise Conflict([r.get("Code", "None") for r in exc.response.get("CancellationReasons", [])]) from None
+
+
+class LambdaInvoker:
+    """Hands a job to the worker function: an async invoke (retries and event age are set on the function)."""
+
+    def __init__(self, function_name: str, region: str = REGION):
+        import boto3
+
+        self.function_name = function_name
+        self.client = boto3.client("lambda", region_name=region)
+
+    def __call__(self, job_id: str) -> None:
+        import json
+
+        self.client.invoke(FunctionName=self.function_name, InvocationType="Event",
+                           Payload=json.dumps({"job_id": job_id}).encode())

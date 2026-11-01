@@ -41,8 +41,22 @@ def index_run(ws: Workspace, mirror, run_id: str) -> None:
     """Push the run's changed files together with its board card and summary."""
     d = ws.runs_dir / run_id
     summary = runs.summary_for(d)
-    attrs = index.run_attrs(runs.card_for(ws, d), summary) if summary is not None else None
+    card = runs.card_for(ws, d)
+    if not card.get("unreadable"):
+        card = {**card, **runs.card_extras(ws, run_id)}
+    attrs = index.run_attrs(card, summary) if summary is not None else None
     mirror.push_dir(f"run#{run_id}", attrs=attrs)
+
+
+def local_args(ws: Workspace, kind: str, run_id: str, args: list[str]) -> list[str]:
+    """The job's command with this worker's own paths: the API instance that queued it may lay out /tmp differently."""
+    out = list(args)
+    for flag, value in (("--runs-dir", ws.runs_dir), ("--out", ws.runs_dir / ".ui-tools.json")):
+        if flag in out and (flag != "--out" or kind == "tools"):
+            out[out.index(flag) + 1] = str(value)
+    if kind == "evaluate" and len(out) > 1:
+        out[1] = str(ws.runs_dir / run_id)
+    return out
 
 
 def run_job(ws: Workspace, store, mirror, job_id: str, clock=time.time) -> str:
@@ -50,7 +64,8 @@ def run_job(ws: Workspace, store, mirror, job_id: str, clock=time.time) -> str:
     job = claim(store, job_id, clock())
     if job is None:
         return "duplicate"
-    kind, run_id, args = job["kind"], job["run_id"], json.loads(job["args"])
+    kind, run_id = job["kind"], job["run_id"]
+    args = local_args(ws, kind, run_id, json.loads(job["args"]))
     pull_projects(store, mirror)
     tick = None
     def present() -> bool:

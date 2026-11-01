@@ -14,6 +14,17 @@ def path(runs_dir: Path) -> Path:
     return runs_dir / NAME
 
 
+def install(src: Path, runs_dir: Path) -> None:
+    """Put a listing pulled from the cloud store where `read` looks for it (aws-deploy slice 3c)."""
+    try:
+        data = Path(src).read_bytes()
+    except FileNotFoundError:
+        return
+    tmp = runs_dir / f"{NAME}.tmp"
+    tmp.write_bytes(data)
+    tmp.replace(path(runs_dir))
+
+
 def read(runs_dir: Path) -> dict | None:
     """The last listing, if it is a regular file holding the expected shape; anything else is ignored."""
     f = path(runs_dir)

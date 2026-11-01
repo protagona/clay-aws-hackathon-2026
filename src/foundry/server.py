@@ -20,8 +20,13 @@ from foundry.services.workspace import Workspace
 from foundry.ui import spa
 
 
-def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765, receiver_port: int = 4318) -> FastAPI:
+def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765, receiver_port: int = 4318,
+               cloud: tuple | None = None) -> FastAPI:
+    """`cloud` = (store, mirror, job backend) when state lives in the cloud store (aws-deploy); None on a laptop."""
     ws = Workspace(Path(runs_dir).resolve(), Path(project_root).resolve(), port, receiver_port=receiver_port)
+    if cloud is not None:
+        store, mirror, backend = cloud
+        ws.cloud, ws.backend = (store, mirror), backend
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.state.ui = ws
     guard.install(app, port)

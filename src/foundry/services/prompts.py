@@ -8,7 +8,7 @@ from foundry.data import project
 from foundry.data import runs as data_runs
 from foundry.data.prompts import PromptStore, StoreError
 from foundry.data.tasks import PROMPT_ID_RE, RubricError
-from foundry.services import configs, jobs, runs, stats
+from foundry.services import cloud_state, configs, jobs, runs, stats
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -16,6 +16,7 @@ from foundry.services.workspace import Workspace
 def prompt_store(ws: Workspace, task: str) -> PromptStore:
     if task not in configs.task_ids(ws):
         raise ServiceError(400, f"Unknown task '{task}'")
+    cloud_state.pull_project(ws, task)
     return PromptStore(project.task_dir(ws.root, task), task)
 
 
@@ -36,6 +37,7 @@ def need_prompt_id(pid: str) -> None:
 
 def runs_by_prompt(ws: Workspace, task: str) -> tuple[dict[str, list[dict]], list[str]]:
     """Readable runs of the task grouped by prompt id, and the names of unreadable run dirs (counted by name)."""
+    cloud_state.pull_runs(ws)
     by: dict[str, list[dict]] = {}
     unreadable = []
     for d in data_runs.run_dirs(ws.runs_dir):
@@ -93,17 +95,18 @@ def prompt_view(ws: Workspace, task: str, pid: str) -> dict:
 
 
 def create(ws: Workspace, task: str, pid, text) -> str:
-    store = prompt_store(ws, task)
-    index = runs_by_prompt(ws, task)
-    taken = set(index[0]) | ({pid} if isinstance(pid, str) and run_count(ws, task, pid, index)["runs"] else set())
-    call(ws, store.create, pid, text, taken)
-    return pid
+    with cloud_state.project_write(ws, task):
+        store = prompt_store(ws, task)
+        index = runs_by_prompt(ws, task)
+        taken = set(index[0]) | ({pid} if isinstance(pid, str) and run_count(ws, task, pid, index)["runs"] else set())
+        call(ws, store.create, pid, text, taken)
+        return pid
 
 
 def set_text(ws: Workspace, task: str, pid: str, text) -> None:
     need_prompt_id(pid)
     store = prompt_store(ws, task)
-    with jobs.exclusive(ws, task):  # no run may start between the check and the write
+    with cloud_state.project_write(ws, task, hold_starts=True):  # no run may start between the check and the write
         count = run_count(ws, task, pid)
         if count["runs"]:
             raise ServiceError(409, f"{pid} has {count['runs']} run{'s' if count['runs'] != 1 else ''}, so its text "
@@ -116,14 +119,17 @@ def set_text(ws: Workspace, task: str, pid: str, text) -> None:
 
 def new_version(ws: Workspace, task: str, pid: str) -> str:
     need_prompt_id(pid)
-    return call(ws, prompt_store(ws, task).copy_version, pid, set(runs_by_prompt(ws, task)[0]))
+    with cloud_state.project_write(ws, task):
+        return call(ws, prompt_store(ws, task).copy_version, pid, set(runs_by_prompt(ws, task)[0]))
 
 
 def archive(ws: Workspace, task: str, pid: str, archived: bool) -> None:
     need_prompt_id(pid)
-    call(ws, prompt_store(ws, task).set_archived, pid, bool(archived))
+    with cloud_state.project_write(ws, task):
+        call(ws, prompt_store(ws, task).set_archived, pid, bool(archived))
 
 
 def set_stages(ws: Workspace, task: str, pid: str, stages) -> str:
     need_prompt_id(pid)
-    return call(ws, prompt_store(ws, task).set_stages, pid, stages)
+    with cloud_state.project_write(ws, task):
+        return call(ws, prompt_store(ws, task).set_stages, pid, stages)

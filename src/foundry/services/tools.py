@@ -4,7 +4,7 @@ listing, refreshed in the background), plus any tool seen in traces or named in 
 from __future__ import annotations
 
 from foundry.data import tool_cache
-from foundry.services import jobs, prompts, runs
+from foundry.services import cloud_state, jobs, prompts, runs
 from foundry.services.workspace import Workspace
 
 
@@ -16,6 +16,7 @@ def refresh_tools(ws: Workspace, *, quiet: bool = False) -> None:
 
 def tool_menu(ws: Workspace, task: str) -> dict:
     """Every tool: the servers' full menu (cached listing) plus anything seen in traces or expected steps (T2)."""
+    cloud_state.pull_tools(ws)
     store = prompts.prompt_store(ws, task)
     used: dict[tuple, int] = {}  # (server, name) -> runs that called it
     for e in runs.entries(ws):

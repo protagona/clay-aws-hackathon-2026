@@ -3,8 +3,6 @@ job (services.workers). Dispatch only; the logic lives in services."""
 
 from __future__ import annotations
 
-import os
-
 _ctx = None
 
 
@@ -13,15 +11,12 @@ def context():
     global _ctx
     if _ctx is None:
         from foundry import cloud_boot
-        from foundry.data.mirror import Mirror
-        from foundry.data.store import AwsStore
-        from foundry.services.cloud_jobs import CloudBackend
         from foundry.services.workspace import Workspace
 
-        store = AwsStore(os.environ["STATE_BUCKET"], os.environ["TABLE"])
-        root, runs = cloud_boot.project_root(), cloud_boot.runs_dir()
-        ws = Workspace(runs, root, 0, backend=CloudBackend(store))
-        _ctx = (ws, store, Mirror(store, runs.parent))
+        store, mirror, backend = cloud_boot.cloud_context()
+        ws = Workspace(cloud_boot.runs_dir(), cloud_boot.project_root(), 0, backend=backend)
+        ws.cloud = (store, mirror)
+        _ctx = (ws, store, mirror)
     return _ctx
 
 

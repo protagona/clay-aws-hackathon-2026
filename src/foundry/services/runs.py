@@ -9,9 +9,10 @@ from pathlib import Path
 
 from foundry.config import ConfigError
 from foundry.contract import evaluation_interrupted
+from foundry.data import project as data_project
 from foundry.data import runs as data_runs
 from foundry.data.runs import new_run_id
-from foundry.services import configs, jobs, rubrics, stats
+from foundry.services import cloud_state, configs, jobs, rubrics, stats
 from foundry.services.errors import ServiceError
 from foundry.services.run_view import monitor
 from foundry.services.workspace import Workspace
@@ -21,6 +22,8 @@ from foundry.services.workspace import Workspace
 
 
 def run_path(ws: Workspace, run_id: str) -> Path | None:
+    if data_runs.is_valid_run_id(run_id) and not run_id.startswith("."):
+        cloud_state.pull_run(ws, run_id)
     return data_runs.safe_run_path(ws.runs_dir, run_id)
 
 
@@ -190,6 +193,7 @@ def entry_for(d: Path) -> dict | None:
 
 def entries(ws: Workspace) -> list[dict]:
     """Every readable run with its scores and steps: the dashboard's input."""
+    cloud_state.pull_runs(ws)
     return [e for e in (entry_for(d) for d in data_runs.run_dirs(ws.runs_dir)) if e is not None]
 
 
@@ -223,17 +227,50 @@ def board_kpis(ws: Workspace, all_entries: list[dict] | None = None) -> dict:
     return {"spent": every["spent"], "mean": scored["mean"], "scored": scored["scored"], "shares": shares}
 
 
+def board_from_index(ws: Workspace) -> tuple[list[dict], dict]:
+    """The cloud board's cards and KPIs from the run index alone (aws-deploy design ADR-4): no run files are read.
+    Live state is overlaid at read time: runs being scored (evaluation locks) and runs whose job was interrupted."""
+    from foundry.data import index
+
+    cloud_state.pull_projects(ws)  # the active rubrics' hashes come from the project files
+    active = {sha for task in configs.task_ids(ws) if (sha := data_project.active_rubric_sha(ws.root, task))}
+    evaluating = cloud_state.evaluating_runs(ws)
+    interrupted = {j.run_id for j in jobs.of_kind(ws, "run") if j.status == "interrupted"}
+    items = index.run_items(ws.cloud[0])
+    spent, scored = 0.0, []
+    shares, out = {}, []
+    for it in items:
+        s, card = it["summary"] or {}, dict(it["card"] or {"unreadable": True, "name": it["run_id"], "started_at": ""})
+        ov = s.get("overall") if s.get("rubric_sha256") in active else None
+        spent += s.get("spent") or 0.0
+        if ov is not None:
+            scored.append(ov)
+        shares[it["run_id"]] = {"spent": s.get("spent") or 0.0, "overall": ov}
+        if not card.get("unreadable"):
+            if it["run_id"] in evaluating:
+                card["headline"] = "evaluating"
+            elif card.get("headline") == "running" and it["run_id"] in interrupted:
+                card["headline"] = "interrupted"
+        out.append(card)
+    k = {"spent": spent, "mean": sum(scored) / len(scored) if scored else None, "scored": len(scored), "shares": shares}
+    return sorted(out, key=lambda c: c.get("started_at") or "", reverse=True), k
+
+
 def board(ws: Workspace) -> dict:
     """GET /api/runs: every card in its column, with its KPI share, plus the board's KPIs."""
-    k = board_kpis(ws)
+    if cloud_state.on(ws):
+        all_cards, k = board_from_index(ws)
+    else:
+        all_cards, k = cards(ws), board_kpis(ws)
     out = []
-    for c in cards(ws):
+    for c in all_cards:
         if c["unreadable"]:
             out.append({"run_id": c["name"], "unreadable": True, "column": "attention", "prompt_id": "?",
                         "model": "unreadable run.json", "status": "?", "headline": "unreadable",
                         "kpi": {"spent": 0.0, "overall": None}})
             continue
-        out.append({**c, "column": board_column(c), **card_extras(ws, c["run_id"]),
+        extras = {} if cloud_state.on(ws) else card_extras(ws, c["run_id"])  # cloud cards carry their extras
+        out.append({**c, "column": board_column(c), **extras,
                     "kpi": k["shares"].get(c["run_id"], {"spent": 0.0, "overall": None})})
     live = sum(c["column"] in ("running", "evaluating") for c in out)
     today = time.strftime("%Y-%m-%d", time.gmtime())

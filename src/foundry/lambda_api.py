@@ -86,10 +86,13 @@ def lambda_response(status: int, raw_headers: list, body: bytes) -> dict:
 
 def build_app():
     """The app this function serves: the same FastAPI app as `foundry ui`, on /tmp state (cloud_boot wires it)."""
+    import os
+
     from foundry import cloud_boot
     from foundry.server import create_app
 
-    return create_app(cloud_boot.runs_dir(), cloud_boot.project_root())
+    cloud = cloud_boot.cloud_context() if os.environ.get("STATE_BUCKET") else None
+    return create_app(cloud_boot.runs_dir(), cloud_boot.project_root(), cloud=cloud)
 
 
 def handler(event, context):  # noqa: ARG001 (Lambda's signature)

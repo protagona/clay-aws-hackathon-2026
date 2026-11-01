@@ -17,7 +17,7 @@ from foundry.engine.rubrics import sources
 from foundry.engine.rubrics.draft import MAX_TOKENS as DRAFT_MAX_TOKENS
 from foundry.engine.rubrics.draft import draft
 from foundry.engine.rubrics.sources import BINARY, SourceError
-from foundry.services import configs
+from foundry.services import cloud_state, configs
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -73,11 +73,13 @@ def create_draft(task_dir, source: sources.Source, cfg) -> tuple[str, dict]:
 def store_for(ws: Workspace, task: str) -> Store:
     if task not in configs.task_ids(ws):
         raise ServiceError(404, "Unknown task")
+    cloud_state.pull_project(ws, task)
     return Store(project.task_dir(ws.root, task))
 
 
 def overview(ws: Workspace, task: str) -> dict:
     store = store_for(ws, task)
+    cloud_state.pull_runs(ws)  # versions() counts the runs each version scored
     try:
         active, _ = load_rubric(store.task / "rubric.json")
     except RubricError:
@@ -99,22 +101,23 @@ def active_label(ws: Workspace, task: str = "adb") -> dict | None:
 def ui_create_draft(ws: Workspace, task: str, kind: str, config: str, *, file_name: str = "", file_data: bytes = b"",
                     text: str = "", url: str = "", mcp: str = "", args: str = "") -> str:
     """Blocking (up to a minute): acquire the source and draft it. Call from a worker thread."""
-    store = store_for(ws, task)
-    if kind == "file" and not file_name:  # filled another field without switching the source type
-        kind = "text" if text.strip() else "url" if url.strip() else "mcp" if mcp.strip() else kind
-    if config not in configs.config_names(ws) or kind not in ("file", "text", "url", "mcp"):
-        raise ServiceError(400, "Pick a task, a known config and a source.")
-    if kind == "file" and not file_name:
-        raise ServiceError(400, "Choose a file to upload.")
-    try:
-        cfg = configs.load(ws, config)
-        source = acquire(kind, cfg, file_name=file_name, file_data=file_data, text=text, url=url, mcp=mcp, args=args)
-        draft_id, _ = create_draft(store.task, source, cfg)
-    except (SourceError, ConfigError) as exc:
-        raise ServiceError(400, str(exc)) from None
-    except ProviderError as exc:
-        raise ServiceError(502, f"The model could not draft the rubric: {exc}") from None
-    return draft_id
+    with cloud_state.project_write(ws, task):
+        store = store_for(ws, task)
+        if kind == "file" and not file_name:  # filled another field without switching the source type
+            kind = "text" if text.strip() else "url" if url.strip() else "mcp" if mcp.strip() else kind
+        if config not in configs.config_names(ws) or kind not in ("file", "text", "url", "mcp"):
+            raise ServiceError(400, "Pick a task, a known config and a source.")
+        if kind == "file" and not file_name:
+            raise ServiceError(400, "Choose a file to upload.")
+        try:
+            cfg = configs.load(ws, config)
+            source = acquire(kind, cfg, file_name=file_name, file_data=file_data, text=text, url=url, mcp=mcp, args=args)
+            draft_id, _ = create_draft(store.task, source, cfg)
+        except (SourceError, ConfigError) as exc:
+            raise ServiceError(400, str(exc)) from None
+        except ProviderError as exc:
+            raise ServiceError(502, f"The model could not draft the rubric: {exc}") from None
+        return draft_id
 
 
 def draft_view(ws: Workspace, task: str, draft_id: str) -> dict:
@@ -131,24 +134,26 @@ def draft_view(ws: Workspace, task: str, draft_id: str) -> dict:
 
 def update_draft(ws: Workspace, task: str, draft_id: str, body: dict, activate: bool = False) -> str | None:
     """Save an edited draft; returns its validation error (None when valid). With activate, also activates it."""
-    store = store_for(ws, task)
-    try:
-        store.load_draft(draft_id)
-        err = store.update_draft(draft_id, body)
-        if activate:
-            if err:
-                raise ServiceError(400, f"Not activated: {err}")
-            store.activate_draft(draft_id)
-    except StoreError as exc:
-        raise ServiceError(404 if "Unknown draft" in str(exc) else 409, str(exc)) from None
-    return err
+    with cloud_state.project_write(ws, task):
+        store = store_for(ws, task)
+        try:
+            store.load_draft(draft_id)
+            err = store.update_draft(draft_id, body)
+            if activate:
+                if err:
+                    raise ServiceError(400, f"Not activated: {err}")
+                store.activate_draft(draft_id)
+        except StoreError as exc:
+            raise ServiceError(404 if "Unknown draft" in str(exc) else 409, str(exc)) from None
+        return err
 
 
 def discard(ws: Workspace, task: str, draft_id: str) -> None:
-    try:
-        store_for(ws, task).discard(draft_id)
-    except StoreError as exc:
-        raise ServiceError(404, str(exc)) from None
+    with cloud_state.project_write(ws, task):
+        try:
+            store_for(ws, task).discard(draft_id)
+        except StoreError as exc:
+            raise ServiceError(404, str(exc)) from None
 
 
 def draft_source(ws: Workspace, task: str, draft_id: str) -> tuple[bytes, str]:
@@ -189,13 +194,14 @@ def active(ws: Workspace, task: str) -> dict:
 
 
 def activate_version(ws: Workspace, task: str, name: str) -> None:
-    try:
-        store_for(ws, task).activate_version(name)
-    except StoreError as exc:
-        raise ServiceError(409 if "progress" in str(exc) else 404, str(exc)) from None
+    with cloud_state.project_write(ws, task):
+        try:
+            store_for(ws, task).activate_version(name)
+        except StoreError as exc:
+            raise ServiceError(409 if "progress" in str(exc) else 404, str(exc)) from None
 
 
-# --- which rubric scored which runs ---------------------------------------------------------------------------------
+    # --- which rubric scored which runs ---------------------------------------------------------------------------------
 
 
 def rubric_options(ws: Workspace, entries: list[dict]) -> tuple[list[dict], set]:
