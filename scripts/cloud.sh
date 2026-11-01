@@ -43,7 +43,7 @@ stack_exists() { aws cloudformation describe-stacks --stack-name "$1" >/dev/null
 ops() {  # the table and bucket side (scripts/cloud_ops.py)
   local bucket table
   bucket=$(out $DATA Bucket); table=$(out $DATA TableName)
-  [ -n "$bucket" ] && [ -n "$table" ] || die "no $DATA in this account/region: deploy first"
+  [ -n "$bucket" ] && [ -n "$table" ] || die "no $DATA in account $(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo '(no credentials)'), $REGION (profile: ${AWS_PROFILE:-default}). Set AWS_PROFILE to the deployment's account, or deploy first."
   (cd "$REPO" && uv run --quiet python scripts/cloud_ops.py --bucket "$bucket" --table "$table" "$@")
 }
 
