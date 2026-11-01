@@ -1,6 +1,6 @@
 # The CLIs: tested and documented — Handoff
 
-**Spec:** ./spec.md   **Date:** 2026-11-01   **Track:** Quick, with a subagent review at Verify   **Build:** `e9844a2`, live in the sandbox (version 11)
+**Spec:** ./spec.md   **Date:** 2026-11-01   **Track:** Quick, with a subagent review at Verify   **Build:** `7097990`, live in the sandbox (version 12; the served client refuses an http `FOUNDRY_URL` with exit 2, checked after the deploy)
 
 **What shipped:**
 - **One reference:** [docs/cli.md](../../cli.md) covers both command-line tools. For every command it gives:
