@@ -16,6 +16,7 @@ class Workspace:
     lock: threading.Lock = field(default_factory=threading.Lock)
     receiver_port: int = 4318
     receiver: object | None = None  # foundry.engine.receiver.Receiver while running
+    backend: object | None = None  # services.jobs backend; None = LocalBackend (subprocesses, as on a laptop)
 
     @property
     def batches_dir(self) -> Path:

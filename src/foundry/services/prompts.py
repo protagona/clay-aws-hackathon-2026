@@ -8,7 +8,7 @@ from foundry.data import project
 from foundry.data import runs as data_runs
 from foundry.data.prompts import PromptStore, StoreError
 from foundry.data.tasks import PROMPT_ID_RE, RubricError
-from foundry.services import configs, runs, stats
+from foundry.services import configs, jobs, runs, stats
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -48,15 +48,8 @@ def runs_by_prompt(ws: Workspace, task: str) -> tuple[dict[str, list[dict]], lis
 
 
 def pending(ws: Workspace, pid: str) -> bool:
-    """A live UI run of this prompt, or a live batch that includes it (read without ws.lock: callers may hold it)."""
-    for j in list(ws.jobs.values()):
-        if not j.alive:
-            continue
-        if j.kind == "run" and f"_{pid}_" in j.run_id:
-            return True
-        if j.kind == "batch" and pid in (j.prompts or []):
-            return True
-    return False
+    """A live UI run of this prompt, or a live batch that includes it."""
+    return jobs.pending_prompt(ws, pid)
 
 
 def run_count(ws: Workspace, task: str, pid: str, index=None) -> dict:
@@ -110,7 +103,7 @@ def create(ws: Workspace, task: str, pid, text) -> str:
 def set_text(ws: Workspace, task: str, pid: str, text) -> None:
     need_prompt_id(pid)
     store = prompt_store(ws, task)
-    with ws.lock:  # no run may start between the check and the write
+    with jobs.exclusive(ws, task):  # no run may start between the check and the write
         count = run_count(ws, task, pid)
         if count["runs"]:
             raise ServiceError(409, f"{pid} has {count['runs']} run{'s' if count['runs'] != 1 else ''}, so its text "

@@ -5,18 +5,13 @@ from __future__ import annotations
 
 from foundry.data import tool_cache
 from foundry.services import jobs, prompts, runs
-from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
 
 def refresh_tools(ws: Workspace, *, quiet: bool = False) -> None:
     """Start `foundry tools` in the background (409 if one is already running, unless quiet)."""
-    with ws.lock:
-        if jobs.alive_of(ws, "tools") is not None:
-            if quiet:
-                return
-            raise ServiceError(409, "The tool list is already being refreshed")
-        jobs.spawn(ws, "tools", "tools", "Tool listing", ["tools", "--out", str(tool_cache.path(ws.runs_dir))])
+    jobs.start(ws, "tools", "tools", "Tool listing", ["tools", "--out", str(tool_cache.path(ws.runs_dir))],
+               singleton=True, quiet=quiet)
 
 
 def tool_menu(ws: Workspace, task: str) -> dict:
@@ -63,7 +58,7 @@ def tool_menu(ws: Workspace, task: str) -> dict:
             for t in step:
                 server, _, name = t.rpartition("/")
                 entry(server or None, name)
-    listings = [j for j in list(ws.jobs.values()) if j.kind == "tools"]
+    listings = jobs.of_kind(ws, "tools")
     refreshing = any(j.alive for j in listings)
     if cache is None and not listings:  # list once per UI session; a failed listing is reported, not retried per GET
         refresh_tools(ws, quiet=True)

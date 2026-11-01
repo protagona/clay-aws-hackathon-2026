@@ -34,20 +34,16 @@ def start_batch(ws: Workspace, config: str, models: list[str], prompts: list[str
             and 0 < max_cost <= MAX_COST):
         raise ServiceError(400, f"Repeats must be {REPEATS[0]}-{REPEATS[1]}, parallel runs {CONCURRENCY[0]}-"
                                 f"{CONCURRENCY[1]}, and the cost cap between $0 and ${MAX_COST:g}.")
-    with ws.lock:
-        active = jobs.alive_of(ws, "batch")
-        if active is not None:
-            raise ServiceError(409, f"A batch is already running: {active.run_id}")
-        batch_id = time.strftime("b-%Y%m%d-%H%M%S-") + secrets.token_hex(2)
-        args = ["batch", "--config", f"config/{config}.toml", "--prompts", ",".join(prompts),
-                "--repeats", str(repeats), "--concurrency", str(concurrency), "--max-cost", f"{max_cost:.2f}",
-                "--out", str(ws.batches_dir / batch_id), "--runs-dir", str(ws.runs_dir), "--run-prefix", f"{batch_id}_"]
-        if models:
-            args += ["--models", ",".join(models)]
-        if evaluate:
-            args.append("--evaluate")
-        job = jobs.spawn(ws, "batch", batch_id, f"Batch {batch_id}", args)
-        job.prompts = list(prompts)  # a queued job has no run dir yet; this keeps those prompts' text locked
+    batch_id = time.strftime("b-%Y%m%d-%H%M%S-") + secrets.token_hex(2)
+    args = ["batch", "--config", f"config/{config}.toml", "--prompts", ",".join(prompts),
+            "--repeats", str(repeats), "--concurrency", str(concurrency), "--max-cost", f"{max_cost:.2f}",
+            "--out", str(ws.batches_dir / batch_id), "--runs-dir", str(ws.runs_dir), "--run-prefix", f"{batch_id}_"]
+    if models:
+        args += ["--models", ",".join(models)]
+    if evaluate:
+        args.append("--evaluate")
+    # A queued batch has no run dirs yet: its prompt ids keep those prompts' text locked (prompts.set_text).
+    jobs.start(ws, "batch", batch_id, f"Batch {batch_id}", args, singleton=True, prompt_ids=prompts)
     return batch_id
 
 
@@ -68,7 +64,7 @@ def batch_view(ws: Workspace, batch_id: str) -> dict:
     path = data_batches.batch_path(ws.batches_dir, batch_id)
     if path is None:
         raise ServiceError(404, "Batch not found")
-    job = next((j for j in list(ws.jobs.values()) if j.kind == "batch" and j.run_id == batch_id), None)
+    job = jobs.of_run(ws, "batch", batch_id)
     meta = data_batches.read_meta(path)
     rows = data_batches.batch_rows(path, ws.runs_dir)
     running = (job is not None and job.alive) or (job is None and meta.get("status") == "running"

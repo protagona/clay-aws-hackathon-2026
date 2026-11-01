@@ -1,8 +1,12 @@
-"""Background `foundry` subprocesses the UI starts (runs, evaluations, batches, tool listings) and their logs.
+"""Background jobs the UI starts (runs, evaluations, batches, tool listings), their state and their logs.
+
+Services start and read jobs only through this module (`start`, `live`, `of_kind`, `of_run`, `pending_prompt`,
+`is_evaluating`, `exclusive`), never through `ws.jobs` or `ws.lock` directly, so the backend can change: locally
+(LocalBackend) jobs are `foundry` subprocesses tracked in memory; in the cloud (aws-deploy design ADR-6) they are
+DynamoDB items and worker invocations.
 
 The one services module allowed to touch processes and files directly (tests/test_architecture.py): starting a
-subprocess with its stderr in a log file is what it is for. Others call spawn() as `jobs.spawn(...)` through this
-module, so tests can replace it in one place.
+subprocess with its stderr in a log file is what it is for. Tests replace `spawn` (as `jobs.spawn`) in one place.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -84,15 +89,15 @@ def spawn(ws: Workspace, kind: str, run_id: str, label: str, args: list[str], lo
     return job
 
 
-def alive_of(ws: Workspace, kind: str) -> Job | None:
-    return next((j for j in list(ws.jobs.values()) if j.kind == kind and j.alive), None)
+def alive_of(ws: Workspace, kind: str):
+    return next(iter(live(ws, kind)), None)
 
 
 def recent(ws: Workspace) -> list[dict]:
     """Live jobs, jobs finished in the last RECENT_JOB_S, and failures not yet dismissed (for toasts)."""
     now = time.time()
     out = []
-    for j in list(ws.jobs.values()):
+    for j in backend(ws).all(ws):
         finished = j.finished_at
         if j.alive or (finished and now - finished <= RECENT_JOB_S) or j.failed_visibly:
             out.append({"id": j.id, "kind": j.kind, "run_id": j.run_id, "label": j.label, "alive": j.alive,
@@ -116,3 +121,92 @@ def dismiss(ws: Workspace, job_id: str) -> None:
     job = find(ws, job_id)
     if job is not None:
         job.dismissed = True
+
+
+# --- the backend seam (aws-deploy slice 3) ----------------------------------------------------------------------
+
+BUSY = {"run": "A run is already in progress: {}", "batch": "A batch is already running: {}",
+        "tools": "The tool list is already being refreshed"}
+
+
+class LocalBackend:
+    """Jobs as `foundry` subprocesses of this server, tracked in `ws.jobs` and serialized by `ws.lock` (as before)."""
+
+    def start(self, ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *, singleton: bool,
+              prompt_ids: list[str], evaluate_dir: Path | None, quiet: bool) -> Job | None:
+        token = None
+        if evaluate_dir is not None:
+            try:
+                token = lock.acquire(evaluate_dir, owner="ui")
+            except lock.LockHeld as exc:
+                raise ServiceError(409, str(exc)) from None
+            args = [*args, "--lock-held", token]
+        with ws.lock:
+            active = alive_of(ws, kind) if singleton else None
+            if active is not None:
+                if token:
+                    lock.release(evaluate_dir, token)
+                if quiet:
+                    return None
+                raise ServiceError(409, BUSY[kind].format(active.run_id))
+            job = spawn(ws, kind, run_id, label, args, lock_token=token, lock_dir=evaluate_dir)
+            job.prompts = list(prompt_ids) or None
+        return job
+
+    def all(self, ws: Workspace) -> list[Job]:
+        return list(ws.jobs.values())
+
+    def is_evaluating(self, ws: Workspace, run_dir: Path) -> bool:
+        return lock.is_locked(run_dir)
+
+    @contextmanager
+    def exclusive(self, ws: Workspace, task: str):  # noqa: ARG002 (the cloud backend leases per task)
+        with ws.lock:
+            yield
+
+
+LOCAL = LocalBackend()
+
+
+def backend(ws: Workspace):
+    return ws.backend or LOCAL
+
+
+def start(ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *, singleton: bool = False,
+          prompt_ids: list[str] | tuple = (), evaluate_dir: Path | None = None, quiet: bool = False) -> Job | None:
+    """Start a job atomically with its checks: `singleton` refuses (409) while another job of the kind is live,
+    `evaluate_dir` takes the run's evaluation lock first. With `quiet`, a busy singleton returns None instead."""
+    return backend(ws).start(ws, kind, run_id, label, args, singleton=singleton, prompt_ids=list(prompt_ids),
+                             evaluate_dir=evaluate_dir, quiet=quiet)
+
+
+def of_kind(ws: Workspace, kind: str) -> list:
+    """Every known job of a kind, oldest first."""
+    return [j for j in backend(ws).all(ws) if j.kind == kind]
+
+
+def live(ws: Workspace, kind: str | None = None) -> list:
+    return [j for j in backend(ws).all(ws) if j.alive and (kind is None or j.kind == kind)]
+
+
+def of_run(ws: Workspace, kind: str, run_id: str):
+    return next((j for j in reversed(of_kind(ws, kind)) if j.run_id == run_id), None)
+
+
+def pending_prompt(ws: Workspace, pid: str) -> bool:
+    """A live UI run of this prompt, or a live batch that includes it."""
+    for j in live(ws):
+        if j.kind == "run" and f"_{pid}_" in j.run_id:
+            return True
+        if j.kind == "batch" and pid in (j.prompts or []):
+            return True
+    return False
+
+
+def is_evaluating(ws: Workspace, run_dir: Path) -> bool:
+    return backend(ws).is_evaluating(ws, run_dir)
+
+
+def exclusive(ws: Workspace, task: str):
+    """Hold off job starts while a prompt's text changes (locally the server lock; in the cloud the task's lease)."""
+    return backend(ws).exclusive(ws, task)

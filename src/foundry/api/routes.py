@@ -106,7 +106,7 @@ def make_router(ws: Workspace, csrf: str) -> APIRouter:
 
     @route("GET", "/batches", S.BatchesResponse)
     def batch_list():
-        return {"batches": to_json(batches.batch_list(ws)), "running": jobs.alive_of(ws, "batch") is not None}
+        return {"batches": to_json(batches.batch_list(ws)), "running": bool(jobs.live(ws, "batch"))}
 
     @route("POST", "/batches", S.StartBatchResponse, dependencies=write, status_code=201)
     def start_batch(body: S.BatchBody):

@@ -9,7 +9,6 @@ from pathlib import Path
 
 from foundry.config import ConfigError
 from foundry.contract import evaluation_interrupted
-from foundry.data import locks as lock
 from foundry.data import runs as data_runs
 from foundry.data.runs import new_run_id
 from foundry.services import configs, jobs, rubrics, stats
@@ -40,7 +39,7 @@ def detail(ws: Workspace, path: Path, seen: int | None = None) -> dict:
     interrupted = scores is not None and evaluation_interrupted(path)
     report_md = data_runs.read_report(path) if scores is not None and not interrupted else None
     steps = data_runs.read_steps_safely(path)
-    evaluating = lock.is_locked(path)
+    evaluating = jobs.is_evaluating(ws, path)
     live = evaluating or run.get("status") == "running"
     return {"run": run, "scores": None if interrupted else scores, "report_md": report_md,
             "rubric_info": None if interrupted else rubrics.rubric_info(ws, run, scores),
@@ -74,14 +73,10 @@ def start_run(ws: Workspace, prompt_id: str, config: str) -> str:
     except ConfigError as exc:
         raise ServiceError(400, configs.relative_paths(ws, str(exc))) from None
     configs.check_runnable(ws, cfg, config, [prompt_id], prompts)
-    with ws.lock:
-        active = jobs.alive_of(ws, "run")
-        if active is not None:
-            raise ServiceError(409, f"A run is already in progress: {active.run_id}")
-        run_id = new_run_id(prompt_id)
-        jobs.spawn(ws, "run", run_id, f"Run {prompt_id}",
-                   ["run", "--config", f"config/{config}.toml", "--prompt", prompt_id,
-                    "--runs-dir", str(ws.runs_dir), "--run-id", run_id])
+    run_id = new_run_id(prompt_id)
+    jobs.start(ws, "run", run_id, f"Run {prompt_id}",
+               ["run", "--config", f"config/{config}.toml", "--prompt", prompt_id, "--runs-dir", str(ws.runs_dir),
+                "--run-id", run_id], singleton=True, prompt_ids=[prompt_id])
     return run_id
 
 
@@ -91,14 +86,9 @@ def start_evaluate(ws: Workspace, run_id: str) -> None:
     if run.get("status") == "running":
         raise ServiceError(409, f"Run {run_id} is still running. If it crashed, score it from the CLI: "
                                 f"foundry evaluate runs/{run_id} --force.")
-    try:
-        token = lock.acquire(path, owner="ui")
-    except lock.LockHeld as exc:
-        raise ServiceError(409, str(exc)) from None
     config = configs.eval_config_for(ws, run)
-    with ws.lock:
-        jobs.spawn(ws, "evaluate", run_id, f"Evaluation of {run_id}",
-                   ["evaluate", str(path), "--config", config, "--lock-held", token], lock_token=token, lock_dir=path)
+    jobs.start(ws, "evaluate", run_id, f"Evaluation of {run_id}", ["evaluate", str(path), "--config", config],
+               evaluate_dir=path)
 
 
 # --- the board -------------------------------------------------------------------------------------------------
@@ -136,7 +126,7 @@ def cards(ws: Workspace) -> list[dict]:
             continue
         scores = data_runs.read_scores(d)
         status = run["status"]
-        if lock.is_locked(d):
+        if jobs.is_evaluating(ws, d):
             headline = "evaluating"
         elif status == "running":
             headline = "running"
