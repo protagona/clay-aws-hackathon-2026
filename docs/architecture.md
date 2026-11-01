@@ -32,12 +32,18 @@ The code is split into layers. Each layer may import only the layers below it, a
   - `services/jobs.py` starts `foundry` subprocesses with their stderr in a log file.
   - `api/uploads.py` streams an upload to disk under its size cap.
 - **Services have no import cycles.** Today's order, from leaf to top:
-  - `errors`, `workspace`
-  - `configs`, `jobs`, `stats`, `run_view`
-  - `rubrics`, `batches`, `imports`
+  - `errors`, `workspace`, `job_kinds`, `stats`, `run_view`
+  - `cards`, `jobs`
+  - `state`, `configs`
+  - `cloud_jobs`, `cloud_state`
+  - `rubrics`, `batches`, `imports`, `uploads`
   - `runs`
+  - `workers`
   - `prompts`, `dashboard`
   - `tools`
+- **Only the backend modules know the cloud.** These are `services/cloud_state.py`, `cloud_jobs.py` and `workers.py`.
+  - In the rest of `services/` and in `api/`, importing `data.store`, `data.mirror`, `data.index` or a backend module fails, and so does reading an attribute named `cloud`. Function-local imports count.
+  - The entry points (`server.py`, `lambda_*.py`, `cloud_boot.py`) wire the backends in, so they're exempt.
 
 ## Where new code goes
 
@@ -52,6 +58,25 @@ The code is split into layers. Each layer may import only the layers below it, a
 | A new security header or write check | `api/guard.py` |
 
 When a service needs a file operation that `data/` doesn't offer yet, add a small function to `data/` rather than reading the file in the service.
+
+## Writing a feature once (laptop and AWS)
+
+The same app runs on a laptop and in AWS (`server.create_app`; backend-parity, `docs/eval-sandbox/backend-parity/`). The differences live behind four seams, so a feature is written once:
+
+| You are… | Do this | Not this |
+|---|---|---|
+| **Reading** runs, prompts, rubrics, batches or the tool list | Call `state.of(ws).fresh_run(ws, id)` / `fresh_runs` / `fresh_project(ws, task)` / `fresh_projects` / `fresh_batches` / `fresh_tools` first, then read the files through `foundry.data`. `configs.task_ids`, `prompt_ids` and `task_prompts` already do. | Reading `ws.runs_dir` or `tasks/` cold: in AWS an instance's files are a copy that may be empty or stale |
+| **Writing** a task's project files (prompts, rubrics) | Wrap it in `with state.of(ws).project_write(ws, task):` (and let routes pass `base_version` through `state.expecting`) | Writing files directly: in AWS they'd never leave the instance |
+| **Writing** a run in the request (an import) | Call `state.of(ws).record_run(ws, run_id)` after | Calling the worker or the mirror |
+| **Adding** a field to a board card | Compute it in `services/cards.py` (`card_for` or `card_extras`), add it to `cards.CARD_FIELDS` and to `Card` in `api/schemas.py`. After deploying, `scripts/cloud.sh reindex` updates the cards already stored | Overlaying it in `runs.board` from the run's files: the cloud board reads stored cards only |
+| **Adding** a background job | A `Kind` in `services/job_kinds.py`, a `foundry` subcommand, and `jobs.start(ws, "<kind>", ...)` in a service | `if kind == ...` in a backend |
+| **Changing** how a batch runs | `engine/batch.py`: `prepare`, `run_item`, `finalize`, `write_rows`. `foundry batch` and the cloud's Step Functions steps both call them | Changing `Batch` or `workers.batch_*` alone |
+
+**Tests:** take the `backend` fixture (`tests/conftest.py`, `tests/backends.py`), and the test runs on both setups.
+- **Cold copy:** every cloud request starts from an empty copy of the data, so a missed `fresh_*` call fails there.
+- **Staged files:** stage run files in `h.runs_dir` and project files in `h.project`, then call `h.sync()` / `h.sync_project()`.
+- **Jobs:** `h.drain()` runs queued jobs: a laptop's subprocesses, or the cloud worker's code.
+- **Setup-specific tests:** a test that can only hold on one setup carries `@pytest.mark.laptop_only("why")` or `cloud_only`. `test_single_setup_tests_are_few` keeps there to at most 10.
 
 ## The API contract
 

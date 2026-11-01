@@ -6,6 +6,10 @@ Each increment's spec, design and verification record is under [docs/eval-sandbo
 
 ### Added
 
+- **`scripts/cloud.sh reindex`:** rebuilds the board cards stored in the cloud after a card field is added. It's safe beside live work, and safe to re-run.
+- **Batches:**
+  - **Cloud batches** write `summary.md`, honour `--eval-config`, and don't re-score a run that's already scored.
+  - **On a laptop,** a run started from the UI whose process died shows as `interrupted`.
 - **Run it in AWS** ([aws-deploy](docs/eval-sandbox/aws-deploy/handoff.md)):
   - **Hosting:** the whole app runs serverless in one account (us-west-2): Lambda behind a function URL, with S3 and DynamoDB for state and Step Functions for batches. There's no VPC.
   - **Access:** sign-in with named access tokens.
@@ -41,6 +45,13 @@ Each increment's spec, design and verification record is under [docs/eval-sandbo
 
 ### Changed
 
+- **One code path for the laptop and AWS** ([backend-parity](docs/eval-sandbox/backend-parity/handoff.md)):
+  - **State:** services read and write through `state.of(ws)`.
+  - **Board:** board cards come from one builder (`services/cards.py`).
+  - **Job kinds:** declared once (`services/job_kinds.py`).
+  - **Batches:** `foundry batch` and the cloud's batch workflow call the same engine functions.
+  - **Tests:** the API tests run on both setups, the cloud one starting every request cold.
+  - **Rule:** an architecture rule keeps the cloud's store out of services and api.
 - **Default live config:** Kimi K3 is the agent and Claude Opus 4.6 the judge, chosen by price and by judge calibration. Cached input tokens count toward `tokens_in` and the input-token cap.
 - **Infra:** Bedrock access is scoped to the configured models, the S3 mirror is on by default, and S3 access logs are on ([increment 6](docs/eval-sandbox/increment-6.md)).
 - **Wording:** every screen explains itself in plain words. "Evaluate" became "Score" in the UI ([increment 12](docs/eval-sandbox/increment-12/)).
@@ -53,6 +64,8 @@ Each increment's spec, design and verification record is under [docs/eval-sandbo
 
 ### Fixed
 
+- **Stale prompts on a warm cloud instance:** it checked a new run against prompt files fetched at its cold start, so a prompt created on another instance was "unknown". Project files are now fetched before each read.
+- **Board order:** the two boards ordered runs that started at the same moment differently. Ties now go by run id.
 - **Cloud batches:** a batch whose cost total outgrew a float's precision never finished, and kept holding its slot.
 - **`foundry receive`:** it dropped a trace it had already acknowledged when Ctrl-C came within 2 s.
 - **`foundry-remote`:** `FOUNDRY_URL` skipped the https check, so a token could be sent in cleartext.

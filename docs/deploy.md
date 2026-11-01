@@ -83,6 +83,37 @@ python3 foundry-remote.pyz runs
 | `scripts/cloud.sh stop` / `start` | The kill switch. While stopped, the API serves nothing (reserved concurrency 0), and the probe and its alarm are off. |
 | `scripts/cloud.sh gc [--yes]` | Lists, then deletes, stored objects that no record refers to (leftovers of a lost write race). Deleted objects stay restorable for 35 days. |
 | `scripts/cloud.sh destroy` | Removes the app stack. The data, tokens and alerts stay, and the next deploy reattaches them **at a new URL**: share the new URL. |
+| `scripts/cloud.sh reindex` | Rebuilds the board cards stored with each run, after a deploy that adds a card field. See "Re-indexing" below. |
+
+### Re-indexing
+
+The cloud board reads a card stored with each run when it was last recorded. A deploy that adds a card field shows it on new runs straight away; `reindex` brings the stored ones up to date.
+
+- **Safe to run any time, and to re-run:**
+  - It only rewrites a card that differs from what the run's files say now.
+  - It never changes a run's version, so it can't disturb a worker writing that run.
+  - It skips runs with a job queued or running (batch items too) or being scored.
+  - It counts a run that changed while it looked as "changed meanwhile".
+- **Output:** the totals, e.g. `Re-indexed in 41 s: 149 runs, 1 updated, 0 skipped (live), 0 changed meanwhile`. Run it again to pick up skipped or changed ones.
+- **Duration:** it works in pages of at most 600 s each, which bounds every worker invoke. The 149 runs of the sandbox took the time recorded in the backend-parity handoff.
+- **If it times out or fails:** run it again. It starts from the first run, and unchanged runs cost one comparison each.
+
+### Laptop vs AWS
+
+The same app and code run in both places. The difference is the backends `server.create_app` wires in (`docs/architecture.md`, "Writing a feature once").
+
+| | Laptop (`foundry ui`) | AWS |
+|---|---|---|
+| State | Plain files under `runs/` and the project root | S3 and DynamoDB; each instance keeps a copy and fetches before reading |
+| Board cards | Built from each run's files on every request | Stored with the run when it's recorded; rebuilt by `reindex` |
+| Jobs | `foundry` subprocesses of the server | DynamoDB job records run by the worker function; batches on Step Functions |
+| Sign-in | None; listens on 127.0.0.1 only | Named access tokens |
+| Monthly spend cap | Off unless set | On ($30 by default) |
+| Live OpenTelemetry receiver | Yes | No (409): import trace files instead |
+| File uploads | Through the server | Straight to S3 (a presigned POST) |
+| A run whose job died | `interrupted` while the server that started it is up | `interrupted` |
+| Batch resume (re-running with the same `--out`) | Yes (`foundry batch`) | Each batch is new; its items run once |
+| OpenTelemetry export (`*-otel.toml`) | To the configured endpoint | Its `localhost` endpoint is unreachable; runs complete with a warning |
 
 ### How a deploy rolls out (O4)
 
