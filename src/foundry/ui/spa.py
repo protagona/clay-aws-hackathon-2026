@@ -1,14 +1,35 @@
 """The built TypeScript app (web/ -> src/foundry/ui/web_dist): /assets/* as immutable files, and every other non-API
-path falls back to index.html, where the app's router takes over. Imports nothing from foundry."""
+path falls back to index.html, where the app's router takes over. Also the remote CLI as a zipapp. Imports nothing
+from foundry."""
 
 from __future__ import annotations
 
+import functools
+import io
+import zipfile
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 DIST = Path(__file__).with_name("web_dist")
+CLI_SOURCE = Path(__file__).parents[1] / "cli_remote.py"  # read as a file, not imported
+
+
+@functools.cache
+def cli_pyz() -> bytes:
+    """foundry-remote.pyz: cli_remote.py as a zipapp (`python3 foundry-remote.pyz ...`), built from the installed
+    source so it can't go stale. Fixed timestamps and modes: the same source gives the same bytes."""
+    buf = io.BytesIO()
+    buf.write(b"#!/usr/bin/env python3\n")
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in (("cli_remote.py", CLI_SOURCE.read_bytes()),
+                           ("__main__.py", b"import sys\nfrom cli_remote import main\nsys.exit(main())\n")):
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.external_attr = 0o644 << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, data)
+    return buf.getvalue()
 
 
 def mount(app: FastAPI) -> None:
@@ -26,12 +47,12 @@ def mount(app: FastAPI) -> None:
 
     @app.get("/cli/{name}")
     def cli(name: str):
-        """The remote CLI, one standard-library Python file built into web_dist/cli (aws-deploy spec I3). Public:
-        it holds no secrets; using it needs a token."""
-        f = DIST / "cli" / name
-        if name != "foundry-remote.pyz" or not f.is_file():
+        """The remote CLI, one standard-library Python program (aws-deploy spec I3). Public: it holds no secrets;
+        using it needs a token."""
+        if name != "foundry-remote.pyz":
             return JSONResponse({"error": "Not found"}, status_code=404)
-        return FileResponse(f, media_type="application/zip", filename=name, headers={"Cache-Control": "no-cache"})
+        return Response(cli_pyz(), media_type="application/zip", headers={
+            "Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-cache"})
 
     @app.get("/{rest:path}", response_class=HTMLResponse)
     def spa(rest: str):

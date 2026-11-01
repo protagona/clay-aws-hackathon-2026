@@ -73,6 +73,9 @@ def _build_parser() -> argparse.ArgumentParser:
     tl = sub.add_parser("tools", help="list every tool of every MCP server the configs use, with descriptions (JSON)")
     tl.add_argument("--out", help="write the JSON here (atomically) instead of printing it")
 
+    rm = sub.add_parser("remote", help="the API of a deployment (or a local `foundry ui`) from the terminal; "
+                        "`foundry remote --help` for its commands", add_help=False)
+    rm.add_argument("rest", nargs=argparse.REMAINDER)  # listed for --help; main() hands `remote` off before parsing
     ui = sub.add_parser("ui", help="serve the local UI on 127.0.0.1")
     ui.add_argument("--port", type=int, default=8765)
     ui.add_argument("--runs-dir", default="runs")
@@ -258,6 +261,11 @@ COMMANDS = {
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["remote"]:  # its own parser: argparse.REMAINDER would drop leading options like --json
+        from foundry.cli_remote import main as remote_main
+
+        return remote_main(argv[1:], prog="foundry remote")
     args = _build_parser().parse_args(argv)
     # Strands logs cancelled/failed tool calls with full tracebacks; the trace already records them,
     # so keep the terminal readable.

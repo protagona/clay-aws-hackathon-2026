@@ -114,5 +114,6 @@ def test_concurrent_edits_cannot_both_win(cloud):
 
 def test_the_cli_download_is_public_and_only_that_file(tmp_path):
     c, _ = local_client(tmp_path)
-    assert c.get("/cli/foundry-remote.pyz").status_code in (200, 404)  # 404 until slice 8 builds it
+    r = c.get("/cli/foundry-remote.pyz")
+    assert r.status_code == 200 and r.content.startswith(b"#!/usr/bin/env python3\n")
     assert c.get("/cli/other.py").status_code == 404
