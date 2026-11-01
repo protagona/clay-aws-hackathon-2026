@@ -338,7 +338,24 @@ Add files only; no Python changes are needed:
 - `tasks/<task_id>/expected.jsonl` (optional): one `{"prompt_id", "stages": [[tool, ...], ...]}` per line, the expected tool order for the workflow score's `sequence` component. Use bare tool names, because imported runs don't record which server a tool came from.
 - `config/<name>.toml` with `[task] id = "<task_id>"`.
 
-## Deploy (live checks)
+## Run it in AWS (a shared URL)
+
+The whole app (web, API, runs, scoring, batches, rubric drafts) also runs serverless in one AWS account in **us-west-2**: Lambda behind a public function URL, S3 and DynamoDB for state, Step Functions for batches. There is no VPC and no server. People sign in with a named access token, and a monthly cap ($30 by default) limits model spend.
+
+```bash
+export AWS_PROFILE=<profile>
+scripts/cloud.sh preflight
+scripts/cloud.sh deploy --email you@example.com   # prints the URL
+scripts/cloud.sh token add <name>                 # prints the token once; send it privately
+```
+
+Anyone with a token can also use the API from a terminal without a clone: the deployment serves a one-file client at `/cli/foundry-remote.pyz` (from a clone: `uv run foundry remote`).
+
+The runbook covers first deploys, day-to-day commands, alerts, restoring data and troubleshooting: [docs/deploy.md](docs/deploy.md). The spec, design and verification record are in [docs/eval-sandbox/aws-deploy/](docs/eval-sandbox/aws-deploy/handoff.md).
+
+## Deploy (live checks, the legacy stack)
+
+This is the earlier stack (`FoundryStack`, `infra/app.py`), separate from the one above: a bucket and a role for running live checks from a laptop. `cloud.sh` never touches it.
 
 `infra/` holds a CDK app for one sandbox account in **us-west-2**:
 
@@ -415,6 +432,7 @@ The reasons are in [the design](docs/eval-sandbox/design.md#decisions).
 3. [Trace contract](docs/trace-contract.md): the shared file format.
 4. [Backlog](docs/backlog.md): work streams and "done when" criteria.
 5. [Spec](docs/eval-sandbox/spec.md) and [design](docs/eval-sandbox/design.md) for this build.
+6. [AWS deployment](docs/eval-sandbox/aws-deploy/spec.md): its spec, [design](docs/eval-sandbox/aws-deploy/design.md) and [handoff](docs/eval-sandbox/aws-deploy/handoff.md); the runbook is [docs/deploy.md](docs/deploy.md).
 
 Source material from the organizers:
 

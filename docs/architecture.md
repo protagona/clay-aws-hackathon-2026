@@ -14,12 +14,12 @@ The code is split into layers. Each layer may import only the layers below it, a
 | Layer | Where | What lives there | May import from foundry |
 |---|---|---|---|
 | **kernel** | `config.py`, `contract.py` | Settings and the run-record schemas (`Step`, `run.json`, `scores.json`) | each other only |
-| **data** | `data/` | Every read and write of project and run files: run dirs, `run.json`, scores, traces, batches, prompts, rubrics, tasks, locks, the tool cache, the S3 mirror. Untrusted files are read safely here (regular files only, no symlinks, malformed files return `None`). | kernel, data |
+| **data** | `data/` | Every read and write of project and run files: run dirs, `run.json`, scores, traces, batches, prompts, rubrics, tasks, locks, the tool cache. In the cloud, also the state store (`store.py`: S3 and DynamoDB, with a test fake of the same semantics), the tree mirror between the store and `/tmp` (`mirror.py`), tokens, the spend ledger and uploads. Untrusted files are read safely here (regular files only, no symlinks, malformed files return `None`). | kernel, data |
 | **engine** | `engine/` | The agent harness, models, MCP servers, tracing, evaluation (scoring), the batch runner, the trace importer and receiver, the external runner, rubric drafting | kernel, data, engine |
 | **services** | `services/` | What the app does: runs, scoring, batches, prompts, rubrics, the tool menu, imports, the dashboard, background jobs. Errors are raised as `ServiceError(status, message, field)`. | kernel, data, engine, services |
 | **api** | `api/` | HTTP only: routes, request models, the write guard (Host, Origin, CSRF), error mapping, and rendering run text to safe HTML | kernel, services, api |
 | **ui** | `ui/` | Serves the built web app (`ui/web_dist`) and nothing else | nothing |
-| **entry points** | `server.py`, `cli.py`, `cli_rubric.py`, `__main__.py` | Wire the layers together: `server.py` builds the web server from api and ui; the CLI calls the engine and services | any layer |
+| **entry points** | `server.py`, `cli.py`, `cli_rubric.py`, `__main__.py`; for the cloud `lambda_api.py`, `lambda_worker.py`, `lambda_probe.py`, `cloud_boot.py`; `cli_remote.py` | Wire the layers together: `server.py` builds the web server from api and ui; the CLI calls the engine and services. In AWS, `lambda_api` turns a function-URL request into an ASGI request to the same app, `lambda_worker` runs one job, `lambda_probe` checks `/healthz`, and `cloud_boot` sets up `/tmp` at a cold start. `cli_remote` is the standard-library API client served as `foundry-remote.pyz`. | any layer |
 
 ### Rules the test enforces
 
@@ -85,6 +85,8 @@ Every `/api` route declares its request body and response in `src/foundry/api/sc
 3. Installs `api.errors`, so every `/api` error is JSON `{"error": ..., "field"?: ...}`.
 4. Includes the `/api` router from `api.routes`.
 5. Mounts `ui.spa` last: `/assets/*` as files, and every other path falls back to `index.html`.
+
+In AWS the same app is built by `lambda_api`, with the state store and token checks switched on; the design is in [aws-deploy/design.md](eval-sandbox/aws-deploy/design.md).
 
 ## How the rules are checked
 
