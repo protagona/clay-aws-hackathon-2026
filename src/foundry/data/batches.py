@@ -66,26 +66,6 @@ def read_meta(path: Path) -> dict:
     return meta
 
 
-def replace_summary_row(path: Path, n: int, row: dict, fields: list[str]) -> None:
-    """Set row `n` (0-based, in plan order) of a batch's summary.csv, keeping the others (a cloud batch's items each
-    rewrite their own row under the batch lease; aws-deploy design ADR-7)."""
-
-    f = path / "summary.csv"
-    rows = []
-    if is_regular(f):
-        with open(f, newline="") as fh:
-            rows = list(csv.DictReader(fh))
-    blank = {k: "" for k in fields}
-    while len(rows) <= n:
-        rows.append(dict(blank))
-    rows[n] = {k: row.get(k, "") for k in fields}
-    tmp = f.with_name("summary.csv.tmp")
-    with open(tmp, "w", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=fields)
-        w.writeheader()
-        w.writerows(rows)
-    tmp.replace(f)
-
 
 def write_meta(path: Path, meta: dict) -> None:
     import json

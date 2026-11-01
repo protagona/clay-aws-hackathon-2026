@@ -256,3 +256,40 @@ def test_an_unknown_job_kind_is_refused_and_an_old_record_is_tolerated(tmp_path)
     assert job_kinds.failed_visibly("retired-kind", 1, "done", alive=False, dismissed=False) is True
     assert job_kinds.failed_visibly("run", 1, "done", alive=False, dismissed=False) is False
     assert job_kinds.failed_visibly("run", None, "interrupted", alive=False, dismissed=False) is True
+
+
+# --- one batch orchestrator (backend-parity ADR-5, spec AC6) --------------------------------------------------------
+
+
+def test_the_same_batch_gives_the_same_results_on_both_setups(tmp_path, monkeypatch):
+    import json
+
+    from backends import CloudHarness, LaptopHarness
+
+    from foundry.engine.batch import rows_from_csv
+
+    results = []
+    for h in (LaptopHarness(tmp_path / "laptop"), CloudHarness(tmp_path / "cloud", monkeypatch)):
+        add_config(h, "ok", [{"tool": "echo", "input": {"text": "x"}}, {"text": "done"}])
+        r = h.client.post("/api/batches", headers=h.headers(), json={
+            "config": "ok", "prompts": ["adb-001", "adb-002"], "repeats": 1, "concurrency": 2, "evaluate": True,
+            "max_cost": 1})
+        assert r.status_code == 201, r.text
+        batch_id = r.json()["batch_id"]
+        h.drain(timeout=180)
+        d = h.pull_batch(batch_id)
+        meta = json.loads((d / "batch.json").read_text())
+        for k in ("id", "started_at", "finished_at", "spent_usd", "runs_dir", "configs"):
+            meta.pop(k)
+        rows = rows_from_csv(d / "summary.csv")
+        for row in rows:
+            for k in ("duration_s", "run_dir", "cost_usd"):
+                row.pop(k)
+        assert (d / "summary.md").is_file()  # the cloud writes it too now
+        cards = {c["run_id"].removeprefix(f"{batch_id}_"): (c["column"], c["status"], c["headline"])
+                 for c in h.client.get("/api/runs").json()["runs"] if c["run_id"].startswith(batch_id)}
+        (job,) = [j for j in h.client.get("/api/jobs").json()["jobs"] if j["kind"] == "batch"]
+        results.append((meta, rows, cards, job["exit_code"]))
+    laptop, cloud = results
+    assert laptop[2] and all(col == "scored" for col, _, _ in laptop[2].values())
+    assert laptop == cloud

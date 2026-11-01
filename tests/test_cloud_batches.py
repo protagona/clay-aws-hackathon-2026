@@ -198,3 +198,16 @@ def test_item_costs_are_booked_without_float_noise(setup):
     for cost in (0.1 + 0.2, 0.1 + 0.2, 0.000000_4):  # 0.30000000000000004 twice; a sub-micro-dollar cost
         workers._book_item_cost(store, batch, job_id, cost)
     assert str(store.items[("JOB", job_id)]["spent"]) == "0.6"  # exactly; the sub-micro-dollar cost books nothing
+
+
+def test_a_models_batch_prepares_from_any_working_directory(setup, monkeypatch, tmp_path):
+    """Design gate pass 3: a Lambda's cwd isn't the project root, so the job's config paths must be made absolute."""
+    store, started, calls, c, h, w, wm = setup
+    start(c, h, config="bedrock", models=["us.anthropic.claude-sonnet-4-6"], evaluate=False)
+    (job_id,) = started
+    monkeypatch.setenv("FOUNDRY_HOME", str(w.root))  # as the image sets it (Dockerfile.lambda)
+    monkeypatch.chdir(tmp_path)  # but the working directory has no config/, as /var/task hasn't
+    plan = workers.batch_prepare(w, store, wm, job_id)
+    (item,) = [i for i in plan["items"] if i["prompt"] == "adb-001"]
+    assert item["config"].startswith("batch:configs/") and item["model"] == "us.anthropic.claude-sonnet-4-6"
+    assert (w.batches_dir / item["batch_id"] / item["config"].removeprefix("batch:")).is_file()

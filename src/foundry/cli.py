@@ -27,18 +27,9 @@ def _build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--force", action="store_true", help="score a run stuck at 'running' (a crashed run) as failed")
     ev.add_argument("--lock-held", help=argparse.SUPPRESS)
 
-    ba = sub.add_parser("batch", help="run prompts x variants x repeats, then summarize")
-    ba.add_argument("--config", action="append", required=True, help="a variant config (repeatable)")
-    ba.add_argument("--models", help="comma-separated model ids: one variant each, derived from the single --config")
-    ba.add_argument("--prompts", required=True, help='comma-separated prompt ids, or "all"')
-    ba.add_argument("--repeats", type=int, default=1, help="runs per variant and prompt (default: 1)")
-    ba.add_argument("--concurrency", type=int, default=2, help="runs at once (default: 2)")
-    ba.add_argument("--evaluate", action="store_true", help="also run foundry evaluate on each run")
-    ba.add_argument("--eval-config", help="config for evaluation (default: the first variant's config)")
-    ba.add_argument("--max-cost", type=float, help="stop launching runs once recorded cost (USD) reaches this")
-    ba.add_argument("--out", required=True, help="batch directory (re-run the same command to resume)")
-    ba.add_argument("--runs-dir", help="where run dirs go (default <out>/runs); the UI uses its own runs dir")
-    ba.add_argument("--run-prefix", help="prefix for run ids, so batches can share a runs dir")
+    from foundry.engine.batch import add_args as add_batch_args
+
+    add_batch_args(sub.add_parser("batch", help="run prompts x variants x repeats, then summarize"))
 
     im = sub.add_parser("import", help="turn OpenTelemetry GenAI traces (OTLP/JSON) from any agent into run dirs")
     im.add_argument("file", help="OTLP/JSON: one ExportTraceServiceRequest, or JSON Lines of them")

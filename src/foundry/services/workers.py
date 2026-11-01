@@ -12,10 +12,11 @@ from __future__ import annotations
 import json
 import logging
 import time
+from pathlib import Path
 
 from foundry.data import runs as data_runs
 from foundry.data.mirror import PK as TREE
-from foundry.data.store import Conflict, Cond, Update
+from foundry.data.store import Conflict, Cond, Put, Update
 from foundry.services import cloud_jobs, job_kinds, jobs, runs
 from foundry.services.cloud_state import CloudState
 from foundry.services.workspace import Workspace
@@ -134,51 +135,45 @@ def run_job(ws: Workspace, store, mirror, job_id: str, clock=time.time) -> str:
 
 
 # --- batches on Step Functions (aws-deploy design ADR-7) ---------------------------------------------------------
-# The workflow: Prepare → Map{batch_item} (each item catches its own errors) → Finalize. The engine's planning,
-# derived configs, summary rows and run costs are reused; only the loop moved out of engine/batch.py's thread pool.
+# The workflow: Prepare → Map{batch_item} (each item catches its own errors) → Finalize. Planning, each item and the
+# finish are the engine's own functions (engine/batch.py: prepare, run_item, finalize; backend-parity ADR-5), the same
+# ones `foundry batch` runs on a laptop; what's here is only what the cloud adds: claiming, an item that runs once
+# even if delivered twice, its cost booked on the batch, the summary rewritten under the batch's lease.
 
 
-def _flag(args: list[str], name: str, default=None):
-    return args[args.index(name) + 1] if name in args else default
+def _args(store, batch_job_id: str) -> list[str]:
+    return json.loads((store.get_item(cloud_jobs.PK, batch_job_id) or {}).get("args") or "[]")
+
+
+def _absolute(ws: Workspace, args):
+    """The job's config paths against this worker's project root: a Lambda's working directory isn't it."""
+    args.config = [str(ws.root / c) if not Path(c).is_absolute() else c for c in args.config]
+    if args.eval_config and not Path(args.eval_config).is_absolute():
+        args.eval_config = str(ws.root / args.eval_config)
+    return args
 
 
 def batch_prepare(ws: Workspace, store, mirror, batch_job_id: str, clock=time.time) -> dict:
     """Plan the batch from its job's own arguments, write batch.json, the derived configs and an empty summary, and
     return the Map's items."""
-    from foundry.data import batches as data_batches
-    from foundry.engine.batch import SUMMARY_FIELDS, plan
+    from foundry.engine.batch import prepare, spec_from_args
 
     claim(store, batch_job_id, clock())  # queued → running (a redelivery finds it running: plan again, same result)
-    job = store.get_item(cloud_jobs.PK, batch_job_id)
-    args, batch_id = json.loads(job["args"]), job["run_id"]
+    batch_id = store.get_item(cloud_jobs.PK, batch_job_id)["run_id"]
     pull_projects(store, mirror)
-    out = ws.batches_dir / batch_id
-    models = [m for m in (_flag(args, "--models") or "").split(",") if m]
-    config = _flag(args, "--config")
-    planned = plan([str(ws.root / config)], models, _flag(args, "--prompts"), int(_flag(args, "--repeats", "1")), out,
-                   _flag(args, "--run-prefix", ""))
-    meta = {"id": batch_id, "configs": [config], "models": models, "prompts": _flag(args, "--prompts"),
-            "repeats": int(_flag(args, "--repeats", "1")), "concurrency": int(_flag(args, "--concurrency", "2")),
-            "evaluate": "--evaluate" in args, "max_cost": float(_flag(args, "--max-cost", "0")) or None,
-            "jobs": len(planned), "status": "running", "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
-    data_batches.write_meta(out, meta)
-    for n, j in enumerate(planned):
-        data_batches.replace_summary_row(out, n, {"variant": j.variant.name, "model": j.variant.model,
-                                                  "prompt": j.prompt, "repeat": j.repeat, "status": "pending"},
-                                         SUMMARY_FIELDS)
+    args = _absolute(ws, spec_from_args(_args(store, batch_job_id)))
+    planned, meta, eval_config = prepare(args, ws.batches_dir / batch_id, ws.runs_dir)
     mirror.push_dir(f"batch#{batch_id}")
     log.info("batch %s start: job=%s items=%d", batch_id, batch_job_id, len(planned))
     items = [{"n": n, "batch_job_id": batch_job_id, "batch_id": batch_id, "variant": j.variant.name,
               "model": j.variant.model, "prompt": j.prompt, "repeat": j.repeat, "run_id": j.run_id,
               "config": _relative_config(ws, j.variant.config, batch_id), "evaluate": meta["evaluate"],
-              "eval_config": _relative_config(ws, planned[0].variant.config, batch_id)} for n, j in enumerate(planned)]
+              "eval_config": _relative_config(ws, eval_config, batch_id)} for n, j in enumerate(planned)]
     return {"batch_job_id": batch_job_id, "concurrency": meta["concurrency"], "items": items}
 
 
 def _relative_config(ws: Workspace, path, batch_id: str) -> str:
     """A config path every worker can resolve: project-relative (config/x.toml) or inside the batch tree."""
-    from pathlib import Path
-
     p = Path(path)
     batch_dir = ws.batches_dir / batch_id
     if p.is_relative_to(batch_dir):
@@ -192,9 +187,9 @@ def _resolve_config(ws: Workspace, ref: str, batch_id: str) -> str:
 
 def batch_item(ws: Workspace, store, mirror, item: dict, clock=time.time) -> dict:
     """One job of a batch, run once even if Step Functions delivers it twice; its cost is booked on the batch."""
-    from foundry.data import batches as data_batches
-    from foundry.data.store import Put
-    from foundry.engine.batch import SUMMARY_FIELDS, Job, Variant, run_cost, summary_row
+    from contextlib import nullcontext
+
+    from foundry.engine.batch import ItemContext, Job, Variant, rows_from_csv, run_cost, summary_row, write_rows
 
     now = clock()
     key = f"{item['batch_job_id']}#{item['n']}"
@@ -206,44 +201,59 @@ def batch_item(ws: Workspace, store, mirror, item: dict, clock=time.time) -> dic
     except Conflict:  # a redelivery: report what the first delivery did (or is doing)
         prior = store.get_item(cloud_jobs.PK, key) or {}
         return {"n": item["n"], "status": prior.get("message") or prior.get("status", "running")}
-    batch = store.get_item(cloud_jobs.PK, item["batch_job_id"]) or {}
-    max_cost = float(_flag(json.loads(batch.get("args") or "[]"), "--max-cost", "0") or 0)
-    variant = Variant(item["variant"], _resolve_config(ws, item["config"], item["batch_id"]), item["model"])
-    job = Job(variant, item["prompt"], item["repeat"], "")
-    job.run_dir = None
-    status, cost = "skipped (budget)", 0.0
-    log.info("job %s start: kind=batch_item run=%s", key, item["run_id"])
-    if not (max_cost and float(batch.get("spent") or 0) >= max_cost):
-        pull_projects(store, mirror)
-        mirror.pull(f"batch#{item['batch_id']}")
-        run_id = item["run_id"]
+    batch_dir = ws.batches_dir / item["batch_id"]
+    variant = Variant(item["variant"], Path(_resolve_config(ws, item["config"], item["batch_id"])), item["model"])
+    tail = f"{variant.name}_{item['prompt']}_r{item['repeat']}"
+    job = Job(variant, item["prompt"], item["repeat"], item["run_id"].removesuffix(tail))
+    run_id = item["run_id"]
+    log.info("job %s start: kind=batch_item run=%s", key, run_id)
+    pull_projects(store, mirror)
+    mirror.pull(f"batch#{item['batch_id']}")
 
-        def tick():
-            if data_runs.safe_run_path(ws.runs_dir, run_id) is not None:
-                index_run(ws, mirror, run_id)
-
-        code, output = jobs.run_foundry(["run", "--config", str(variant.config), "--prompt", item["prompt"],
-                                    "--runs-dir", str(ws.runs_dir), "--run-id", run_id], cwd=ws.root, tick=tick)
-        log_output(key, output, failed=code != 0)
-        d = data_runs.safe_run_path(ws.runs_dir, run_id)
-        if code == 2 or d is None:
-            status = "error"
-        else:
-            if item.get("evaluate"):
-                jobs.run_foundry(["evaluate", str(d), "--config",
-                                  _resolve_config(ws, item["eval_config"], item["batch_id"])], cwd=ws.root)
+    def tick():
+        if data_runs.safe_run_path(ws.runs_dir, run_id) is not None:
             index_run(ws, mirror, run_id)
-            status, cost, job.run_dir, job.status = "ran", run_cost(d), d, "ran"
-    job.status = status if status != "ran" else "ran"
-    _book_item_cost(store, batch, item["batch_job_id"], cost)
+
+    def run(args: list[str], log_name: str) -> int:  # noqa: ARG001 (the output goes to CloudWatch, not a file)
+        code, output = jobs.run_foundry(args, cwd=ws.root, tick=tick if args[0] == "run" else None)
+        log_output(key, output, failed=code != 0)
+        return code
+
+    def spent() -> float:
+        return float((store.get_item(cloud_jobs.PK, item["batch_job_id"]) or {}).get("spent") or 0)
+
+    max_cost = spec_max_cost(_args(store, item["batch_job_id"]))
+    ctx = ItemContext(ws.runs_dir, bool(item.get("evaluate")), _resolve_config(ws, item["eval_config"], item["batch_id"]),
+                      max_cost, run, spent, nullcontext(), resume=False)
+    status = run_item(job, ctx)
+    cost = 0.0
+    if status == "ran":
+        index_run(ws, mirror, job.run_dir.name)  # the scores reach the store
+        cost = run_cost(job.run_dir)
+    _book_item_cost(store, store.get_item(cloud_jobs.PK, item["batch_job_id"]) or {}, item["batch_job_id"], cost)
     with jobs.exclusive_key(ws, f"lease#batch#{item['batch_id']}") as owner:
         mirror.pull(f"batch#{item['batch_id']}")
-        data_batches.replace_summary_row(ws.batches_dir / item["batch_id"], item["n"], summary_row(job), SUMMARY_FIELDS)
+        rows = rows_from_csv(batch_dir / "summary.csv")
+        if item["n"] < len(rows):
+            rows[item["n"]] = summary_row(job)
+            write_rows(batch_dir, rows)
         mirror.push_dir(f"batch#{item['batch_id']}", lease=(f"lease#batch#{item['batch_id']}", owner))
     cloud_jobs.finish(store, key, "done", 0 if status == "ran" else 1, status, clock())
-    log.info("job %s end: kind=batch_item run=%s status=%s cost=$%.4f duration=%.1fs", key, item["run_id"], status, cost,
+    log.info("job %s end: kind=batch_item run=%s status=%s cost=$%.4f duration=%.1fs", key, run_id, status, cost,
              clock() - now)
     return {"n": item["n"], "status": status}
+
+
+def spec_max_cost(args: list[str]) -> float | None:
+    from foundry.engine.batch import spec_from_args
+
+    return spec_from_args(args).max_cost
+
+
+def run_item(job, ctx):  # the engine's, named here so tests can patch the cloud driver's call
+    from foundry.engine.batch import run_item as engine_run_item
+
+    return engine_run_item(job, ctx)
 
 
 def _book_item_cost(store, batch: dict, batch_job_id: str, cost: float) -> None:
@@ -284,9 +294,10 @@ def batch_finalize(ws: Workspace, store, mirror, batch_job_id: str, error: str |
     status = "failed" if error else "done"
     spent = float((store.get_item(cloud_jobs.PK, batch_job_id) or {}).get("spent") or 0.0)  # with dead items' charge
     if path is not None:  # batch.json first: a reader that sees the job finished must see the batch finished too
-        meta = data_batches.read_meta(path)
-        data_batches.write_meta(path, {**meta, "status": "finished", "exit_code": 1 if bad else 0,
-                                       "spent_usd": round(spent, 6), "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")})
+        from foundry.engine.batch import finalize, rows_from_csv
+
+        finalize(path, data_batches.read_meta(path), rows_from_csv(path / "summary.csv"), spent,
+                 extra_bad=error is not None or dead > 0)
         mirror.push_dir(f"batch#{batch_id}")
     for _ in range(5):  # settle on the total we read; an item booking in between makes us re-read (design ADR-7)
         batch = store.get_item(cloud_jobs.PK, batch_job_id) or {}

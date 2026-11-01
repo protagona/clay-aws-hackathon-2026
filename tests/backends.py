@@ -66,6 +66,7 @@ class Harness:
     def sync_project(self) -> None: ...
     def pull(self, run_id: str) -> Path: return self.runs_dir / run_id
     def pull_project(self) -> None: ...
+    def pull_batch(self, batch_id: str) -> Path: return self.runs_dir / ".batches" / batch_id
     def drain(self, timeout: float = 120) -> None: ...
 
 
@@ -166,6 +167,10 @@ class CloudHarness(Harness):
     def pull(self, run_id: str) -> Path:
         self.smirror.pull(f"run#{run_id}")
         return self.runs_dir / run_id
+
+    def pull_batch(self, batch_id: str) -> Path:
+        self.smirror.pull(f"batch#{batch_id}")
+        return self.runs_dir / ".batches" / batch_id
 
     def pull_project(self) -> None:
         for it in self.store.query("TREE", prefix="project#"):
