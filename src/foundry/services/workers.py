@@ -242,6 +242,11 @@ def batch_finalize(ws: Workspace, store, mirror, batch_job_id: str, error: str |
     rows = data_batches.batch_rows(path, ws.runs_dir) if path else []
     bad = error is not None or any(r["status"] in ("error", "skipped (budget)") for r in rows)
     status = "failed" if error else "done"
+    if path is not None:  # batch.json first: a reader that sees the job finished must see the batch finished too
+        meta = data_batches.read_meta(path)
+        data_batches.write_meta(path, {**meta, "status": "finished", "exit_code": 1 if bad else 0,
+                                       "spent_usd": round(spent, 6), "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")})
+        mirror.push_dir(f"batch#{batch_id}")
     for _ in range(5):  # settle on the total we read; an item booking in between makes us re-read (design ADR-7)
         batch = store.get_item(cloud_jobs.PK, batch_job_id) or {}
         spent = float(batch.get("spent") or 0.0)
@@ -250,9 +255,4 @@ def batch_finalize(ws: Workspace, store, mirror, batch_job_id: str, error: str |
             break
         if (store.get_item(cloud_jobs.PK, batch_job_id) or {}).get("status") not in ("queued", "running"):
             break  # already finished (a redelivered Finalize, or the sweep)
-    if path is not None:
-        meta = data_batches.read_meta(path)
-        data_batches.write_meta(path, {**meta, "status": "finished", "exit_code": 1 if bad else 0,
-                                       "spent_usd": round(spent, 6), "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")})
-        mirror.push_dir(f"batch#{batch_id}")
     return {"batch_job_id": batch_job_id, "status": status, "spent": spent}

@@ -98,3 +98,24 @@ def test_one_batch_at_a_time_and_the_slot_frees_at_finalize(setup):
     assert c.post("/api/batches", headers=h, json={"config": "offline", "prompts": ["adb-001"]}).status_code == 409
     workers.batch_finalize(w, store, wm, started[0], error="cancelled")
     start(c, h)
+
+
+def test_a_reader_never_sees_a_finished_job_with_an_unfinished_batch(setup, monkeypatch):  # slice 10, found live
+    from foundry.services import cloud_jobs
+
+    store, started, calls, c, h, w, wm = setup
+    batch_id = start(c, h)
+    (job_id,) = started
+    plan = workers.batch_prepare(w, store, wm, job_id)
+    for item in plan["items"]:
+        workers.batch_item(w, store, wm, item)
+    seen, real = [], cloud_jobs.finish
+
+    def finish(*a, **k):  # what a reader sees just before the job is marked finished
+        seen.append(c.get(f"/api/batches/{batch_id}").json()["meta"]["status"])
+        return real(*a, **k)
+
+    monkeypatch.setattr(cloud_jobs, "finish", finish)
+    workers.batch_finalize(w, store, wm, job_id)
+    assert seen == ["finished"]
+    assert c.get(f"/api/batches/{batch_id}").json()["meta"]["status"] == "finished"
