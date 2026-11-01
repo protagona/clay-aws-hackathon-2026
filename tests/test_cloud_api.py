@@ -136,3 +136,25 @@ def test_the_receiver_is_off_and_uploads_may_go_to_the_bucket(cloud, tmp_path):
     assert r.status_code == 409 and r.json()["error"] == "Not available in this deployment; import trace files instead"
     local = TestClient(create_app(tmp_path / "runs", ROOT), base_url=BASE).get("/api/session")
     assert local.json()["receiver"] is True and "connect-src 'self';" in local.headers["content-security-policy"]
+
+
+def test_cold_pulls_fetch_every_tree_in_parallel(tmp_path):  # slice 10: 26-34 s one tree at a time
+    import threading
+
+    from foundry.data.mirror import Mirror
+    from foundry.services import cloud_state
+
+    store = FakeStore()
+    for i in range(20):
+        Mirror(store, tmp_path / "w").push(f"run#r-{i:02d}", {"run.json": b'{"status": "succeeded"}'})
+    mirror, threads = Mirror(store, tmp_path / "fresh"), set()
+    real = mirror.pull
+
+    def pull(tree, item=None):
+        threads.add(threading.get_ident())
+        return real(tree, item=item)
+
+    mirror.pull = pull
+    cloud_state.pull_all(mirror, store.query("TREE", prefix="run#"))
+    assert sorted(p.name for p in (tmp_path / "fresh" / "runs").iterdir()) == [f"r-{i:02d}" for i in range(20)]
+    assert len(threads) > 1

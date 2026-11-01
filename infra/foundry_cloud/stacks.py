@@ -51,7 +51,8 @@ def _tag(stack: Stack) -> None:
 
 
 class FoundryDataStack(Stack):
-    def __init__(self, scope: Construct, cid: str, *, email: str, budget_usd: float | None = None, **kw) -> None:
+    def __init__(self, scope: Construct, cid: str, *, email: str, budget_usd: float | None = None,
+                 cap_usd: float | None = 30.0, **kw) -> None:
         super().__init__(scope, cid, **kw)
         self.bucket = s3.Bucket(
             self, "State", versioned=True, block_public_access=s3.BlockPublicAccess.BLOCK_ALL, enforce_ssl=True,
@@ -87,7 +88,9 @@ class FoundryDataStack(Stack):
         CfnOutput(self, "Bucket", value=self.bucket.bucket_name)
         CfnOutput(self, "TableName", value=self.table.table_name)
         CfnOutput(self, "AlertEmail", value=email)
-        CfnOutput(self, "BudgetUsd", value=f"{budget_usd:g}" if budget_usd else "")
+        CfnOutput(self, "BudgetUsd", value=f"{budget_usd:g}" if budget_usd else "0")
+        # The cap is the app stack's setting, kept here too so a deploy after `destroy` keeps it ("0" = no cap).
+        CfnOutput(self, "CapUsd", value="0" if cap_usd is None else f"{cap_usd:g}")
         _tag(self)
 
 
@@ -107,7 +110,7 @@ class FoundryAppStack(Stack):
 
         def log_group(name: str) -> logs.LogGroup:
             return logs.LogGroup(self, f"{name}Logs", retention=logs.RetentionDays.ONE_MONTH,
-                                 removal_policy=RemovalPolicy.DESTROY)
+                                 removal_policy=RemovalPolicy.RETAIN)  # kept 30 days after a destroy too (O1)
 
         env = {"STATE_BUCKET": bucket.bucket_name, "TABLE": table.table_name, "FOUNDRY_BUILD": build}
 
@@ -168,6 +171,8 @@ class FoundryAppStack(Stack):
         rule = events.Rule(self, "ProbeSchedule", schedule=events.Schedule.rate(Duration.minutes(5)),
                            targets=[targets.LambdaFunction(probe, retry_attempts=0)])
         alarm = cw_actions.SnsAction(topic)
+        # Function URL metrics carry FunctionName and Resource = "<function>:<alias>" for an alias's URL
+        # (lambda/latest/dg/urls-monitoring.html); checked live with list-metrics at Verify.
         live = {"FunctionName": api.function_name, "Resource": f"{api.function_name}:live"}
 
         def url_metric(name: str) -> cw.Metric:

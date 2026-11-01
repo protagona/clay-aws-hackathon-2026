@@ -154,3 +154,15 @@ def test_failed_job_records_its_last_stderr_line(cloud, monkeypatch):
     assert rec.failed_visibly and rec.last_stderr_line() == "error: no such prompt" and "booting" in rec.read_log()
     jobs.dismiss(b, job.id)
     assert jobs.find(a, job.id).dismissed
+
+
+def test_a_started_job_that_dies_frees_its_slot_17_minutes_after_it_started(cloud):  # S3 (Verify pass 1)
+    store, clock, invoked, a, b, w, wm = cloud
+    job = jobs.start(a, "run", "r-1", "Run", run_args(w, "r-1"), singleton=True, task="adb")
+    clock.t += 60  # it waited a minute in Lambda's queue, then a worker claimed it and died
+    workers.claim(store, job.id, clock.t, deadline=clock.t + cloud_jobs.RUN_LIMIT_S + cloud_jobs.MARGIN_S)
+    clock.t += cloud_jobs.RUN_LIMIT_S + cloud_jobs.MARGIN_S - 1
+    assert jobs.find(b, job.id).status == "running"
+    clock.t += 2  # 17 minutes after it started
+    assert jobs.find(b, job.id).status == "interrupted"
+    jobs.start(b, "run", "r-2", "Run", run_args(b, "r-2"), singleton=True, task="adb")  # the slot is free

@@ -216,6 +216,13 @@ def start(ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *,
                              evaluate_dir=evaluate_dir, quiet=quiet, task=task, reservation=reservation)
 
 
+def note(ws: Workspace, job, **attrs) -> None:
+    """Extra attributes on a cloud job's record (a laptop's in-memory jobs keep none)."""
+    fn = getattr(backend(ws), "note", None)
+    if fn is not None and job is not None:
+        fn(job.id, attrs)
+
+
 def reserve(ws: Workspace, kind: str, label: str, reservation: float):
     """Spend held for work done in this request (a rubric draft), not by a worker: a handle for `settle`, or None
     when there's nothing to hold. Raises the cap's 409 like a job start."""

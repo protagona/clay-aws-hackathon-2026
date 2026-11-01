@@ -180,6 +180,9 @@ class CloudBackend:
             raise ServiceError(500, "Could not start the job; try again") from None
         return record(item, self.store)
 
+    def note(self, job_id: str, attrs: dict) -> None:
+        self.store.write(Update(PK, job_id, set=attrs))
+
     def reserve(self, ws: Workspace, kind: str, label: str, reservation: float) -> str:
         """Hold spend for in-request work: a JOB item and the SPEND reservation in one transaction, no worker."""
         job = self.start(ws, kind, kind, label, [], singleton=False, prompt_ids=[], evaluate_dir=None, quiet=False,

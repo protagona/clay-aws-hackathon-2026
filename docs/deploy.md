@@ -42,7 +42,7 @@ The legacy `FoundryStack` (`ClayFoundryEvalSandbox`, `infra/app.py`) is separate
    ```
    - The deploy prints the URL and the time it took.
    - **Confirm the subscription email** that AWS sends, or the alerts go nowhere.
-   - Later deploys need no options; they reuse the email, cap and budget.
+   - Later deploys need no options; they reuse the email, cap and budget, also after a `destroy`. `--cap 0` turns the cap off and `--budget 0` removes the budget.
 6. **Give people access:**
    ```sh
    scripts/cloud.sh token add ana         # prints the token once; send it privately
@@ -113,7 +113,10 @@ python3 foundry-remote.pyz runs
 
 ## Restoring data (O4)
 
-The bucket keeps old versions of every object for 35 days. The table has point-in-time recovery for 35 days.
+The bucket keeps old versions of every object for 35 days. The table has point-in-time recovery for 35 days. The commands below set the region once, since a profile's default region may differ:
+```sh
+export AWS_REGION=us-west-2 AWS_DEFAULT_REGION=us-west-2
+```
 
 **A run's files were deleted** (by hand, for example). The run keeps working for now: each record names the exact object versions it uses, and S3 still serves a version by its id after a delete marker hides it (checked in the restore drill, 2026-11-01). But those versions are now noncurrent, so they expire after 35 days. Remove the delete markers to make them current again:
 ```sh
@@ -134,7 +137,10 @@ while read -r key vid; do aws s3api delete-object --bucket "$B" --key "$key" --v
 2. Copy the item back, then delete the copy:
    ```sh
    aws dynamodb get-item --table-name "$T-restore" --key '{"pk":{"S":"TREE"},"sk":{"S":"run#<run id>"}}' \
-     --query Item > item.json
+     --query Item --output json > item.json
+   # If the live table still has this record (overwritten, not lost), give the copy a version above the live
+   # one, so no server keeps a cached copy under a reused version number: edit "version" in item.json to the
+   # live version + 1 before the put.
    aws dynamodb put-item --table-name "$T" --item file://item.json
    aws dynamodb delete-table --table-name "$T-restore"
    ```
@@ -145,5 +151,5 @@ while read -r key vid; do aws s3api delete-object --bucket "$B" --key "$key" --v
 - **`AccessDenied` creating the function URL or its permissions:** in an AWS Organizations member account, a service control policy can forbid public function URLs (`lambda:FunctionUrlAuthType` = `NONE`). Ask the organization's admin for an exception for this account.
 - **Model calls fail with `AccessDeniedException`:** enable the model in the Bedrock console, in us-west-2.
 - **`Too many attempts; wait a minute.` at sign-in:** more than 10 sign-in attempts (or wrong header tokens) a minute from one address (or IPv6 /64) are refused until the minute is over.
-- **The deploy says "N job(s) in flight":** wait (runs take at most 15 minutes), or pass `--force`.
+- **The deploy says "N job(s) in flight":** wait (a run or scoring takes at most 15 minutes; a batch can take hours: `scripts/cloud.sh status` and the Batches page show its progress), or pass `--force`.
 - **A run shows "interrupted":** its worker stopped before finishing (a timeout or a crash). Its recorded steps are kept, and it can still be scored.

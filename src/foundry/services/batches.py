@@ -48,8 +48,10 @@ def start_batch(ws: Workspace, config: str, models: list[str], prompts: list[str
         eval_wc = spend.eval_reservation(cfg, config) if evaluate else 0.0
         reservation = spend.batch_reservation(max_cost, concurrency, run_wc, eval_wc)
     # A queued batch has no run dirs yet: its prompt ids keep those prompts' text locked (prompts.set_text).
-    jobs.start(ws, "batch", batch_id, f"Batch {batch_id}", args, singleton=True, prompt_ids=prompts,
-               task=cfg.task.id, reservation=reservation)
+    job = jobs.start(ws, "batch", batch_id, f"Batch {batch_id}", args, singleton=True, prompt_ids=prompts,
+                     task=cfg.task.id, reservation=reservation)
+    if reservation:  # what an item whose worker dies is charged at Finalize (design ADR-7 #6)
+        jobs.note(ws, job, item_wc=round(run_wc + eval_wc, 6))
     return batch_id
 
 

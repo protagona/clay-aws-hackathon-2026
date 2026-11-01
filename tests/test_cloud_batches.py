@@ -142,3 +142,27 @@ def test_a_finalize_during_a_read_never_shows_a_stopped_batch(setup, monkeypatch
     assert fired and view["meta"]["status"] != "stopped"
     assert view["running"] or view["meta"]["status"] == "finished"
     assert c.get(f"/api/batches/{batch_id}").json()["meta"]["status"] == "finished"
+
+
+def test_an_item_whose_worker_died_is_charged_its_worst_case(setup):  # A5, ADR-7 #6 (Verify pass 1)
+    from foundry.data.store import Put
+    from foundry.services import cloud_jobs
+
+    store, started, calls, c, h, w, wm = setup
+    start(c, h, config="bedrock")  # priced models: a nonzero worst case (the fake runner calls no model)
+    (job_id,) = started
+    item_wc = store.get_item("JOB", job_id)["item_wc"]
+    assert item_wc > 0
+    plan = workers.batch_prepare(w, store, wm, job_id)
+    workers.batch_item(w, store, wm, plan["items"][0])
+    item = plan["items"][1]  # its worker claimed it, then died: Step Functions caught the error
+    store.write(Put({"pk": "JOB", "sk": f"{job_id}#{item['n']}", "kind": "batch_item", "parent": job_id,
+                     "run_id": item["run_id"], "status": "running", "deadline": 2**40}))
+    before = float(store.get_item("JOB", job_id).get("spent") or 0)
+    out = workers.batch_finalize(w, store, wm, job_id)
+    assert out["spent"] == pytest.approx(before + item_wc)
+    month = store.get_item("JOB", job_id)["month"]
+    assert store.get_item("SPEND", month)["committed"] == pytest.approx(before + item_wc)
+    assert store.get_item("JOB", f"{job_id}#{item['n']}")["status"] == "interrupted"
+    assert store.get_item("JOB", job_id)["exit_code"] == 1
+    assert cloud_jobs.finish(store, f"{job_id}#{item['n']}", "done", 0, None, 0) is False  # a late worker can't

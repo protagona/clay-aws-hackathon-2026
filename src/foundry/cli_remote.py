@@ -131,7 +131,8 @@ class Client:
         boundary = uuid.uuid4().hex
         parts = [f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
                  for k, v in ticket["fields"].items()]
-        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{path.name}"\r\n'
+        safe = path.name.replace("\\", "_").replace('"', "%22").replace("\r", "").replace("\n", "")
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{safe}"\r\n'
                      f"Content-Type: application/octet-stream\r\n\r\n".encode() + data + b"\r\n")
         body = b"".join(parts) + f"--{boundary}--\r\n".encode()
         headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}

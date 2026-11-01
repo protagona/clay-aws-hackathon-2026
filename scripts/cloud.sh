@@ -3,7 +3,7 @@
 # Only FoundryDataStack and FoundryAppStack are ever named; the legacy FoundryStack is never touched.
 #
 #   scripts/cloud.sh preflight
-#   scripts/cloud.sh deploy --email <alerts> [--budget <usd>] [--cap <usd>|0] [--force]
+#   scripts/cloud.sh deploy --email <alerts> [--budget <usd>|0] [--cap <usd>|0] [--force]   (later deploys reuse them)
 #   scripts/cloud.sh status
 #   scripts/cloud.sh token add <name> | token list | token revoke <name>
 #   scripts/cloud.sh seed [--from <dir>]        # local runs/ and tasks/ into an empty deployment (spec S4)
@@ -13,9 +13,9 @@
 #   scripts/cloud.sh destroy [--yes]            # the app stack only; the data stays (spec D4)
 #
 # deploy (spec D1-D5, O4): builds the image (CDK_DOCKER: docker, finch or podman), deploys both stacks with the
-# aliases held where they are, then for the worker and then the api publishes a version, checks it (the worker's
-# health event; the api's /healthz and /api/session) and only then moves alias `live`. A failed check leaves the
-# previous version serving. A deploy with no change publishes no version and changes no stack.
+# aliases held where they are, then publishes a worker and an api version and checks both (the worker's health
+# event; the api's /healthz and /api/session); only when both pass does it move alias `live` on each. A failed
+# check leaves both on the previous version. A deploy with no change publishes no version and changes no stack.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -141,19 +141,33 @@ sys.exit(0 if r.get("statusCode") == 401 else 1)
 PY
 }
 
-rollout() {  # rollout worker|api <function> <build>; echoes nothing, sets MOVED=1 when the alias moved
+candidate() {  # candidate worker|api <function> <build>: publish a version and check it; echoes "<new> <current>"
   local kind=$1 fn=$2 build=$3 new cur
   aws lambda wait function-updated-v2 --function-name "$fn"
   new=$(aws lambda publish-version --function-name "$fn" --description "$build" --query Version --output text)
   cur=$(alias_version "$fn")
-  if [ "$new" = "$cur" ]; then say "$kind: unchanged (version $cur)"; return 0; fi
-  say "$kind: checking version $new"
-  if ! check_version "$kind" "$fn" "$new" "$build"; then
-    die "$kind version $new failed its check; live stays on version $cur (the previous build keeps serving)"
+  if [ "$new" != "$cur" ]; then
+    say "$kind: checking version $new" >&2
+    check_version "$kind" "$fn" "$new" "$build" >&2 || {
+      echo "  $kind version $new failed its check" >&2; echo "FAILED $cur"; return 0; }
   fi
-  aws lambda update-alias --function-name "$fn" --name live --function-version "$new" >/dev/null
-  say "$kind: live → version $new"
-  MOVED=1
+  echo "$new $cur"
+}
+
+rollout() {  # rollout <worker fn> <api fn> <build>: both versions checked before either alias moves (O4)
+  local worker=$1 api=$2 build=$3 w a
+  w=$(candidate worker "$worker" "$build"); a=$(candidate api "$api" "$build")
+  if [ "${w%% *}" = FAILED ] || [ "${a%% *}" = FAILED ]; then
+    die "a new version failed its check; live stays on worker version ${w##* }, api version ${a##* } (the previous build keeps serving)"
+  fi
+  MOVED=0
+  for pair in "worker $worker $w" "api $api $a"; do
+    set -- $pair  # kind fn new cur
+    if [ "$3" = "$4" ]; then say "$1: unchanged (version $4)"; continue; fi
+    aws lambda update-alias --function-name "$2" --name live --function-version "$3" >/dev/null
+    say "$1: live → version $3"
+    MOVED=1
+  done
 }
 
 concurrency() {  # reserve api 20 / worker 8 when the account can spare them (ADR-12); never while stopped
@@ -186,7 +200,8 @@ cmd_deploy() {
   [ -n "$email" ] || email=$(out $DATA AlertEmail)
   [ -n "$email" ] || die "deploy: --email <address> is required the first time (alerts go there)"
   [ -n "$budget" ] || budget=$(out $DATA BudgetUsd)
-  [ -n "$cap" ] || cap=$(out $APP Cap)
+  [ "$budget" = 0 ] && budget=""
+  [ -n "$cap" ] || cap=$(out $DATA CapUsd)
   [ -n "$cap" ] || cap=30
   preflight
   build=$(build_id)
@@ -203,9 +218,7 @@ cmd_deploy() {
     ${budget:+-c "budget=$budget"} --parameters "$APP:ApiVersion=$av" --parameters "$APP:WorkerVersion=$wv"
   api=$(out $APP ApiFunction); worker=$(out $APP WorkerFunction); url=$(out $APP Url)
   ops session-key
-  MOVED=0
-  rollout worker "$worker" "$build"
-  rollout api "$api" "$build"
+  rollout "$worker" "$api" "$build"
   if [ $MOVED = 1 ]; then  # the stack learns where live points, so the next deploy with no change changes nothing
     aws cloudformation update-stack --stack-name $APP --use-previous-template --capabilities CAPABILITY_IAM \
       --parameters "ParameterKey=ApiVersion,ParameterValue=$(alias_version "$api")" \

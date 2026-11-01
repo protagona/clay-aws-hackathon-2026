@@ -20,7 +20,7 @@ if not email:
     raise SystemExit("cloud_app.py: -c email=<address> is required (alerts go there)")
 cap = float(ctx("cap") or 30)
 env = cdk.Environment(account=os.environ.get("CDK_DEFAULT_ACCOUNT"), region="us-west-2")
-data = FoundryDataStack(app, "FoundryDataStack", email=email, budget_usd=float(ctx("budget")) if ctx("budget") else None,
-                        env=env)
+data = FoundryDataStack(app, "FoundryDataStack", email=email, budget_usd=float(ctx("budget") or 0) or None,
+                        cap_usd=cap or None, env=env)
 FoundryAppStack(app, "FoundryAppStack", data=data, build=ctx("build") or "dev", cap_usd=cap or None, env=env)
 app.synth()

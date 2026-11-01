@@ -182,3 +182,15 @@ describe("cloud differences on pages", () => {
     await waitFor(() => expect((screen.getByLabelText("Prompt text") as HTMLTextAreaElement).value).toBe("Old."));
   });
 });
+
+describe("the app before sign-in", () => {
+  it("asks only who is signed in: nothing polls the API until there is a session", async () => {
+    const { App } = await import("./App");
+    const fetchMock = vi.fn(async (_url: string) => json({ error: "Sign in required" }, 401));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    expect(await screen.findByLabelText("Access token")).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchMock.mock.calls.map(([u]) => u)).toEqual(["/api/session"]);
+  });
+});

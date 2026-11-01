@@ -21,11 +21,13 @@ from foundry.services.workspace import Workspace
 SYNC_EVERY_S = 5.0
 
 
-def claim(store, job_id: str, now: float) -> dict | None:
-    """queued → running, or None when another delivery already has it (or it was swept)."""
+def claim(store, job_id: str, now: float, deadline: float | None = None) -> dict | None:
+    """queued → running, or None when another delivery already has it (or it was swept). `deadline`: when a job
+    that started may be swept as interrupted (spec S3: 17 minutes from its start; a queued job's deadline counted
+    the event age too)."""
+    changes = {"status": "running", "started_at": now, **({"deadline": deadline} if deadline is not None else {})}
     try:
-        store.write(Update(cloud_jobs.PK, job_id, set={"status": "running", "started_at": now},
-                           cond=Cond.eq("status", "queued")))
+        store.write(Update(cloud_jobs.PK, job_id, set=changes, cond=Cond.eq("status", "queued")))
     except Conflict:
         return None
     return store.get_item(cloud_jobs.PK, job_id)
@@ -78,7 +80,8 @@ def actual_cost(ws: Workspace, kind: str, run_id: str, code: int) -> float | Non
 
 def run_job(ws: Workspace, store, mirror, job_id: str, clock=time.time) -> str:
     """Do one job. Returns its final status, or "duplicate" when this delivery wasn't the one to run it."""
-    job = claim(store, job_id, clock())
+    now = clock()
+    job = claim(store, job_id, now, deadline=now + cloud_jobs.RUN_LIMIT_S + cloud_jobs.MARGIN_S)
     if job is None:
         return "duplicate"
     kind, run_id = job["kind"], job["run_id"]
@@ -240,7 +243,17 @@ def batch_finalize(ws: Workspace, store, mirror, batch_job_id: str, error: str |
     mirror.pull(f"batch#{batch_id}")
     path = data_batches.batch_path(ws.batches_dir, batch_id)
     rows = data_batches.batch_rows(path, ws.runs_dir) if path else []
-    bad = error is not None or any(r["status"] in ("error", "skipped (budget)") for r in rows)
+    # An item whose worker died (a timeout or crash: Step Functions caught it) never booked its cost; charge its
+    # worst case, so its real Bedrock spend can't escape the batch's budget or the monthly cap (ADR-7 #6).
+    item_wc = float(batch.get("item_wc") or 0.0)
+    dead = 0
+    for it in store.query(cloud_jobs.PK, prefix=f"{batch_job_id}#"):
+        if it.get("status") in ("queued", "running") and cloud_jobs.finish(
+                store, it["sk"], "interrupted", None, "interrupted: its worker stopped before finishing", clock()):
+            dead += 1
+            if item_wc:
+                _book_item_cost(store, batch, batch_job_id, item_wc)
+    bad = error is not None or dead > 0 or any(r["status"] in ("error", "skipped (budget)") for r in rows)
     status = "failed" if error else "done"
     if path is not None:  # batch.json first: a reader that sees the job finished must see the batch finished too
         meta = data_batches.read_meta(path)
