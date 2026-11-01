@@ -16,7 +16,8 @@ from aws_cdk import aws_stepfunctions_tasks as tasks
 from constructs import Construct
 
 
-def batch_state_machine(scope: Construct, worker: lam.IFunction, timeout: Duration = Duration.hours(12)) -> sfn.StateMachine:
+def batch_state_machine(scope: Construct, worker: lam.IFunction, timeout: Duration = Duration.hours(12),
+                        logs: sfn.LogOptions | None = None) -> sfn.StateMachine:
     def invoke(cid: str, payload: dict, result_path: str | None = None) -> tasks.LambdaInvoke:
         t = tasks.LambdaInvoke(scope, cid, lambda_function=worker, payload=sfn.TaskInput.from_object(payload),
                                payload_response_only=True, retry_on_service_exceptions=False,
@@ -39,4 +40,4 @@ def batch_state_machine(scope: Construct, worker: lam.IFunction, timeout: Durati
     with_error.next(finalize)
     chain = prepare.next(items).next(finalize_ok)
     return sfn.StateMachine(scope, "BatchWorkflow", definition_body=sfn.DefinitionBody.from_chainable(chain),
-                            timeout=timeout)
+                            timeout=timeout, logs=logs)

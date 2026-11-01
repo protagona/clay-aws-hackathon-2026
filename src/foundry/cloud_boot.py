@@ -54,7 +54,7 @@ def seed_projects(store, mirror, app: Path | None = None) -> None:
 def cloud_context():
     """(store, mirror, job backend) from the function's environment, with the project files seeded and pulled."""
     from foundry.data.mirror import Mirror
-    from foundry.data.store import AwsStore, LambdaInvoker
+    from foundry.data.store import AwsStore, BatchWorkflow, LambdaInvoker
     from foundry.services.cloud_jobs import CloudBackend
 
     store = AwsStore(os.environ["STATE_BUCKET"], os.environ["TABLE"])
@@ -64,4 +64,12 @@ def cloud_context():
     for it in store.query("TREE", prefix="project#"):
         mirror.pull(it["sk"], item=it)
     invoke = LambdaInvoker(os.environ["WORKER_FUNCTION"]) if os.environ.get("WORKER_FUNCTION") else None
-    return store, mirror, CloudBackend(store, invoke=invoke)
+    flow = BatchWorkflow(os.environ["STATE_MACHINE"]) if os.environ.get("STATE_MACHINE") else None
+    return store, mirror, CloudBackend(store, invoke=invoke, start_batch=flow and flow.start,
+                                       describe=flow and flow.describe)
+
+
+def cap_usd() -> float | None:
+    """The monthly spend cap (aws-deploy A5) from MONTHLY_CAP_USD; unset or empty = no cap."""
+    v = os.environ.get("MONTHLY_CAP_USD", "").strip()
+    return float(v) if v else None

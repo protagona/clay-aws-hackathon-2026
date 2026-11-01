@@ -27,6 +27,10 @@ def handler(event, context_):  # noqa: ARG001 (Lambda's signature)
 
     ws, store, mirror = context()
     kind = event.get("kind")
+    if kind == "healthz":  # cloud.sh's pre-switch check of a new version: it booted and reached the store
+        import os
+
+        return {"ok": True, "build": os.environ.get("FOUNDRY_BUILD", "")}
     if kind == "batch_prepare":
         return workers.batch_prepare(ws, store, mirror, event["batch_job_id"])
     if kind == "batch_item":

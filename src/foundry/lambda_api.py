@@ -91,8 +91,14 @@ def build_app():
     from foundry import cloud_boot
     from foundry.server import create_app
 
-    cloud = cloud_boot.cloud_context() if os.environ.get("STATE_BUCKET") else None
-    return create_app(cloud_boot.runs_dir(), cloud_boot.project_root(), cloud=cloud)
+    if not os.environ.get("STATE_BUCKET"):
+        return create_app(cloud_boot.runs_dir(), cloud_boot.project_root())
+    from foundry.data.tokens import TokenStore
+    from foundry.services.access import Access
+
+    cloud = cloud_boot.cloud_context()
+    return create_app(cloud_boot.runs_dir(), cloud_boot.project_root(), cloud=cloud,
+                      access=Access(TokenStore(cloud[0])), cap_usd=cloud_boot.cap_usd())
 
 
 def handler(event, context):  # noqa: ARG001 (Lambda's signature)

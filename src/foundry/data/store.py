@@ -333,6 +333,30 @@ class AwsStore:
             raise Conflict([r.get("Code", "None") for r in exc.response.get("CancellationReasons", [])]) from None
 
 
+class BatchWorkflow:
+    """Starts and reads the batch state machine (aws-deploy design ADR-7). One execution per batch job: the name is
+    the job id, so a retried start can't run a batch twice."""
+
+    def __init__(self, state_machine_arn: str, region: str = REGION):
+        import boto3
+
+        self.arn = state_machine_arn
+        self.client = boto3.client("stepfunctions", region_name=region)
+
+    def start(self, job_id: str) -> str:
+        import json
+
+        try:
+            r = self.client.start_execution(stateMachineArn=self.arn, name=f"batch-{job_id}",
+                                            input=json.dumps({"batch_job_id": job_id}))
+        except self.client.exceptions.ExecutionAlreadyExists:
+            return self.arn.replace(":stateMachine:", ":execution:") + f":batch-{job_id}"
+        return r["executionArn"]
+
+    def describe(self, execution_arn: str) -> str:
+        return self.client.describe_execution(executionArn=execution_arn)["status"]
+
+
 class LambdaInvoker:
     """Hands a job to the worker function: an async invoke (retries and event age are set on the function)."""
 

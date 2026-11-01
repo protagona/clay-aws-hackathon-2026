@@ -43,9 +43,9 @@ def authenticate(request: Request, access) -> None:
     request.state.auth = ("cookie", name)
 
 
-def install(app: FastAPI, port: int, access=None, upload_origin: str | None = None) -> None:
+def install(app: FastAPI, port: int, access=None, upload_origin: str | None = None, build: str = "") -> None:
     """`upload_origin`: the state bucket's https origin, the one other place the page may send to (presigned
-    upload POSTs, aws-deploy ADR-10)."""
+    upload POSTs, aws-deploy ADR-10). `build`: the deployed build id, which /healthz states (aws-deploy D5)."""
     csp = CSP.format(connect=f" {upload_origin}" if upload_origin else "")
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 
@@ -62,7 +62,7 @@ def install(app: FastAPI, port: int, access=None, upload_origin: str | None = No
         host = request.headers.get("host", "")
         origin = f"https://{domain}" if domain else f"http://{host}"
         if request.method == "GET" and request.url.path == "/healthz":
-            response = PlainTextResponse("ok")  # before every check: health probes don't send our Host
+            response = PlainTextResponse(f"ok {build}" if build else "ok")  # before every check: health probes don't send our Host
         elif not (host == domain if domain else host in allowed_hosts):
             response = refuse(400, "Bad Host header")
         elif request.method in ("POST", "PUT", "PATCH", "DELETE") and (request.headers.get("origin") or origin) != origin:

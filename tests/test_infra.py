@@ -152,3 +152,98 @@ def test_every_batch_path_settles_the_batch():
     assert states["Prepare"]["Catch"][0]["Next"] == "KeepBatchId" and states["Items"]["Catch"][0]["Next"] == "KeepBatchId"
     assert states["KeepBatchId"]["Next"] == "Finalize" and states["Items"]["Next"] == "FinalizeOk"
     assert states["Finalize"].get("End") and states["FinalizeOk"].get("End")
+
+
+# --- the serverless deployment (aws-deploy slice 9) -------------------------------------------------------------
+
+_CLOUD: dict = {}
+
+
+def _cloud() -> tuple[Template, Template]:
+    if not _CLOUD:
+        from foundry_cloud.stacks import FoundryAppStack, FoundryDataStack
+
+        app = cdk.App()
+        env = cdk.Environment(account="111111111111", region="us-west-2")
+        data = FoundryDataStack(app, "FoundryDataStack", email="ops@example.com", budget_usd=50, env=env)
+        appstack = FoundryAppStack(app, "FoundryAppStack", data=data, build="abc1234", cap_usd=30, env=env)
+        _CLOUD.update(data=Template.from_stack(data), app=Template.from_stack(appstack))
+    return _CLOUD["data"], _CLOUD["app"]
+
+
+def test_cloud_creates_no_network_and_no_file_system():  # X1
+    for t in _cloud():
+        types = {r["Type"] for r in t.to_json()["Resources"].values()}
+        assert not any(x.startswith(("AWS::EC2::", "AWS::EFS::", "AWS::ElasticLoadBalancing")) for x in types), types
+        assert "VpcConfig" not in json.dumps(t.to_json())
+
+
+def test_cloud_data_is_retained_and_names_no_app_resource():  # D4
+    data, _ = _cloud()
+    for kind in ("AWS::S3::Bucket", "AWS::DynamoDB::Table", "AWS::SNS::Topic"):
+        for r in data.find_resources(kind).values():
+            assert r["DeletionPolicy"] == "Retain", kind
+    text = json.dumps(data.to_json())
+    assert "FoundryAppStack" not in text and "Fn::ImportValue" not in text
+    data.has_resource_properties("AWS::DynamoDB::Table", {
+        "PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": True, "RecoveryPeriodInDays": 35},
+        "TimeToLiveSpecification": {"AttributeName": "ttl", "Enabled": True}, "BillingMode": "PAY_PER_REQUEST"})
+    data.has_resource_properties("AWS::SNS::Subscription", {"Protocol": "email", "Endpoint": "ops@example.com"})
+    data.resource_count_is("AWS::Budgets::Budget", 1)
+
+
+def test_cloud_bucket_rules():
+    data, _ = _cloud()
+    data.has_resource_properties("AWS::S3::Bucket", {
+        "VersioningConfiguration": {"Status": "Enabled"},
+        "PublicAccessBlockConfiguration": {"BlockPublicAcls": True, "BlockPublicPolicy": True,
+                                           "IgnorePublicAcls": True, "RestrictPublicBuckets": True},
+        "CorsConfiguration": {"CorsRules": [Match.object_like({"AllowedMethods": ["POST"], "AllowedOrigins": ["*"]})]},
+        "LifecycleConfiguration": {"Rules": Match.array_with([
+            Match.object_like({"Prefix": "uploads/", "ExpirationInDays": 1, "Status": "Enabled"}),
+            Match.object_like({"NoncurrentVersionExpiration": {"NoncurrentDays": 35},
+                               "AbortIncompleteMultipartUpload": {"DaysAfterInitiation": 1}}),
+            Match.object_like({"ExpiredObjectDeleteMarker": True})])}})
+    data.has_resource_properties("AWS::S3::BucketPolicy", {"PolicyDocument": {"Statement": Match.array_with([
+        Match.object_like({"Effect": "Deny", "Condition": {"Bool": {"aws:SecureTransport": "false"}}})])}})
+
+
+def test_cloud_url_is_public_on_alias_live_with_both_permissions():
+    _, t = _cloud()
+    t.has_resource_properties("AWS::Lambda::Url", {"AuthType": "NONE", "Qualifier": "live"})
+    perms = t.find_resources("AWS::Lambda::Permission")
+    actions = {p["Properties"]["Action"] for p in perms.values() if p["Properties"].get("Principal") == "*"}
+    assert actions == {"lambda:InvokeFunctionUrl", "lambda:InvokeFunction"}
+    aliases = t.find_resources("AWS::Lambda::Alias")
+    assert sorted(a["Properties"]["Name"] for a in aliases.values()) == ["live", "live"]
+    assert all(a["Properties"]["FunctionVersion"] in ({"Ref": "ApiVersion"}, {"Ref": "WorkerVersion"}) for a in aliases.values())
+    assert t.to_json()["Parameters"]["ApiVersion"]["Default"] == "$LATEST"
+
+
+def test_cloud_worker_never_retries_and_never_reads_tokens():
+    _, t = _cloud()
+    t.has_resource_properties("AWS::Lambda::EventInvokeConfig", {"MaximumRetryAttempts": 0, "MaximumEventAgeInSeconds": 900})
+    fns = {k: v["Properties"] for k, v in t.find_resources("AWS::Lambda::Function").items()}
+    worker = next(p for p in fns.values() if p.get("ImageConfig", {}).get("Command") == ["foundry.lambda_worker.handler"])
+    assert worker["Timeout"] == 900 and worker["MemorySize"] == 2048 and worker["Architectures"] == ["arm64"]
+    api = next(p for p in fns.values() if p.get("ImageConfig", {}).get("Command") == ["foundry.lambda_api.handler"])
+    assert api["Timeout"] == 300 and api["Environment"]["Variables"]["MONTHLY_CAP_USD"] == "30"
+    assert api["Environment"]["Variables"]["FOUNDRY_BUILD"] == "abc1234"
+    worker_role = worker["Role"]["Fn::GetAtt"][0]
+    policies = [p for p in t.find_resources("AWS::IAM::Policy").values()
+                if {"Ref": worker_role} in p["Properties"]["Roles"]]
+    table_stmts = [s for p in policies for s in p["Properties"]["PolicyDocument"]["Statement"]
+                   if any(str(a).startswith("dynamodb:") for a in (s["Action"] if isinstance(s["Action"], list) else [s["Action"]]))]
+    assert table_stmts and all(s["Condition"]["ForAllValues:StringEquals"]["dynamodb:LeadingKeys"] ==
+                               ["TREE", "JOB", "LOCK", "SLOT", "SPEND", "UPLOAD"] for s in table_stmts)
+
+
+def test_cloud_workflow_alarms_and_logs():
+    _, t = _cloud()
+    sm = next(iter(t.find_resources("AWS::StepFunctions::StateMachine").values()))["Properties"]
+    assert "WorkerLive" in json.dumps(sm["DefinitionString"])  # items run on the worker's alias
+    assert {g["Properties"]["RetentionInDays"] for g in t.find_resources("AWS::Logs::LogGroup").values()} == {30}
+    t.resource_count_is("AWS::CloudWatch::Alarm", 3)
+    t.has_resource_properties("AWS::Events::Rule", {"ScheduleExpression": "rate(5 minutes)"})
+    for alarm in t.find_resources("AWS::CloudWatch::Alarm").values():
+        assert alarm["Properties"]["AlarmActions"]

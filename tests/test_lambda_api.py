@@ -89,3 +89,58 @@ def test_streamed_file_responses_arrive_whole(tmp_path):  # spike S-1 found asse
     asset = next((DIST / "assets").glob("*.js"))
     r = call(app, event(path=f"/assets/{asset.name}"))
     assert r["statusCode"] == 200 and r["body"].encode() == asset.read_bytes()
+
+
+def test_the_deployed_app_has_sign_in_the_cap_and_its_build_id(tmp_path, monkeypatch):  # aws-deploy slice 9
+    from fakestore import FakeStore
+
+    from foundry import cloud_boot, lambda_api
+    from foundry.data.mirror import Mirror
+    from foundry.services.cloud_jobs import CloudBackend
+
+    store = FakeStore()
+    monkeypatch.setenv("STATE_BUCKET", "b")
+    monkeypatch.setenv("MONTHLY_CAP_USD", "30")
+    monkeypatch.setenv("FOUNDRY_BUILD", "abc1234")
+    monkeypatch.setenv("FOUNDRY_HOME", str(tmp_path / "project"))
+    monkeypatch.setenv("FOUNDRY_RUNS_DIR", str(tmp_path / "runs"))
+    monkeypatch.setenv("FOUNDRY_APP_DIR", str(ROOT))
+    monkeypatch.setattr(cloud_boot, "cloud_context", lambda: (store, Mirror(store, tmp_path), CloudBackend(store)))
+    app = lambda_api.build_app()
+    assert app.state.ui.cap_usd == 30.0 and app.state.ui.receiver_enabled is False
+    assert call(app, event(path="/healthz"))["body"] == "ok abc1234"
+    r = call(app, event())
+    assert r["statusCode"] == 401 and json.loads(r["body"]) == {"error": "Sign in required"}
+    monkeypatch.setenv("MONTHLY_CAP_USD", "")
+    assert cloud_boot.cap_usd() is None
+
+
+def test_batches_start_one_named_execution_and_the_worker_answers_a_health_check(monkeypatch):
+    from foundry import lambda_worker
+    from foundry.data.store import BatchWorkflow
+
+    class Sfn:
+        class exceptions:
+            ExecutionAlreadyExists = type("ExecutionAlreadyExists", (Exception,), {})
+
+        def __init__(self):
+            self.names = []
+
+        def start_execution(self, stateMachineArn, name, input):
+            if name in self.names:
+                raise self.exceptions.ExecutionAlreadyExists()
+            self.names.append(name)
+            assert json.loads(input) == {"batch_job_id": "j1"}
+            return {"executionArn": f"arn:aws:states:us-west-2:1:execution:Batch:{name}"}
+
+        def describe_execution(self, executionArn):
+            return {"status": "RUNNING"}
+
+    flow = BatchWorkflow.__new__(BatchWorkflow)
+    flow.arn, flow.client = "arn:aws:states:us-west-2:1:stateMachine:Batch", Sfn()
+    first = flow.start("j1")
+    assert flow.start("j1") == first == "arn:aws:states:us-west-2:1:execution:Batch:batch-j1"  # a retried start
+    assert flow.describe(first) == "RUNNING"
+    monkeypatch.setattr(lambda_worker, "context", lambda: (None, None, None))
+    monkeypatch.setenv("FOUNDRY_BUILD", "abc1234")
+    assert lambda_worker.handler({"kind": "healthz"}, None) == {"ok": True, "build": "abc1234"}
