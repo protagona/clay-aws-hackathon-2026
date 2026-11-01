@@ -57,10 +57,10 @@
   - Exit 1: an unreachable server (and nothing saved), a failed waited-for run (whose text still prints), an unknown prompt, unknown runs and batches, a bad trace file, a second run while one is in progress.
   - Exit 130 on Ctrl-C while waiting.
 - [x] **C6, Python versions:** `test_the_pyz_on_older_pythons` runs the whole sequence on macOS's Python 3.9.6 and on CPython 3.10.22 (installed with `uv python install 3.10`). The rest of the suite uses 3.12. The parse check is now for 3.9.
-- [ ] **C7, live: the deployment** (met except the cleanup, which is waiting on you):
+- [x] **C7, live: the deployment:**
   - Every `foundry-remote` command ran against the deployed URL, on Python 3.9.6, with a temporary token: 35 commands, every exit as documented (`c7-remote-live.txt`).
   - The token was revoked; only the operator's token remains.
-  - **Not done:** deleting this check's records in the sandbox (7 records: 6 runs and a batch, with 10 job records). The auto-mode classifier blocked it, so it's left for you; see Follow-ups.
+  - Its records were deleted afterwards (7 records: 6 runs and a batch, 49 objects, 10 job records). The operator ran `cleanup.py` with `cleanup-manifest.json` after the auto-mode classifier blocked me from running it. The deployment is back to 149 runs, and the batch record is gone. S3 versions and point-in-time recovery keep them restorable for 35 days.
   - The list is exactly this check's records. The "created" line in the log also names two earlier batches that `batches` printed, but they're not in `cleanup-manifest.json`, which I checked.
 - [x] **C8, live: Bedrock on a laptop:**
   - `run --evaluate` (recipe 1)
@@ -130,10 +130,6 @@
   - `foundry receive --task` isn't checked against `tasks/`. It's documented.
   - `foundry external` on Ctrl-C ends with a traceback.
   - The reference's synopsis blocks use `<placeholders>`, so they aren't runnable as is. The recipes are.
-- **Cloud cleanup** (blocked for me by the auto-mode classifier; run it yourself):
-  ```
-  ! cd /Users/mpereira/Extra/repos/protagona/clay-aws-hackathon-2026 && PATH="$HOME/.asdf/shims:$PATH" AWS_PROFILE=protagona-sandbox-1 AWS_REGION=us-west-2 uv run python /private/tmp/claude-501/-Users-mpereira-Extra-repos-protagona-clay-aws-hackathon-2026/d98dcd93-7759-46cf-9061-cdc910349cc1/scratchpad/cleanup.py /private/tmp/claude-501/-Users-mpereira-Extra-repos-protagona-clay-aws-hackathon-2026/d98dcd93-7759-46cf-9061-cdc910349cc1/scratchpad/cli/cleanup-manifest.json
-  ```
 - **Local:** the recipes left three real Bedrock runs in `runs/` (cited by the evidence) and `batches/kimi-vs-sonnet/`. Both are git-ignored, and you can delete them.
 - **`--wait` has no timeout of its own** (a non-goal). It's documented: use your CI step's timeout.
 - **`batch show` says "Batch not found"** for a moment after `batch start`. It's documented, and `--wait` handles it.
