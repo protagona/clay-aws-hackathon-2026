@@ -115,7 +115,7 @@ python3 foundry-remote.pyz runs
 
 The bucket keeps old versions of every object for 35 days. The table has point-in-time recovery for 35 days.
 
-**A run's files were deleted** (for example by `gc --yes`, or by hand). Remove the delete markers, and the board shows the run again: its record still names those objects.
+**A run's files were deleted** (by hand, for example). The run keeps working for now: each record names the exact object versions it uses, and S3 still serves a version by its id after a delete marker hides it (checked in the restore drill, 2026-11-01). But those versions are now noncurrent, so they expire after 35 days. Remove the delete markers to make them current again:
 ```sh
 B=$(aws cloudformation describe-stacks --stack-name FoundryDataStack --query "Stacks[0].Outputs[?OutputKey=='Bucket'].OutputValue" --output text)
 aws s3api list-object-versions --bucket "$B" --prefix "runs/<run id>/" \

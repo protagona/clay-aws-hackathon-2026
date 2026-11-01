@@ -24,8 +24,8 @@ const PromptEdit = lazy(() => import("./pages/PromptEdit"));
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
-      <ToastProvider>
-        <AuthGate>
+      <AuthGate>{/* outside the toasts: their job poll needs a session */}
+        <ToastProvider>
         <Shell>
           <Suspense fallback={<div className="p-8"><Skeleton className="h-64" /></div>}>
             <Routes>
@@ -47,8 +47,8 @@ createRoot(document.getElementById("root")!).render(
             </Routes>
           </Suspense>
         </Shell>
-        </AuthGate>
-      </ToastProvider>
+        </ToastProvider>
+      </AuthGate>
     </BrowserRouter>
   </StrictMode>,
 );
