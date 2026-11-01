@@ -28,7 +28,7 @@
    - `docs/deploy.md`
 7. **The sandbox deployment** (account 283171504459, us-west-2):
    - URL: **https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/** (`scripts/cloud.sh status` prints it).
-   - Build `a069d77`, both aliases on version 7.
+   - Build `354ecab`, both aliases on version 8.
    - It holds the 77 seeded runs and 5 batches, plus test runs (see Deferred).
    - The only token is `smoke`, which I used for testing. Add your own with `scripts/cloud.sh token add <name>`, and revoke `smoke` when you're done with it.
 
@@ -53,7 +53,7 @@
 - **Vitest:** 37 passed.
 - **Local browser e2e:** both scripts pass. `ui_e2e.mjs` also imports a trace and drafts a rubric through the pages' two-step uploads.
 
-**The live deployment.** Every row ran against the real sandbox, and each names its raw output in `./evidence/`. **The final build, `a069d77`:** the full offline smoke (smoke-offline-a069d77.log, 15/15), the live Bedrock checks (smoke-live-a069d77.log, 4/4), the full browser drive (ui/drive2.log) and the pass-2 fixes (pass2-fixes-live.txt) all ran against it. Rows citing older logs are behaviour that build didn't change, or one-off drills.
+**The live deployment.** Every row ran against the real sandbox, and each names its raw output in `./evidence/`. **Build `a069d77`:** the full offline smoke (smoke-offline-a069d77.log, 15/15), the live Bedrock checks (smoke-live-a069d77.log, 4/4), the full browser drive (ui/drive2.log) and the pass-2 fixes (pass2-fixes-live.txt) ran against it. **The final build, `354ecab`** (pass 3's store-level fix): the offline smoke (smoke-offline-354ecab.log, 0 failed) and the live Bedrock checks (smoke-live-354ecab.log, 4/4: L1 worst 5.7 s) ran again, and both local e2e scripts pass. Rows citing older logs are behaviour that build didn't change, or one-off drills.
 
 | AC | Result | Evidence |
 |---|---|---|

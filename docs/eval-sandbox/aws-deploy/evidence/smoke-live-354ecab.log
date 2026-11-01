@@ -1,0 +1,6 @@
+PASS  a live Bedrock run succeeds in the cloud: 2026-11-01T13-54-15Z_adb-001_2550: succeeded, 14 steps, $0.112, 10 tool calls ok, 0 failed
+PASS  L1: steps of a running run show within 10 s: 13 steps seen while running, worst lag 5.7 s
+PASS  scoring it in the cloud: overall 0.9584
+PASS  a real rubric draft through the URL: 3 criteria in 11 s
+
+0 failed
