@@ -11,13 +11,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from foundry.api.errors import error
-from foundry.api.guard import write_check
+from foundry.api.guard import expected_csrf, write_check
 from foundry.api import schemas as S
 from foundry.api.render import render
 from foundry.api.uploads import read_rubric_upload, save_upload
@@ -50,8 +50,8 @@ def field_of(message: str | None) -> str | None:
     return head if head and " " not in head else None
 
 
-def make_router(ws: Workspace, csrf: str) -> APIRouter:
-    write = [Depends(write_check(csrf))]
+def make_router(ws: Workspace, csrf: str, access=None) -> APIRouter:
+    write = [Depends(write_check(csrf, access))]
     r = APIRouter(prefix="/api")
 
     def route(method: str, path: str, model, **kw):
@@ -61,10 +61,40 @@ def make_router(ws: Workspace, csrf: str) -> APIRouter:
     # --- session & meta ---------------------------------------------------------------------------------------
 
     @route("GET", "/session", S.Session)
-    def session():
-        return {"csrf": csrf, "configs": configs.config_names(ws), "prompts": configs.prompt_ids(ws),
-                "models": configs.model_choices(ws), "tasks": configs.task_ids(ws),
-                "rubric": rubrics.active_label(ws, "adb"), "aws_profile": configs.aws_profile()}
+    def session(request: Request):
+        out = {"csrf": expected_csrf(request, csrf, access) or "", "configs": configs.config_names(ws),
+               "prompts": configs.prompt_ids(ws), "models": configs.model_choices(ws), "tasks": configs.task_ids(ws),
+               "rubric": rubrics.active_label(ws, "adb"), "aws_profile": configs.aws_profile()}
+        if access is not None:
+            out["user"] = request.state.auth[1]
+        return out
+
+    # --- sign-in (only when the deployment has auth on: aws-deploy ADR-9) --------------------------------------
+
+    if access is not None:
+        from foundry.services.access import COOKIE, SESSION_S
+
+        def set_cookie(response: Response, value: str, max_age: int) -> None:
+            response.set_cookie(COOKIE, value, max_age=max_age, path="/", secure=True, httponly=True,
+                                samesite="strict")
+
+        @route("POST", "/auth/login", S.AuthMe, dependencies=[Depends(write_check(csrf, access, check_csrf=False))])
+        def login(body: S.LoginBody, request: Request, response: Response):
+            access.limit(request.client.host if request.client else "")  # every attempt counts
+            name = access.token_name(body.token)
+            if name is None:
+                raise ServiceError(401, "That token isn't valid.")
+            set_cookie(response, access.new_session(name), SESSION_S)
+            return {"name": name}
+
+        @route("POST", "/auth/logout", S.Ok, dependencies=write)
+        def logout(response: Response):
+            set_cookie(response, "", 0)
+            return {"ok": True}
+
+        @route("GET", "/auth/me", S.AuthMe)
+        def me(request: Request):
+            return {"name": request.state.auth[1]}
 
     # --- runs -------------------------------------------------------------------------------------------------
 

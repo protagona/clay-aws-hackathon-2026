@@ -34,7 +34,8 @@ def api_routes() -> list[tuple[str, str, type | None, type | None]]:
     from foundry.services.workspace import Workspace
 
     with tempfile.TemporaryDirectory() as tmp:
-        router = make_router(Workspace(Path(tmp), ROOT, 8765), "token")
+        # access=object(): include the sign-in routes a deployment with auth serves (aws-deploy ADR-9)
+        router = make_router(Workspace(Path(tmp), ROOT, 8765), "token", access=object())
     out = []
     for r in router.routes:
         if not isinstance(r, APIRoute) or not r.path.startswith("/api/"):

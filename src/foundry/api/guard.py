@@ -20,7 +20,30 @@ def new_csrf_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def install(app: FastAPI, port: int) -> None:
+PUBLIC_API = ("/api/auth/login",)  # the only /api path that needs no credentials (aws-deploy ADR-9)
+
+
+def authenticate(request: Request, access) -> None:
+    """Behind a deployment with auth on: who is calling, from the X-Foundry-Token header or the session cookie.
+    Sets request.state.auth = (how, name); raises ServiceError 401/429/500."""
+    from foundry.services.access import COOKIE
+
+    token = request.headers.get("x-foundry-token")
+    if token:
+        name = access.token_name(token)
+        if name is None:
+            access.limit(request.client.host if request.client else "")
+            raise ServiceError(401, "Sign in required")
+        request.state.auth = ("header", name)
+        return
+    cookie = request.cookies.get(COOKIE)
+    name = access.session_name(cookie) if cookie else None
+    if name is None:
+        raise ServiceError(401, "Sign in required")
+    request.state.auth = ("cookie", name)
+
+
+def install(app: FastAPI, port: int, access=None) -> None:
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
 
     @app.middleware("http")
@@ -42,10 +65,17 @@ def install(app: FastAPI, port: int) -> None:
         elif request.method in ("POST", "PUT", "PATCH", "DELETE") and (request.headers.get("origin") or origin) != origin:
             response = refuse(403, "Cross-origin request refused")
         else:
-            try:
-                response = await call_next(request)
-            except Exception:
-                response = refuse(500, "Internal Server Error")
+            response = None
+            if access is not None and api and request.url.path not in PUBLIC_API:
+                try:
+                    authenticate(request, access)
+                except ServiceError as exc:
+                    response = refuse(exc.status, exc.message)
+            if response is None:
+                try:
+                    response = await call_next(request)
+                except Exception:
+                    response = refuse(500, "Internal Server Error")
         response.headers["Content-Security-Policy"] = CSP
         response.headers["X-Content-Type-Options"] = "nosniff"
         # Not "no-referrer": with it, browsers send `Origin: null` on form POSTs (Fetch spec), which the Origin
@@ -55,13 +85,28 @@ def install(app: FastAPI, port: int) -> None:
         return response
 
 
-def write_check(csrf: str):
+def expected_csrf(request: Request, csrf: str, access) -> str | None:
+    """The CSRF token this request must carry: none for X-Foundry-Token callers (no ambient credential), one derived
+    from the session cookie behind auth (any instance can check it), else this process's token (a laptop)."""
+    from foundry.services.access import COOKIE
+
+    how = getattr(request.state, "auth", (None,))[0]
+    if how == "header":
+        return None
+    if how == "cookie" and access is not None:
+        return access.csrf_for(request.cookies.get(COOKIE, ""))
+    return csrf
+
+
+def write_check(csrf: str, access=None, check_csrf: bool = True):
     """A dependency for every /api write: the X-CSRF-Token header (a custom header cannot be sent cross-site without
-    a CORS preflight, which is never granted) and a typed body."""
+    a CORS preflight, which is never granted) and a typed body. Sign-in skips the CSRF part (there's no session yet;
+    the Origin check and the JSON body still apply)."""
 
     def require_write(request: Request) -> None:
+        expected = expected_csrf(request, csrf, access) if check_csrf else None
         token = request.headers.get("x-csrf-token", "")
-        if not hmac.compare_digest(token.encode(), csrf.encode()):
+        if expected is not None and not hmac.compare_digest(token.encode(), expected.encode()):
             raise ServiceError(403, "Missing or invalid CSRF token; reload the page")
         ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
         multipart = request.url.path in MULTIPART_PATHS

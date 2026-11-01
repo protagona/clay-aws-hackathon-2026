@@ -273,6 +273,15 @@ class AwsStore:
             if not start:
                 return out
 
+    def incr(self, pk: str, sk: str, attr: str, by: int = 1, ttl: int | None = None) -> int:
+        """Atomically add to a counter and return its new value (rate limits)."""
+        n = _Names()
+        expr = f"ADD {n.name(attr)} {n.value(by)}" + (f" SET {n.name('ttl')} = {n.value(ttl)}" if ttl else "")
+        r = self.ddb.update_item(TableName=self.table, Key={"pk": {"S": pk}, "sk": {"S": sk}}, UpdateExpression=expr,
+                                 ExpressionAttributeNames=n.names, ExpressionAttributeValues=n.values,
+                                 ReturnValues="UPDATED_NEW")
+        return int(from_ddb(r["Attributes"][attr]))
+
     def _action(self, a) -> dict:
         n = _Names()
         if isinstance(a, Put):

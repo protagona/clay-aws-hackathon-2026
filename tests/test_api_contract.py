@@ -39,7 +39,7 @@ def test_every_json_route_declares_its_response(tmp_path):
     from foundry.services.workspace import Workspace
 
     seen, missing = set(), []
-    for r in make_router(Workspace(tmp_path, ROOT, 8765), "token").routes:
+    for r in make_router(Workspace(tmp_path, ROOT, 8765), "token", access=object()).routes:
         if isinstance(r, APIRoute) and r.path.startswith("/api/"):
             for m in r.methods:
                 seen.add((m, r.path))

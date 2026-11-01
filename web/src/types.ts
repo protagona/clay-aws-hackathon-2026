@@ -9,6 +9,10 @@ export interface ArchiveBody {
   archived: boolean;
 }
 
+export interface AuthMe {
+  name: string;
+}
+
 export interface AxisTick {
   pct: number;
   label: string;
@@ -344,6 +348,10 @@ export interface LegendItem {
   shape: string;
 }
 
+export interface LoginBody {
+  token: string;
+}
+
 export interface Monitor {
   live: boolean;
   status: string;
@@ -587,6 +595,7 @@ export interface Scores {
 
 export interface Session {
   csrf: string;
+  user?: string | null;
   configs: string[];
   prompts: string[];
   models: string[];
@@ -729,6 +738,9 @@ export interface YTick {
 
 /** Every /api route and the type it returns (checked against web call sites by tests). */
 export interface ApiRoutes {
+  "POST /api/auth/login": AuthMe;
+  "POST /api/auth/logout": Ok;
+  "GET /api/auth/me": AuthMe;
   "GET /api/batches": BatchesResponse;
   "POST /api/batches": StartBatchResponse;
   "GET /api/batches/{batch_id}": BatchDetail;

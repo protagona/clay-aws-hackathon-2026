@@ -81,6 +81,13 @@ class FakeStore:
     def write(self, action) -> None:
         self._apply(action, self.items)
 
+    def incr(self, pk: str, sk: str, attr: str, by: int = 1, ttl: int | None = None) -> int:
+        it = self.items.setdefault((pk, sk), {"pk": pk, "sk": sk})
+        it[attr] = it.get(attr, 0) + by
+        if ttl:
+            it["ttl"] = ttl
+        return it[attr]
+
     def transact(self, actions: list, token: str | None = None) -> None:
         self.calls["transact"] += 1
         if token and token in self.tokens:

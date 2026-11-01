@@ -57,6 +57,7 @@ class RubricLabel(Closed):
 
 class Session(Closed):
     csrf: str
+    user: str | None = None  # the signed-in token's name (deployments with auth on)
     configs: list[str]
     prompts: list[str]
     models: list[str]
@@ -715,3 +716,14 @@ class StagesBody(Closed):
 class HistoryBody(Closed):
     task: str = "adb"
     file: str = Field(max_length=200)
+
+
+# --- sign-in (aws-deploy ADR-9) ----------------------------------------------------------------------------------
+
+
+class LoginBody(Closed):
+    token: str = Field(min_length=1, max_length=200)
+
+
+class AuthMe(Closed):
+    name: str
