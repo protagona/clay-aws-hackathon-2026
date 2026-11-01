@@ -114,4 +114,11 @@ Each evaluated task needs three things: a **known task**, **known input**, and a
 - [ ] If we take the **open third track**: the specific task and target.
 - [ ] *(Our addition)* Which **shared GitHub org/repo** we push to. The repo is "created at kickoff"; everyone needs a GitHub account ready.
 
+Raised during the build (our additions):
+
+- [ ] Must the repo be **public**, or is access for Clay enough? The Vision doc's Definition of Done asks for "an open-source repo the Beneficiary can access after the event"; ours is Apache-2.0 but private.
+- [ ] Does the **hackathon account's policy** allow what the cloud deployment uses: Lambda function URLs, Step Functions, DynamoDB, S3 and Bedrock? See [deploy.md](deploy.md).
+- [ ] Should Clay's rubric **replace our expected tool steps** (`tasks/adb/expected.jsonl`), or should they stay as an extra workflow signal?
+- [ ] Which **Bedrock models** can the hackathon account use? Our defaults (Kimi K3 as the agent, Opus 4.6 as the judge) were verified by calls in our own sandbox only ([bedrock-models.md](eval-sandbox/bedrock-models.md)).
+
 Questions before the event can go to breaking-barriers-us-2026@amazon.com.
