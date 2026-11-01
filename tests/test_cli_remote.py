@@ -173,6 +173,7 @@ def test_every_command_in_text_and_json(served):
     assert run_id in {c["run_id"] for c in a["runs"]} and a["kpis"] == b["kpis"]
     a, b = cli_json(pyz, home, "run", "show", run_id)
     assert a == b and a["run"]["run_id"] == run_id
+    assert jcli(pyz, home, "run", "--json", "show", run_id) == a  # also after a command group
 
     code, out, _ = cli(pyz, home, "evaluate", run_id)  # no --wait
     assert code == 0 and out.strip() == f"Scoring {run_id}"
@@ -248,6 +249,8 @@ def test_the_environment_overrides_the_saved_login(served):
     dead = f"http://127.0.0.1:{_free_port()}"
     code, _, err = cli(pyz, home, "runs", FOUNDRY_URL=dead)
     assert code == 1 and f"Can't reach {dead}" in err  # FOUNDRY_URL wins over the saved URL
+    code, _, err = cli(pyz, home, "whoami", FOUNDRY_URL="http://example.com", FOUNDRY_TOKEN="fdy_secret")
+    assert code == 2 and "must be https://" in err  # the token is never sent in cleartext off this machine
 
 
 def test_usage_errors_exit_2(served):
@@ -337,7 +340,9 @@ def test_the_pyz_on_older_pythons(served, version):  # C6
     assert code == 0 and "finished" in out, err
     trace = home / "trace.json"
     trace.write_text(json.dumps(TRACE))
-    for args in (("runs",), ("runs", "--json"), ("run", "show", run_id), ("compare", run_id, run_id), ("batches",),
+    code, out, err = cli(pyz, home, "runs", "--json", python=py)
+    assert code == 0 and run_id in {c["run_id"] for c in json.loads(out)["runs"]}, err  # --json after the command
+    for args in (("runs",), ("run", "show", run_id), ("compare", run_id, run_id), ("batches",),
                  ("jobs",), ("import", str(trace)), ("whoami",), ("logout",)):
         code, _, err = cli(pyz, home, *args, python=py)
         assert code == 0, (args, err)

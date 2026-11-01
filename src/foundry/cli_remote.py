@@ -67,7 +67,15 @@ def load_login() -> tuple[str, str]:
     token = os.environ.get("FOUNDRY_TOKEN") or saved.get("token") or ""
     if not url:
         raise UsageError("Not logged in: run `login <url> <token>` (or set FOUNDRY_URL and FOUNDRY_TOKEN).")
-    return url, token
+    return check_url(url), token
+
+
+def check_url(url: str) -> str:
+    """The token travels in a header: never send it in cleartext beyond this machine."""
+    url = url.rstrip("/")
+    if not url.startswith(("https://", "http://127.0.0.1", "http://localhost")):
+        raise UsageError("The URL must be https:// (or http://127.0.0.1 / http://localhost for a laptop).")
+    return url
 
 
 # --- HTTP -------------------------------------------------------------------------------------------------------
@@ -200,9 +208,7 @@ def end_line(quiet: bool) -> None:
 
 
 def cmd_login(c: Client | None, a) -> int:
-    url = a.url.rstrip("/")
-    if not url.startswith(("https://", "http://127.0.0.1", "http://localhost")):
-        raise UsageError("The URL must be https:// (or http://127.0.0.1 / http://localhost for a laptop).")
+    url = check_url(a.url)
     me = whoami(Client(url, a.token))
     path = save_login(url, a.token)
     return out(a, me, f"Logged in to {url} as {me.get('name')} (saved to {path}).")
@@ -376,7 +382,7 @@ def out(a, data, text: str) -> int:
 
 def parser(prog: str = "foundry-remote") -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog=prog, description="The Foundry eval sandbox API from a terminal. Reference: "
-                                "docs/cli.md in the repo.")
+                                "docs/cli.md in the Foundry repo.")
     p.add_argument("--json", action="store_true", help="print the API's JSON instead of text")
     # --json also works after the command (`runs --json`); SUPPRESS keeps a command from resetting a leading --json
     common = argparse.ArgumentParser(add_help=False)
@@ -397,7 +403,8 @@ def parser(prog: str = "foundry-remote") -> argparse.ArgumentParser:
     s.add_argument("--limit", type=int, default=0, help="show only the newest N (default: all)")
     s.set_defaults(fn=cmd_runs)
 
-    run = sub.add_parser("run", help="show or start a run").add_subparsers(dest="run_command", required=True)
+    run = sub.add_parser("run", help="show or start a run", parents=[common]).add_subparsers(
+        dest="run_command", required=True, metavar="{show,start}", help="show: one run · start: a new run")
     s = command(run, "show", "one run's status, cost and scores")
     s.add_argument("run_id", help="a run id, as `runs` lists it")
     s.set_defaults(fn=cmd_run_show)
@@ -412,7 +419,8 @@ def parser(prog: str = "foundry-remote") -> argparse.ArgumentParser:
     s.add_argument("--wait", action="store_true", help="wait for the scores (exit 1 if scoring fails)")
     s.set_defaults(fn=cmd_evaluate)
 
-    batch = sub.add_parser("batch", help="start or show a batch").add_subparsers(dest="batch_command", required=True)
+    batch = sub.add_parser("batch", help="start or show a batch", parents=[common]).add_subparsers(
+        dest="batch_command", required=True, metavar="{start,show}", help="start: a new batch · show: one batch")
     s = command(batch, "start", "run prompts × models × repeats")
     s.add_argument("--config", required=True, help="config name, like bedrock")
     s.add_argument("--prompts", required=True, help="comma-separated prompt ids")

@@ -1,0 +1,15 @@
+# C8: foundry rubric draft against Bedrock (config/bedrock.toml's judge), from the repo root, 2026-11-01T19:06:23Z
+$ uv run foundry rubric draft --text 'Score plans on three things. Data fit (most important): the datasets named must exist and suit the area and dates. Feasibility: the steps can actually be run with open tools. Clarity: a practitioner can follow it.'; echo "exit $?"
+draft 3060a152c796: valid
+  note: Source provided no explicit numeric scale; assigned a 1-5 scale for each criterion with self-authored level descriptions.
+  note: 'Most important' for Data Fit interpreted as weight 2; other criteria weight 1.
+review: tasks/adb/rubrics/drafts/3060a152c796/draft.json (or the UI's Rubric tab), then: foundry rubric activate --task adb 3060a152c796
+exit 0
+$ jq -c "[.criteria[] | {id, max, weight}]" tasks/adb/rubrics/drafts/<id>/draft.json
+[{"id":"data-fit","max":5,"weight":2.0},{"id":"feasibility","max":5,"weight":1.0},{"id":"clarity","max":5,"weight":1.0}]
+$ uv run foundry rubric list | tail -n 2
+* adb-rubric-v0 v0.1 (rubric.json; enters the history on the first activation)
+  draft 3060a152c796 valid from pasted text
+$ uv run foundry rubric discard 3060a152c796
+discarded 3060a152c796
+exit 0

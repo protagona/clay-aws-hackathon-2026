@@ -1,0 +1,9 @@
+# Recipe 2 as now written in docs/cli.md (after the Verify review: ${FOUNDRY_URL%/}, set -euo pipefail, variable checks), 2026-11-01T19:31:17Z
+# Against a laptop's `foundry ui` (FOUNDRY_URL=http://127.0.0.1:18799/, trailing slash on purpose; any token), on macOS's Python 3.9, real Bedrock.
+# The deployment ran the earlier wording of this recipe: c7-remote-live.txt. A first attempt of this wording failed on an apostrophe inside ${FOUNDRY_URL:?…}; fixed.
+$ cd work && FOUNDRY_URL=http://127.0.0.1:18799/ FOUNDRY_TOKEN=x bash recipe2.sh; echo "gate exit $?"
+true
+gate exit 0
+$ env -u FOUNDRY_URL FOUNDRY_TOKEN=x bash recipe2.sh; echo "exit $?"   # a missing variable
+<scratch>/r2/recipe2.sh: line 2: FOUNDRY_URL: set it to the deployment URL
+exit 1

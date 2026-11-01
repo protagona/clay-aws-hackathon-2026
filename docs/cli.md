@@ -13,7 +13,7 @@ Each command's `--help` gives a short version of what's below.
 
 **Conventions for both tools:**
 
-- **stdout and stderr:** stdout carries only results, which are paths, tables or JSON, so it's safe to capture. Progress, warnings and errors go to stderr.
+- **stdout and stderr:** stdout carries results: paths, tables, score lines or JSON. Warnings and errors go to stderr. Progress goes to stderr too, except for the long-running `foundry batch`, `receive` and `ui`, which print their status lines on stdout (shown under each).
 - **Exit codes:**
   - `0`: success
   - `1`: the thing ran but didn't succeed, such as a failed run or a validation error
@@ -37,28 +37,31 @@ Each recipe below was run as written. The output it printed is in [eval-sandbox/
 ### 1. Fail CI when a run scores too low (laptop or CI runner with the repo)
 
 ```bash
-set -u
-CONFIG=config/bedrock.toml        # config/offline.toml needs no AWS
-out=$(uv run foundry run --config "$CONFIG" --prompt adb-001 --evaluate); status=$?
+set -euo pipefail                   # also safe under CI shells such as GitHub Actions' bash -eo pipefail
+CONFIG=config/bedrock.toml          # config/offline.toml needs no AWS
+status=0
+out=$(uv run foundry run --config "$CONFIG" --prompt adb-001 --evaluate) || status=$?
+[ "$status" -eq 2 ] && exit 2       # a config or usage error: no run happened
 run_dir=$(head -n 1 <<<"$out")
-[ "$status" -eq 2 ] && exit 2                            # config or usage error: no run happened
-overall=$(jq -r '.overall // 0' "$run_dir/scores.json")  # null when the judge's reply was unusable
-echo "overall $overall (run $run_dir, exit $status)"
-jq -e --argjson min 0.7 '.overall != null and .overall >= $min' "$run_dir/scores.json" >/dev/null
+echo "run $run_dir: exit $status, overall $(jq -r '.overall' "$run_dir/scores.json")"
+[ "$status" -eq 0 ] && jq -e '.overall != null and .overall >= 0.7' "$run_dir/scores.json" >/dev/null
 ```
 
-`foundry run --evaluate` exits 1 when the run failed, but it still scores the failed run, so the gate reads the score either way. `jq -e` exits 1 when the condition is false.
+- **What fails the gate:** a run that failed (exit 1), or a score under 0.7, or no score at all (`overall` is null when the judge's reply was unusable). `jq -e` exits 1 when its condition is false.
+- **A failed run is still scored:** `foundry run --evaluate` scores it anyway, so its report says where the agent struggled.
 
 ### 2. The same gate against a deployment (no clone, no AWS account)
 
 ```bash
-export FOUNDRY_URL=https://<id>.lambda-url.us-west-2.on.aws FOUNDRY_TOKEN=$FOUNDRY_TOKEN   # a CI secret
-curl -fsS -o foundry-remote.pyz "$FOUNDRY_URL/cli/foundry-remote.pyz"
+set -euo pipefail
+: "${FOUNDRY_URL:?set it to the deployment URL}" "${FOUNDRY_TOKEN:?set it from a CI secret}"
+export FOUNDRY_URL FOUNDRY_TOKEN
+curl -fsS -o foundry-remote.pyz "${FOUNDRY_URL%/}/cli/foundry-remote.pyz"
 run=$(python3 foundry-remote.pyz --json run start --prompt adb-001 --config bedrock --wait | jq -r .run.run_id)
 python3 foundry-remote.pyz --json evaluate "$run" --wait | jq -e '.scores.overall >= 0.7'
 ```
 
-- **Login:** `FOUNDRY_URL` and `FOUNDRY_TOKEN` replace `login`, so nothing is saved on the runner.
+- **Login:** `FOUNDRY_URL` and `FOUNDRY_TOKEN` replace `login`, so nothing is saved on the runner. The URL must be `https://`, as for `login`, so the token never travels in cleartext.
 - **Output:** `--json` keeps stdout pure JSON. In text mode, progress goes to stderr.
 - **Timeouts:** `--wait` has no timeout of its own, so give the CI step one. A deployment ends a lost job as `interrupted` within 32 minutes.
 
@@ -77,11 +80,11 @@ cat batches/kimi-vs-sonnet/summary.md          # per model: mean, min, max and s
 ### 4. Score an agent we didn't build
 
 ```bash
-AWS_PROFILE=<profile> uv run foundry external --task adb --prompt adb-001 --config config/bedrock.toml --evaluate \
+uv run foundry external --task adb --prompt adb-001 --config config/bedrock.toml --evaluate \
     -- uv run python examples/external_strands_agent.py
 ```
 
-The command can be any agent that exports OpenTelemetry GenAI spans. It gets the prompt in `FOUNDRY_PROMPT` and the endpoint in `OTEL_EXPORTER_OTLP_ENDPOINT`. Its own output goes to stderr. On stdout, `foundry external` prints only one run directory per agent run, then the score lines.
+Set `AWS_PROFILE` first: the example agent calls Bedrock. The command can be any agent that exports OpenTelemetry GenAI spans. It gets the prompt in `FOUNDRY_PROMPT` and the endpoint in `OTEL_EXPORTER_OTLP_ENDPOINT`. Its own output goes to stderr. On stdout, `foundry external` prints only one run directory per agent run, then the score lines.
 
 ### 5. Re-score saved runs against another rubric
 
@@ -143,6 +146,7 @@ uv run foundry evaluate runs/<run id> [--config config/bedrock.toml] [--rubric p
 | `--force` | off | Score a run stuck at `running` (a crashed run) as failed |
 
 - **stdout:** the report's path, then `overall … | workflow … | output …`. `overall incomplete` means the judge's reply was unusable even after one retry.
+- **stderr:** `warning: rubric id '<new>' differs from run.json's '<old>'` when `--rubric` names another rubric than the run's. That's expected when re-scoring.
 - **Exit:**
   - `0`: it wrote the scores and the report
   - `2`: a bad config or rubric, a run that isn't finished (without `--force`), a run already being scored, or files that can't be written
@@ -192,7 +196,7 @@ uv run foundry batch --config config/bedrock.toml --models <id>,<id> --prompts a
 
 - **stdout:**
   - a header line
-  - one line per finished job: `[3/8] <variant> adb-001 r1: succeeded overall 0.92 $0.152`
+  - one line per finished job: `[3/8] <variant> adb-001 r1: succeeded overall 0.9584 $0.152`, or `error` for a job whose run couldn't start
   - a closing line: `summary: <out>/summary.md (spent $… of $…)`
 - **Exit:**
   - `0`: every job ran. A run that failed still counts as ran: it's scored as a failure.
@@ -246,8 +250,10 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 <your agent>
 - **Formats:** it accepts JSON and protobuf on `/v1/traces`.
 - **stdout:** `Receiving OTLP/HTTP on http://127.0.0.1:4318/v1/traces -> runs …` once it's listening, then `run written: <run dir>` for each trace, a few seconds after its last span.
 - **Exit:**
-  - `0` after Ctrl-C. Traces still in that few-second wait are written first.
+  - `0` after Ctrl-C. Traces still in that few-second wait are written first; it says so on stderr (`Writing 1 pending trace(s); Ctrl-C again to drop them.`).
+  - `130`: a second Ctrl-C while it's writing them. It names how many traces were dropped.
   - `2`: the port is taken, or a bad config.
+- **The task isn't checked:** any `--task` is recorded on the runs as given.
 
 ### `foundry external`
 
@@ -302,7 +308,7 @@ uv run foundry rubric draft --mcp roda/<tool> --args '{"…": "…"}'
 - **Exit:**
   - `0`: a valid draft
   - `1`: an invalid draft, saved so you can fix it in the UI
-  - `2`: an unreadable source, an unknown task, or a judge that can't draft
+  - `2`: an unreadable source, an unknown task, or a judge that can't draft (`Drafting a rubric needs a Bedrock judge model: use config bedrock`)
 - **Writes:** `tasks/<task>/rubrics/drafts/<id>/`, which is git-ignored.
 
 ### `foundry rubric list`
@@ -318,7 +324,7 @@ uv run foundry rubric list [--task adb] [--runs-dir runs]
 | `--task` | `adb` | The task under `tasks/` |
 | `--runs-dir` | `runs` | Used to count how many runs each version scored |
 
-- **stdout:** one line per version: `*` for the active one, then its file name, when it was activated, and how many runs it scored. Then one line per draft.
+- **stdout:** one line per version: `*` for the active one, then its file name, when it was activated, and how many runs it scored. Before the first activation there's no history yet, and the line is `* <rubric id> v<version> (rubric.json; enters the history on the first activation)`. Then one line per draft, as `draft <id> valid from <source>`.
 - **Exit:**
   - `0`
   - `2`: an unknown task
@@ -377,7 +383,7 @@ uv run foundry tools [--out tools.json]
 - **What it does:** it starts each server, and gives up after 10 minutes.
 - **Exit:**
   - `0`: at least one server was listed. Failed servers are named on stderr.
-  - `1`: no server could be listed
+  - `1`: no server could be listed, or the 10-minute limit was reached
 
 ### `foundry ui`
 
@@ -416,7 +422,7 @@ python3 foundry-remote.pyz runs
   - `2`: a usage error, or not logged in
   - `130`: Ctrl-C
 - **Limits a server enforces:** it prints these as errors with exit 1.
-  - One run and one batch at a time: `A run is already in progress: <id>`.
+  - One run and one batch at a time: `A run is already in progress: <id>`, or `A batch is already running: <id>`.
   - A run can't be scored twice at once: `Run <id> is already being scored.`
   - On a deployment, the monthly spend cap: `This month's spend is $… of the $… cap; new runs are paused until …`.
 - **Against a laptop's server:** `login http://127.0.0.1:8765 <anything>` works too. A laptop's server has no sign-in.
@@ -432,6 +438,7 @@ Checks a URL and token against the server, then saves both.
 
 - **stdout:** `Logged in to <url> as <name> (saved to <path>).`
 - **Writes:** `~/.config/foundry/remote.json` (or under `$XDG_CONFIG_HOME`), readable only by you (mode 0600). Nothing is saved if the check fails.
+- **`HTTP 404`:** the URL answers, but it isn't a Foundry server. Check it with `scripts/cloud.sh status`.
 - **Exit:**
   - `0`
   - `1`: the server can't be reached, or the token was refused
@@ -582,10 +589,11 @@ Lists the server's jobs: runs, scorings, batches and imports.
 
 | Variable | Read by | Meaning |
 |---|---|---|
-| `AWS_PROFILE`, `AWS_REGION` | `foundry` | Credentials for Bedrock configs. The region is `us-west-2` |
+| `AWS_PROFILE` | `foundry` | Credentials for Bedrock configs. The Bedrock region comes from each config's `region` (`us-west-2`), not from the environment |
+| `AWS_REGION` | `foundry` | The region of the optional S3 mirror (`[storage] s3_uri`); `us-west-2` by default |
 | `FOUNDRY_HOME` | `foundry` | The project root: `config/`, `tasks/` and the base for relative paths in configs. The default is the current directory |
 | `STAC_API_URL` | the STAC MCP server | Another STAC API instead of Earth Search |
-| `FOUNDRY_URL`, `FOUNDRY_TOKEN` | `foundry-remote` | Override the saved login, each one on its own |
+| `FOUNDRY_URL`, `FOUNDRY_TOKEN` | `foundry-remote` | Override the saved login, each one on its own. The URL must be `https://` (or `http://127.0.0.1` / `http://localhost`); anything else exits 2 |
 | `XDG_CONFIG_HOME` | `foundry-remote` | Where the login is saved. The default is `~/.config` |
 | `FOUNDRY_TASK_ID`, `FOUNDRY_PROMPT_ID`, `FOUNDRY_PROMPT` | the command `foundry external` runs | Set for it, together with the `OTEL_EXPORTER_OTLP_*` variables |
 
@@ -599,4 +607,5 @@ Lists the server's jobs: runs, scorings, batches and imports.
 | `A run is already in progress: <id>` | One run at a time per server. Wait for it with `run show <id>`, or start a batch instead. |
 | `This month's spend is $… of the $… cap` | The deployment's operator can raise the cap (`cloud.sh deploy --cap <usd>`). Offline configs still run. |
 | `--wait` never returns | A lost job ends as `interrupted` within 32 minutes on a deployment. Give CI steps a timeout. |
-| A Bedrock run fails at once with an access error | Run `aws sso login`, and check that the model is enabled in us-west-2 ([bedrock-models.md](eval-sandbox/bedrock-models.md)). |
+| A Bedrock run fails at once with an access error, or `Unable to locate credentials` | Set `AWS_PROFILE`, run `aws sso login`, and check that the model is enabled in us-west-2 ([bedrock-models.md](eval-sandbox/bedrock-models.md)). |
+| `Unknown draft` or `Unknown rubric version` | `foundry rubric list` shows the draft ids and history file names. |

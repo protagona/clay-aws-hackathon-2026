@@ -7,3 +7,16 @@ gate exit 0
 $ jq -e --argjson min 0.99 '.overall != null and .overall >= $min' runs/2026-11-01T18-48-43Z_adb-001_e34c/scores.json; echo "gate exit $?"
 false
 gate exit 1
+
+# Rerun after the Verify review changed the recipe (set -euo pipefail; a failed run fails the gate), 2026-11-01T19:28:19Z, as GitHub Actions runs a step:
+$ bash -eo pipefail recipe1.sh; echo "gate exit $?"
+run runs/2026-11-01T19-28-20Z_adb-001_4a48: exit 0, overall 1.0
+gate exit 0
+
+# The failed-run branch: the same script with CONFIG pointing at a test config whose tool server crashes on start:
+$ bash -eo pipefail recipe1-crash.sh; echo "gate exit $?"
+Run failed: see runs/2026-11-01T19-29-53Z_adb-001_5a06/trace.jsonl
+Task was destroyed but it is pending!
+task: <Task pending name='Task-3' coro=<MCPClient.stop.<locals>._set_close_event() running at /Users/mpereira/Extra/repos/protagona/clay-aws-hackathon-2026/.venv/lib/python3.12/site-packages/strands/tools/mcp/mcp_client.py:684> cb=[_chain_future.<locals>._call_set_state() at /Users/mpereira/.local/share/uv/python/cpython-3.12.16-macos-aarch64-none/lib/python3.12/asyncio/futures.py:396]>
+run runs/2026-11-01T19-29-53Z_adb-001_5a06: exit 1, overall 0.25
+gate exit 1

@@ -46,10 +46,10 @@ def home(tmp_path):
     return root
 
 
-def foundry(home: Path, *args: str, timeout: float = 120) -> subprocess.CompletedProcess:
+def foundry(home: Path, *args: str, timeout: float = 120, **extra) -> subprocess.CompletedProcess:
     env = {k: v for k, v in os.environ.items() if not k.startswith("FOUNDRY_")}
     return subprocess.run([sys.executable, "-m", "foundry", *args], cwd=home, capture_output=True, text=True,
-                          env={**env, "FOUNDRY_HOME": str(home)}, timeout=timeout)
+                          env={**env, "FOUNDRY_HOME": str(home), **extra}, timeout=timeout)
 
 
 def spawn(home: Path, *args: str) -> subprocess.Popen:
@@ -178,7 +178,7 @@ def test_rubric_errors_exit_2(home):
     r = foundry(home, "rubric", "discard", "no-such-draft")
     assert r.returncode == 2 and r.stderr.strip()
     r = foundry(home, "rubric", "draft", "--text", "Accuracy counts double.", "--config", "config/offline.toml")
-    assert r.returncode == 2 and "draft" in r.stderr.lower()  # the offline judge can't draft: say so, don't invent
+    assert r.returncode == 2 and r.stderr.strip() == "Drafting a rubric needs a Bedrock judge model: use config bedrock"
     r = foundry(home, "rubric", "draft", "--file", "missing.pdf", "--config", "config/offline.toml")
     assert r.returncode == 2 and "missing.pdf" in r.stderr
     r = foundry(home, "rubric", "draft", "--config", "config/offline.toml")
@@ -228,6 +228,7 @@ def test_receive_writes_a_trace_that_arrives_just_before_ctrl_c(home, tmp_path):
     p.send_signal(signal.SIGINT)
     assert p.wait(30) == 0
     assert "run written:" in p.stdout.read()
+    assert "Writing 1 pending trace(s); Ctrl-C again to drop them." in p.stderr.read()
     assert [d.name for d in runs.iterdir()] == ["otel-imported-0af7651916cd-a1"]
 
 
@@ -248,12 +249,16 @@ def test_ui_serves_from_a_fresh_process(home, tmp_path):
     p = spawn(home, "ui", "--port", str(port), "--runs-dir", str(tmp_path / "runs"))
     try:
         assert _readline_until(p, "Foundry UI on").strip() == f"Foundry UI on http://127.0.0.1:{port}"
-        for _ in range(100):
+        base, deadline = f"http://127.0.0.1:{port}", time.monotonic() + 30
+        while True:
             try:
-                body = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/api/session", timeout=5).read())
+                health = urllib.request.urlopen(f"{base}/healthz", timeout=5)
                 break
             except OSError:
+                assert time.monotonic() < deadline, "the UI never answered /healthz"
                 time.sleep(0.1)
+        assert health.status == 200
+        body = json.loads(urllib.request.urlopen(f"{base}/api/session", timeout=5).read())
         assert "offline" in body["configs"] and "adb-001" in body["prompts"]
     finally:
         p.send_signal(signal.SIGINT)
@@ -264,17 +269,20 @@ def test_ui_serves_from_a_fresh_process(home, tmp_path):
 
 
 def test_tools_lists_each_servers_tools(home, tmp_path):
+    """The in-repo STAC server, as config/offline.toml declares it; listing its tools needs no network."""
+    offline = (home / "config" / "offline.toml").read_text()
+    start, end = offline.index("[mcp.servers.roda]"), offline.index("[mcp.servers.stac]")
     (home / "config" / "offline.toml").unlink()
-    shutil.copy(write_config(tmp_path / "w", [{"text": "x"}]), home / "config" / "fault.toml")
-    r = foundry(home, "tools")
+    (home / "config" / "stac.toml").write_text(offline[:start] + offline[end:])
+    r = foundry(home, "tools", STAC_API_URL="http://127.0.0.1:9")  # nothing listens there
     assert r.returncode == 0, r.stderr
     listed = json.loads(r.stdout)
     (server,) = listed["servers"]
-    assert server["name"] == "fault" and not server["error"]
-    assert {"echo", "fail", "sleep"} <= {t["name"] for t in listed["tools"] if t["server"] == "fault"}
+    assert server["name"] == "stac" and not server["error"]
+    assert [t["name"] for t in listed["tools"]] == ["get_item", "list_collections", "search_items"]
     out = tmp_path / "tools.json"
-    assert foundry(home, "tools", "--out", str(out)).returncode == 0
-    assert [s["name"] for s in json.loads(out.read_text())["servers"]] == ["fault"]
+    assert foundry(home, "tools", "--out", str(out), STAC_API_URL="http://127.0.0.1:9").returncode == 0
+    assert [s["name"] for s in json.loads(out.read_text())["servers"]] == ["stac"]
 
 
 def test_tools_with_no_server_listed_exits_1_and_keeps_the_last_file(home, tmp_path):
@@ -285,3 +293,66 @@ def test_tools_with_no_server_listed_exits_1_and_keeps_the_last_file(home, tmp_p
     r = foundry(home, "tools", "--out", str(out))
     assert r.returncode == 1 and "kept the previous list" in r.stderr
     assert out.read_text() == '{"servers": ["the last good list"]}'
+
+
+# --- exit codes the reference documents, each from a fresh process --------------------------------------------------
+
+
+def test_validate_exit_codes(home, tmp_path):
+    r = foundry(home, "validate", str(tmp_path / "nope"))
+    assert r.returncode == 2 and r.stderr.startswith("Not a run directory")
+    r = foundry(home, "validate", str(ROOT / "fixtures/runs/clean"))
+    assert r.returncode == 0 and not r.stdout.strip()
+    broken = tmp_path / "broken"
+    shutil.copytree(ROOT / "fixtures/runs/clean", broken)
+    (broken / "run.json").write_text("{}")
+    r = foundry(home, "validate", str(broken))
+    assert r.returncode == 1 and r.stdout.startswith("run.json")
+
+
+def test_receive_with_a_bad_config_exits_2(home, tmp_path):
+    r = foundry(home, "receive", "--task", "adb", "--runs-dir", str(tmp_path / "runs"), "--config", "config/nope.toml")
+    assert r.returncode == 2 and "nope.toml" in r.stderr
+
+
+def test_batch_exit_codes(home, tmp_path):
+    cfg = write_config(tmp_path / "w", [{"text": "x"}])
+    r = foundry(home, "batch", "--config", str(cfg), "--prompts", "nope", "--out", str(tmp_path / "b0"))
+    assert r.returncode == 2 and "Unknown prompt id 'nope'" in r.stderr
+    cfg.write_text(cfg.read_text().replace(str(tmp_path / "w" / "script.json"), str(tmp_path / "missing.json")))
+    r = foundry(home, "batch", "--config", str(cfg), "--prompts", "adb-001", "--out", str(tmp_path / "b1"))
+    assert r.returncode == 1 and "[1/1] test adb-001 r1: error" in r.stdout  # its run couldn't start
+    assert json.loads((tmp_path / "b1" / "batch.json").read_text())["exit_code"] == 1
+
+
+def test_evaluate_a_run_already_being_scored_exits_2(home, fixture_run):
+    from foundry.data import locks
+
+    run = fixture_run("clean")
+    token = locks.acquire(run, owner="another scorer")  # held by this (live) test process
+    try:
+        r = foundry(home, "evaluate", str(run))
+        assert r.returncode == 2 and r.stderr.strip()
+        assert not (run / "scores.json").exists() or (run / "scores.json").read_text() == (
+            ROOT / "fixtures/runs/clean/scores.json").read_text()
+    finally:
+        locks.release(run, token)
+
+
+def test_rubric_draft_exit_0_and_1(home, tmp_path):
+    good = tmp_path / "clay-rubric.json"
+    good.write_text(json.dumps(GOOD))  # already a rubric: no model call needed, so the offline config works
+    r = foundry(home, "rubric", "draft", "--file", str(good), "--config", "config/offline.toml")
+    assert r.returncode == 0 and r.stdout.startswith("draft ") and ": valid" in r.stdout, r.stderr
+    assert "note: Source was already a valid rubric." in r.stdout and "foundry rubric activate --task adb" in r.stdout
+
+    script = tmp_path / "judge.json"  # a judge that never replies with a rubric: the draft is saved, but invalid
+    script.write_text(json.dumps([{"text": "no rubric here"}, {"text": "still none"}]))
+    cfg = home / "config" / "junk-judge.toml"
+    cfg.write_text((home / "config" / "offline.toml").read_text().replace(
+        '[judge]\nprovider = "offline"\nid = "offline-judge"',
+        f'[judge]\nprovider = "scripted"\nid = "junk-judge"\nscript = "{script}"'))
+    assert 'id = "junk-judge"' in cfg.read_text()
+    r = foundry(home, "rubric", "draft", "--text", "Accuracy counts double.", "--config", str(cfg))
+    assert r.returncode == 1 and ": INVALID: " in r.stdout, (r.stdout, r.stderr)
+    assert "  draft " in foundry(home, "rubric", "list").stdout and " invalid from " in foundry(home, "rubric", "list").stdout

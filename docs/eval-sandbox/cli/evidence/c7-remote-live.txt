@@ -1,0 +1,243 @@
+# cli spec C7: every foundry-remote command against the deployment, 2026-11-01T19:09:48Z
+# URL https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws; a temporary token (revoked afterwards); Python: Python 3.9.6
+
+(waited 65 s after `token add`: the deployment caches token lookups for a minute)
+
+## Recipe 2 as written in docs/cli.md (FOUNDRY_URL and FOUNDRY_TOKEN, no saved login)
+$ set -e; curl -fsS -o foundry-remote.pyz "$FOUNDRY_URL/cli/foundry-remote.pyz"; run=$(/usr/bin/python3 foundry-remote.pyz --json run start --prompt adb-001 --config bedrock --wait | jq -r .run.run_id); echo "run $run"; /usr/bin/python3 foundry-remote.pyz --json evaluate "$run" --wait | jq -e '.scores.overall >= 0.7'
+  run 2026-11-01T19-10-58Z_adb-001_eb3f
+  true
+  → exit 0 (113 s)
+
+## Each command
+$ /usr/bin/python3 foundry-remote.pyz runs
+  [stderr] foundry-remote: Not logged in: run `login <url> <token>` (or set FOUNDRY_URL and FOUNDRY_TOKEN).
+  → exit 2 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz login https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/ fdy_not_a_real_token
+  [stderr] foundry-remote: Sign in required
+  → exit 1 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz login http://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws <token>
+  [stderr] foundry-remote: The URL must be https:// (or http://127.0.0.1 / http://localhost for a laptop).
+  → exit 2 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz login https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/ <token>
+  Logged in to https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws as cli-check (saved to /private/tmp/claude-501/-Users-mpereira-Extra-repos-protagona-clay-aws-hackathon-2026/d98dcd93-7759-46cf-9061-cdc910349cc1/scratchpad/cli/cloud-work/home/cfg/foundry/remote.json).
+  → exit 0 (0 s)
+
+$ stat -f '%Sp %N' cfg/foundry/remote.json
+  [stderr] stat: cfg/foundry/remote.json: stat: No such file or directory
+  → exit 1 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz whoami
+  cli-check at https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws
+  → exit 0 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz whoami --json
+  {
+    "name": "cli-check"
+  }
+  → exit 0 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz runs --limit 3
+  RUN                                          PROMPT   MODEL                  STATUS     OVERALL  COST
+  2026-11-01T19-10-58Z_adb-001_eb3f            adb-001  us.moonshotai.kimi-k3  succeeded  1.00     $0.124
+  b-20261101-141646-5e8e_zai.glm-5_adb-006_r2  adb-006  zai.glm-5              succeeded  0.88     $0.017
+  b-20261101-141646-5e8e_zai.glm-5_adb-006_r1  adb-006  zai.glm-5              succeeded  0.92     $0.047
+  
+  150 runs · 150 scored · mean 0.94 · spent $28.981 · 0 live
+  → exit 0 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz --json runs | jq '{runs: (.runs | length), kpis}'
+  {
+    "runs": 150,
+    "kpis": {
+      "runs": 150,
+      "today": 73,
+      "mean": 0.9386686666666666,
+      "scored": 150,
+      "spent": 28.980917999999996,
+      "live": 0,
+      "running": 0,
+      "evaluating": 0
+    }
+  }
+  → exit 0 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz run show 2026-11-01T19-10-58Z_adb-001_eb3f
+  2026-11-01T19-10-58Z_adb-001_eb3f
+    prompt   adb-001: We want to map cropland change in California's Central Valley between 2020 and 2022 using free, open
+    model    us.moonshotai.kimi-k3
+    status   succeeded · 01:24 · $0.124
+    steps    12 (8 tool calls ok, 0 failed)
+    scores   overall 1.00 · workflow 1.00 · output 1.00
+  → exit 0 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz run show 2026-11-01T19-10-58Z_adb-001_eb3f --json | jq '{run_id: .run.run_id, status: .run.status, overall: .scores.overall}'
+  {
+    "run_id": "2026-11-01T19-10-58Z_adb-001_eb3f",
+    "status": "succeeded",
+    "overall": 1.0
+  }
+  → exit 0 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz run start --prompt adb-002 --config offline --wait
+  2026-11-01T19-12-54Z_adb-002_2565
+    prompt   adb-002: A development bank wants a flood-extent layer for river basins in South Asia to prioritise resilienc
+    model    scripted-a
+    status   succeeded · 00:05 · —
+    steps    7 (2 tool calls ok, 1 failed)
+    scores   not scored yet
+  → exit 0 (17 s)
+
+$ /usr/bin/python3 foundry-remote.pyz run start --prompt adb-001 --config offline
+  Started 2026-11-01T19-13-08Z_adb-001_4a4d
+  → exit 0 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz run start --prompt adb-002 --config offline
+  [stderr] foundry-remote: A run is already in progress: 2026-11-01T19-13-08Z_adb-001_4a4d
+  → exit 1 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz jobs | head -n 4
+  JOB               KIND      RUN                                STATUS   MESSAGE
+  26b8669bb03fc56c  run       2026-11-01T19-10-58Z_adb-001_eb3f  done
+  e77371bd10e9a8b9  evaluate  2026-11-01T19-10-58Z_adb-001_eb3f  done
+  b39e33a3d041c27f  run       2026-11-01T19-12-54Z_adb-002_2565  done
+  → exit 0 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz --json jobs | jq -c '[.jobs[] | select(.alive)] | length' | sed 's/^0$/idle/'
+  1
+  → exit 0 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz --json jobs | jq -c '[.jobs[] | select(.alive)] | length' | sed 's/^0$/idle/'
+  1
+  → exit 0 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz --json jobs | jq -c '[.jobs[] | select(.alive)] | length' | sed 's/^0$/idle/'
+  idle
+  → exit 0 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz evaluate 2026-11-01T19-12-54Z_adb-002_2565
+  Scoring 2026-11-01T19-12-54Z_adb-002_2565
+  → exit 0 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz evaluate 2026-11-01T19-12-54Z_adb-002_2565
+  Scoring 2026-11-01T19-12-54Z_adb-002_2565
+  → exit 0 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz evaluate 2026-11-01T19-12-54Z_adb-002_2565 --wait
+  2026-11-01T19-12-54Z_adb-002_2565
+    prompt   adb-002: A development bank wants a flood-extent layer for river basins in South Asia to prioritise resilienc
+    model    scripted-a
+    status   succeeded · 00:05 · —
+    steps    7 (2 tool calls ok, 1 failed)
+    scores   overall 0.81 · workflow 0.95 · output 0.67
+  → exit 0 (4 s)
+
+$ /usr/bin/python3 foundry-remote.pyz compare 2026-11-01T19-10-58Z_adb-001_eb3f 2026-11-01T19-12-54Z_adb-002_2565
+  A = 2026-11-01T19-10-58Z_adb-001_eb3f
+  B = 2026-11-01T19-12-54Z_adb-002_2565
+  
+                       A       B      B − A
+  Overall              1.00    0.81   −0.19
+  Workflow             1.00    0.95   −0.05
+    completion         1.00    1.00   0
+    reliability        1.00    0.67   −0.33
+    recovery           1.00    1.00   0
+    validity           1.00    1.00   0
+    efficiency         1.00    1.00   0
+    sequence           1.00    1.00   0
+  Output               1.00    0.67   −0.33
+    data-fit           4/4     3/4    −1
+    feasibility        4/4     3/4    −1
+    method             4/4     3/4    −1
+    limitations        4/4     3/4    −1
+  Cost                 $0.124  —
+  Model calls          4       4      0
+  Tool calls (failed)  8 (0)   3 (1)  −5
+  Duration             85 s    6 s    −79 s
+  → exit 0 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz --json compare 2026-11-01T19-10-58Z_adb-001_eb3f 2026-11-01T19-12-54Z_adb-002_2565 | jq '.rows | length'
+  17
+  → exit 0 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz batch start --config offline --prompts adb-001,adb-002 --evaluate --wait
+  b-20261101-191349-5237: finished · 2/2 done · spent $0.000 of $2.000
+  
+  VARIANT  PROMPT   REPEAT  STATUS     OVERALL  COST
+  offline  adb-001  1       succeeded  0.83     $0.000
+  offline  adb-002  1       succeeded  0.81     $0.000
+  → exit 0 (16 s)
+
+$ /usr/bin/python3 foundry-remote.pyz batch show b-20261101-191349-5237
+  b-20261101-191349-5237: finished · 2/2 done · spent $0.000 of $2.000
+  
+  VARIANT  PROMPT   REPEAT  STATUS     OVERALL  COST
+  offline  adb-001  1       succeeded  0.83     $0.000
+  offline  adb-002  1       succeeded  0.81     $0.000
+  → exit 0 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz batch show b-20261101-191349-5237 --json | jq '{status: .meta.status, rows: (.rows | length), spent: .meta.spent_usd}'
+  {
+    "status": "finished",
+    "rows": 2,
+    "spent": 0.0
+  }
+  → exit 0 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz batches | head -n 4
+  BATCH                   STATUS    DONE   SPENT    MODELS
+  b-20261101-191349-5237  finished  2/2    $0.000   offline.toml
+  b-20261101-141646-5e8e  finished  72/72  $13.278  us.amazon.nova-2-lite-v1, us.anthropic.claude-haiku-4-5-20251001-v1, us.anthropic.claude-opus-4-6-v1, us.anthropic.claude-sonnet-4-6, us.moonshotai.kimi-k3, zai.glm-5
+  b-20261031-165254-0635  finished  12/12  $2.064   us.moonshotai.kimi-k3
+  → exit 0 (3 s)
+
+$ /usr/bin/python3 foundry-remote.pyz batch start --config offline --prompts adb-001 --repeats 9
+  [stderr] foundry-remote: repeats: Input should be less than or equal to 5
+  → exit 1 (1 s)
+
+$ /usr/bin/python3 foundry-remote.pyz import trace.json --prompt-id cli-check
+  Imported 1 run:
+    otel-cli-check-0af7651916cd-a1
+  → exit 0 (2 s)
+
+$ /usr/bin/python3 foundry-remote.pyz import missing.json
+  [stderr] foundry-remote: No such file: missing.json
+  → exit 2 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz run show no-such-run
+  [stderr] foundry-remote: Run not found
+  → exit 1 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz jobs | head -n 8
+  JOB               KIND      RUN                                STATUS  MESSAGE
+  26b8669bb03fc56c  run       2026-11-01T19-10-58Z_adb-001_eb3f  done
+  e77371bd10e9a8b9  evaluate  2026-11-01T19-10-58Z_adb-001_eb3f  done
+  b39e33a3d041c27f  run       2026-11-01T19-12-54Z_adb-002_2565  done
+  57143a1d1cc50289  run       2026-11-01T19-13-08Z_adb-001_4a4d  done
+  56bd2ee8830bb3fc  evaluate  2026-11-01T19-12-54Z_adb-002_2565  done
+  2203ff7cbbb14377  evaluate  2026-11-01T19-12-54Z_adb-002_2565  done
+  7bf57ccb2d85239d  evaluate  2026-11-01T19-12-54Z_adb-002_2565  done
+  → exit 0 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz logout
+  Forgot the saved login (/private/tmp/claude-501/-Users-mpereira-Extra-repos-protagona-clay-aws-hackathon-2026/d98dcd93-7759-46cf-9061-cdc910349cc1/scratchpad/cli/cloud-work/home/cfg/foundry/remote.json).
+  → exit 0 (0 s)
+
+$ /usr/bin/python3 foundry-remote.pyz whoami
+  [stderr] foundry-remote: Not logged in: run `login <url> <token>` (or set FOUNDRY_URL and FOUNDRY_TOKEN).
+  → exit 2 (0 s)
+
+# created: {"runs": ["2026-11-01T19-10-58Z_adb-001_eb3f", "2026-11-01T19-12-54Z_adb-002_2565", "2026-11-01T19-13-08Z_adb-001_4a4d", "otel-cli-check-0af7651916cd-a1"], "batches": ["b-20261031-165254-0635", "b-20261101-141646-5e8e", "b-20261101-191349-5237"]}
+
+# Notes, 2026-11-01
+# - The `stat` line is a mistake in the driver script (it looked in the wrong directory), not in the client. The saved
+#   login's mode 0600 is tested in tests/test_cli_remote.py (test_the_pyz_drives_a_real_server, test_login_whoami_logout).
+# - The second `evaluate` was not refused as "already being scored": the job records show the first scoring had already
+#   finished (started 402.76, finished 403.40, the second queued at 403.61, epoch seconds ending in those digits). The
+#   offline judge takes 0.7 s, so no overlap was reached live; the refusal is covered by the cloud jobs unit tests.
+# - "created" above over-counts batches: only b-20261101-191349-5237 is this check's; the others were listed by `batches`.
+# - Afterwards: the token cli-check was revoked (`cloud.sh token list` shows only the operator's), and this check's
+#   runs, batch and job records were listed for deletion (cleanup-manifest.json, 7 records, 42 objects, 10 jobs).

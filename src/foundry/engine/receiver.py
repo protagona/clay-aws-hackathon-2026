@@ -132,6 +132,14 @@ def main(args) -> int:
     except KeyboardInterrupt:
         # The flush timers start on the server's daemon threads, so they're daemons too: wait for traces still in
         # their grace period, or Ctrl-C right after an agent exports drops a trace we already answered 200 for.
-        rec.wait_idle(rec.grace_s + 30)
+        with rec.lock:
+            pending = rec.pending
+        if pending:
+            print(f"Writing {pending} pending trace(s); Ctrl-C again to drop them.", file=sys.stderr, flush=True)
+            try:
+                rec.wait_idle(rec.grace_s + 30)
+            except KeyboardInterrupt:
+                print(f"Stopped; {rec.pending} trace(s) not written.", file=sys.stderr)
+                return 130
     rec.server.server_close()
     return 0

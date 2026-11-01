@@ -70,11 +70,7 @@ python3 foundry-remote.pyz runs
 - It needs Python 3.9 or later and nothing else, so the `python3` that comes with macOS works.
 - From a clone, `uv run foundry remote …` is the same program.
 - Every command, and recipes for CI, are in the [CLI reference](cli.md#foundry-remote-reference).
-- `--json` gives the raw API output.
-- Exit codes:
-  - `0`: success
-  - `1`: an API error, or a waited-for job that didn't succeed
-  - `2`: a usage error, or not logged in
+- `--json` gives the raw API output. Exit codes are in the reference.
 - `cloud.sh deploy` points the operator's own saved login at the new URL. The token stays.
 
 ## Day to day

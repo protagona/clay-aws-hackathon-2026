@@ -6,3 +6,18 @@ overall 0.96 | workflow 1.00 | output 0.92
 overall 1.00 | workflow 1.00 | output 1.00
 $ jq -r .rubric_id batches/kimi-vs-sonnet/runs/*/rubric.json | sort | uniq -c
    4 adb-rubric-v0
+
+# Rerun after the Verify review, with a rubric that differs from the active one (id clay-adb-cli-check; criteria accuracy and brevity), 2026-11-01T19:30:08Z:
+$ for run in batches/kimi-vs-sonnet/runs/*/; do uv run foundry evaluate "$run" --config config/bedrock.toml --rubric <scratch>/clay-rubric.json | tail -n 1; done
+warning: rubric id 'clay-adb-cli-check' differs from run.json's 'adb-rubric-v0'
+overall 1.00 | workflow 1.00 | output 1.00
+warning: rubric id 'clay-adb-cli-check' differs from run.json's 'adb-rubric-v0'
+overall 0.92 | workflow 1.00 | output 0.83
+warning: rubric id 'clay-adb-cli-check' differs from run.json's 'adb-rubric-v0'
+overall 1.00 | workflow 1.00 | output 1.00
+warning: rubric id 'clay-adb-cli-check' differs from run.json's 'adb-rubric-v0'
+overall 1.00 | workflow 1.00 | output 1.00
+$ jq -r .rubric_id batches/kimi-vs-sonnet/runs/*/rubric.json | sort | uniq -c
+   4 clay-adb-cli-check
+$ jq -c "[.output.criteria[].id]" batches/kimi-vs-sonnet/runs/*/scores.json | sort | uniq -c
+   4 ["accuracy","brevity"]

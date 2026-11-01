@@ -1,6 +1,6 @@
 # The CLIs: tested through their real entry points, documented in one place — Spec
 
-**Track:** Quick   **Date:** 2026-11-01   **Status:** Draft. The user asked for it on 2026-11-01: "test and document the shit out of the CLIs".
+**Track:** Quick   **Date:** 2026-11-01   **Status:** Built. The user asked for it on 2026-11-01: "test and document the shit out of the CLIs".
 
 ## Problem
 
