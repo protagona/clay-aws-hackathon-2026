@@ -41,13 +41,24 @@ Close with: **"Evaluation is the product."** The agent, the model and the tracer
 - **Cost guardrails:** at most 12 model calls, 200k input tokens and 300 s per run, so the worst case is about $1.83.
 - **Bring your own task:** Clay's rubric and prompts are data files under `tasks/`; no code changes are needed.
 
+## From the shared URL instead of a laptop
+
+The deployed app ([README](../README.md#run-it-in-aws-a-shared-url)) can carry segments 1–3 and 6 with nothing running locally. Sign in at the URL with your access token.
+
+- **1–2:** on Runs, **▶ New run** with prompt `adb-002` and config `bedrock`, then **Score it →** on its card. The run takes a little longer than on a laptop because a worker starts it.
+- **3:** the same with config `bedrock-alt`.
+- **6:** the Dashboard's model ranking. It ranks the deployment's scored runs for the chosen rubric rather than the four golden runs, so its numbers differ from the table above.
+- **4 and 5 stay on a laptop.** The OTel config exports to a Phoenix on `localhost`, and the replay reads a local run directory.
+
+Model spend in the cloud counts against the deployment's monthly cap (`scripts/cloud.sh status` shows it).
+
 ## Fallbacks
 
 | If… | Then |
 |---|---|
 | Bedrock or SSO fails (expired token, throttling) | Skip steps 1–4 live. Show the golden runs in the UI (step 6), open a golden report, and do the replay (step 5). Everything still works offline. |
 | The RODA or registry network is down | Same as above. Also `config/offline.toml` runs the scripted agent, but it needs RODA too, so use the golden runs. |
-| A live run fails or times out | That's a feature: open its card. The failure, the limit hit and the struggles are all in the report. Then continue. |
+| A live run fails or times out | That's a feature: its card in Needs attention says why (for example "Hit the model-call limit (12)"). Open it: the failure, the limit hit and the struggles are all in the report. Then continue. |
 | Phoenix won't start | Show `trace.jsonl` and the `run.json` `"tracer": "jsonl+otel"` field. Explain that any OTLP endpoint works (Langfuse, Honeycomb, etc.). |
 | The UI port is taken | Use `--port 8777`. |
 

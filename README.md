@@ -53,7 +53,7 @@ It's a TypeScript single-page app (React, Vite, Tailwind) over a FastAPI JSON AP
 
 | Screen | What you can do |
 |---|---|
-| **Runs** | A live board. Runs move through **Running → Being scored → Scored / Needs attention** as they progress, with headline numbers that follow the filters and search. **▶ New run** starts one; **Score it →** sends one to the judge. Click a card for the run panel: scores, limits used, agent bars, timeline, steps, the report and the rubric that scored it. |
+| **Runs** | A live board. Runs move through **Running → Being scored → Scored / Needs attention** as they progress, with headline numbers that follow the filters and search. **▶ New run** starts one. A card in Needs attention says why the run failed (a limit hit, a tool server that didn't start, a failed model call), and **Score it →** sends an unscored run to the judge. Click a card for the run panel: scores, limits used, agent bars, timeline, steps, the report and the rubric that scored it. |
 | **Prompts** | Every prompt as a card with its run count and average score. Add a prompt, edit one that hasn't been run, make a new version of one that has (its text locks once it has runs), set its expected tool steps (the workflow score's sequence check), or archive it to hide it from New run and batches. Writes go to `tasks/<task>/prompts.jsonl` and `expected.jsonl`, so commit them like any other change. The CLI still accepts archived prompts (`foundry batch --prompts all` includes them). |
 | **Batches** | Start a batch (models × prompts × repeats, with a cost cap), then watch the per-model table and the runs fill in. |
 | **Dashboard** | Model ranking, cost vs score (hover for details), and where agents struggle, filtered by rubric. |
