@@ -1,0 +1,17 @@
+PASS  an /api read without a token is 401: 401 b'{"error":"Sign in required"}'
+PASS  /healthz is public and states the build: ok a069d77
+PASS  the web app shell is public: 200
+PASS  its CSP lets the page upload to the state bucket
+PASS  a wrong header token is 401: 401
+PASS  sign-in sets a Secure, HttpOnly, SameSite=Strict session cookie: 200 smoke
+PASS  the session cookie reads the API, as its user: user smoke, receiver False
+PASS  a cookie write without the CSRF token is 403: 403
+PASS  with it, the write reaches the app: 400 b'{"error":"Unknown config \'nope\'. Available: bedrock, bedrock-alt, bedrock-otel, '
+PASS  a foreign Origin is refused: 403
+PASS  the tool menu lists 13 tools with no server errors (RODA built in): 13 tools, errors []
+PASS  a trace imported through a presigned bucket upload: otel-imported-dc0bdd6f63a2-b1
+PASS  two edits from the same version: the second gets 409: Changed by someone else; reload
+PASS  a 2-item batch on Step Functions: b-20261101-133117-dab7: finished, 2/2, rows ['succeeded', 'succeeded']
+PASS  the CLI downloaded with curl, logged in with a token alone: Logged in to https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda · 99 runs
+
+0 failed

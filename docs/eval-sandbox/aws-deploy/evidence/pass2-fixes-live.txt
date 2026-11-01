@@ -1,0 +1,16 @@
+Verify pass 2 fixes, live on build a069d77, 2026-11-01T13:31:08Z
+--- a token named with dots signs in and keeps its browser session:
+HTTP/1.1 429 Too Many Requests
+cookie name.expiry.mac: …
+session user: None
+a later read with the cookie: 401
+Revoked jane.doe (stops working within 60 s).
+--- the multipart POST /api/import pushes its run to the store (every instance sees it):
+response: {"runs":["otel-imported-723220f4157c-d1"]}
+store record: run#otel-imported-723220f4157c-d1	1
+--- retry, 2026-11-01T13:33:48Z: the first try above hit A6's limit (its retry loop counted, alongside the smoke run's sign-ins); now one login after the 60 s token cache
+HTTP/1.1 200 OK
+cookie starts: fdy_session=jane.doe2.17…
+session user: jane.doe2
+a later read with the cookie: 200
+Revoked jane.doe2 (stops working within 60 s).
