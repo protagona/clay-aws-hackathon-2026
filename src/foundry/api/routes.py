@@ -158,7 +158,7 @@ def make_router(ws: Workspace, csrf: str, access=None) -> APIRouter:
                         config: str = Form("")):
         imports.check_import_form(ws, task, prompt_id, config)
         dest = await save_upload(ws, file)
-        paths = imports.import_saved_trace(ws, dest, file.filename or "", task, prompt_id, config)
+        paths = imports.import_upload(ws, file.filename or "", dest, task, prompt_id, config)  # pushed in the cloud
         return {"runs": [p.name for p in paths]}
 
     @route("POST", "/uploads", S.UploadTicket, dependencies=write, status_code=201)

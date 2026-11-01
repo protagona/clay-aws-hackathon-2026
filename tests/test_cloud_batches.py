@@ -157,7 +157,8 @@ def test_an_item_whose_worker_died_is_charged_its_worst_case(setup):  # A5, ADR-
     workers.batch_item(w, store, wm, plan["items"][0])
     item = plan["items"][1]  # its worker claimed it, then died: Step Functions caught the error
     store.write(Put({"pk": "JOB", "sk": f"{job_id}#{item['n']}", "kind": "batch_item", "parent": job_id,
-                     "run_id": item["run_id"], "status": "running", "deadline": 2**40}))
+                     "run_id": item["run_id"], "status": "running", "deadline": 1}))  # long past its deadline
+    c.get("/api/jobs")  # someone reads the job list (a sweep) before Finalize: the item stays Finalize's to charge
     before = float(store.get_item("JOB", job_id).get("spent") or 0)
     out = workers.batch_finalize(w, store, wm, job_id)
     assert out["spent"] == pytest.approx(before + item_wc)
@@ -165,4 +166,5 @@ def test_an_item_whose_worker_died_is_charged_its_worst_case(setup):  # A5, ADR-
     assert store.get_item("SPEND", month)["committed"] == pytest.approx(before + item_wc)
     assert store.get_item("JOB", f"{job_id}#{item['n']}")["status"] == "interrupted"
     assert store.get_item("JOB", job_id)["exit_code"] == 1
+    assert c.get(f"/api/batches/{plan['items'][0]['batch_id']}").json()["meta"]["spent_usd"] == pytest.approx(before + item_wc)
     assert cloud_jobs.finish(store, f"{job_id}#{item['n']}", "done", 0, None, 0) is False  # a late worker can't

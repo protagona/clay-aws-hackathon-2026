@@ -3,7 +3,8 @@
 # Only FoundryDataStack and FoundryAppStack are ever named; the legacy FoundryStack is never touched.
 #
 #   scripts/cloud.sh preflight
-#   scripts/cloud.sh deploy --email <alerts> [--budget <usd>|0] [--cap <usd>|0] [--force]   (later deploys reuse them)
+#   scripts/cloud.sh deploy --email <alerts> [--budget <usd>|0] [--cap <usd>|0] [--concurrency <n>|0] [--force]
+#                                                                        (later deploys reuse them)
 #   scripts/cloud.sh status
 #   scripts/cloud.sh token add <name> | token list | token revoke <name>
 #   scripts/cloud.sh seed [--from <dir>]        # local runs/ and tasks/ into an empty deployment (spec S4)
@@ -170,28 +171,35 @@ rollout() {  # rollout <worker fn> <api fn> <build>: both versions checked befor
   done
 }
 
-concurrency() {  # reserve api 20 / worker 8 when the account can spare them (ADR-12); never while stopped
-  local api=$1 worker=$2 have free
+concurrency() {  # concurrency <api fn> <worker fn> <limit>: spec A6's function-level limit (0 = none), worker 8
+  local api=$1 worker=$2 limit=$3 have free
   have=$(aws lambda get-function-concurrency --function-name "$api" --query ReservedConcurrentExecutions --output text 2>/dev/null || echo None)
   if [ "$have" = 0 ]; then echo "  note: the API is stopped (reserved concurrency 0); run: scripts/cloud.sh start"; return; fi
-  [ "$have" = None ] || return 0
+  if [ "$limit" = 0 ]; then
+    [ "$have" = None ] || aws lambda delete-function-concurrency --function-name "$api"
+    say "no concurrency limit (--concurrency 0)"; return
+  fi
+  [ "$have" = "$limit" ] && return 0
   free=$(unreserved)
-  if [ "$free" -ge 128 ]; then
-    aws lambda put-function-concurrency --function-name "$api" --reserved-concurrent-executions 20 >/dev/null
+  [ "$have" = None ] || free=$(( free + have ))  # this function's own reservation is freed by changing it
+  if [ "$free" -ge $(( 100 + limit + 8 )) ]; then  # Lambda keeps 100 unreserved for the rest of the account
+    aws lambda put-function-concurrency --function-name "$api" --reserved-concurrent-executions "$limit" >/dev/null
     aws lambda put-function-concurrency --function-name "$worker" --reserved-concurrent-executions 8 >/dev/null
-    say "reserved concurrency: api 20, worker 8"
+    say "reserved concurrency: api $limit, worker 8 (spec A6)"
   else
-    echo "  note: $free unreserved concurrency in this account; no reservations (ask for a Lambda concurrency quota increase)"
+    echo "  WARNING: this account has $free unreserved concurrency, too little to reserve api $limit + worker 8 and keep"
+    echo "  the 100 Lambda requires; spec A6's limit is NOT set. Ask for a Lambda concurrency quota increase, then deploy again."
   fi
 }
 
 cmd_deploy() {
-  local email="" budget="" cap="" force=0 t0 build av=\$LATEST wv=\$LATEST api worker url bucket table n
+  local email="" budget="" cap="" limit="" force=0 t0 build av=\$LATEST wv=\$LATEST api worker url bucket table n
   while [ $# -gt 0 ]; do
     case "$1" in
       --email) email=$2; shift 2 ;;
       --budget) budget=$2; shift 2 ;;
       --cap) cap=$2; shift 2 ;;
+      --concurrency) limit=$2; shift 2 ;;
       --force) force=1; shift ;;
       *) die "deploy: unknown option $1" ;;
     esac
@@ -203,6 +211,8 @@ cmd_deploy() {
   [ "$budget" = 0 ] && budget=""
   [ -n "$cap" ] || cap=$(out $DATA CapUsd)
   [ -n "$cap" ] || cap=30
+  [ -n "$limit" ] || limit=$(out $DATA ApiConcurrency)
+  [ -n "$limit" ] || limit=20
   preflight
   build=$(build_id)
   if stack_exists $APP; then
@@ -214,7 +224,7 @@ cmd_deploy() {
     fi
   fi
   say "deploying build $build (cap \$$cap${budget:+, budget \$$budget})"
-  cdk deploy $DATA $APP --require-approval never -c "email=$email" -c "build=$build" -c "cap=$cap" \
+  cdk deploy $DATA $APP --require-approval never -c "email=$email" -c "build=$build" -c "cap=$cap" -c "concurrency=$limit" \
     ${budget:+-c "budget=$budget"} --parameters "$APP:ApiVersion=$av" --parameters "$APP:WorkerVersion=$wv"
   api=$(out $APP ApiFunction); worker=$(out $APP WorkerFunction); url=$(out $APP Url)
   ops session-key
@@ -226,7 +236,7 @@ cmd_deploy() {
                    "ParameterKey=BootstrapVersion,UsePreviousValue=true" >/dev/null
     aws cloudformation wait stack-update-complete --stack-name $APP
   fi
-  concurrency "$api" "$worker"
+  concurrency "$api" "$worker" "$limit"
   ops remote-json "$url" >/dev/null || true
   for _ in $(seq 1 30); do
     [ "$(curl -s --max-time 10 "${url%/}/healthz" || true)" = "ok $build" ] && break
@@ -276,10 +286,10 @@ cmd_stop() {
 }
 
 cmd_start() {
-  local api worker
+  local api worker limit
   api=$(out $APP ApiFunction); worker=$(out $APP WorkerFunction)
   aws lambda delete-function-concurrency --function-name "$api"
-  concurrency "$api" "$worker"
+  limit=$(out $DATA ApiConcurrency); concurrency "$api" "$worker" "${limit:-20}"
   aws cloudwatch set-alarm-state --alarm-name "$(out $APP ProbeAlarm)" --state-value OK --state-reason "cloud.sh start"
   aws cloudwatch enable-alarm-actions --alarm-names "$(out $APP ProbeAlarm)"
   aws events enable-rule --name "$(out $APP ProbeRule)"

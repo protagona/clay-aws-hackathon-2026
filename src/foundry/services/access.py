@@ -73,7 +73,7 @@ class Access:
 
     def session_name(self, cookie: str) -> str | None:
         try:
-            name, expiry_s, mac = cookie.split(".", 2)
+            name, expiry_s, mac = cookie.rsplit(".", 2)  # token names may contain "."; expiry and MAC can't
             expiry = int(expiry_s)
         except ValueError:
             return None

@@ -30,7 +30,15 @@ def claim(store, job_id: str, now: float, deadline: float | None = None) -> dict
         store.write(Update(cloud_jobs.PK, job_id, set=changes, cond=Cond.eq("status", "queued")))
     except Conflict:
         return None
-    return store.get_item(cloud_jobs.PK, job_id)
+    job = store.get_item(cloud_jobs.PK, job_id)
+    if deadline is not None:  # the slot and the scoring lock expire with the job, so a start isn't held past it
+        for pk, sk, attr in (("SLOT", job.get("slot") or "", "job_id"), ("LOCK", job.get("eval_lock") or "", "owner")):
+            if sk:
+                try:
+                    store.write(Update(pk, sk, set={"expires": deadline}, cond=Cond.eq(attr, job_id)))
+                except Conflict:
+                    pass
+    return job
 
 
 def pull_projects(store, mirror) -> None:
@@ -255,6 +263,7 @@ def batch_finalize(ws: Workspace, store, mirror, batch_job_id: str, error: str |
                 _book_item_cost(store, batch, batch_job_id, item_wc)
     bad = error is not None or dead > 0 or any(r["status"] in ("error", "skipped (budget)") for r in rows)
     status = "failed" if error else "done"
+    spent = float((store.get_item(cloud_jobs.PK, batch_job_id) or {}).get("spent") or 0.0)  # with dead items' charge
     if path is not None:  # batch.json first: a reader that sees the job finished must see the batch finished too
         meta = data_batches.read_meta(path)
         data_batches.write_meta(path, {**meta, "status": "finished", "exit_code": 1 if bad else 0,

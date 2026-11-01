@@ -42,7 +42,8 @@ The legacy `FoundryStack` (`ClayFoundryEvalSandbox`, `infra/app.py`) is separate
    ```
    - The deploy prints the URL and the time it took.
    - **Confirm the subscription email** that AWS sends, or the alerts go nowhere.
-   - Later deploys need no options; they reuse the email, cap and budget, also after a `destroy`. `--cap 0` turns the cap off and `--budget 0` removes the budget.
+   - Later deploys need no options; they reuse the email, cap, budget and concurrency limit, also after a `destroy`. `--cap 0` turns the cap off and `--budget 0` removes the budget.
+   - `--concurrency <n>` (default 20) caps how many API requests run at once (spec A6). It needs 100 + n + 8 unreserved Lambda concurrency in the account; the deploy warns if there isn't enough (new accounts can have a quota of 10) and the limit isn't set until you raise the quota and deploy again.
 6. **Give people access:**
    ```sh
    scripts/cloud.sh token add ana         # prints the token once; send it privately

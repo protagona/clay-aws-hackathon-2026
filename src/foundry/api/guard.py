@@ -75,6 +75,10 @@ def install(app: FastAPI, port: int, access=None, upload_origin: str | None = No
                     authenticate(request, access)
                 except ServiceError as exc:
                     response = refuse(exc.status, exc.message)
+                except Exception:  # the token store failing in an unexpected way: logged, never a bare 500 (O1)
+                    logging.getLogger("foundry.api").exception("%s %s: authentication failed", request.method,
+                                                               request.url.path)
+                    response = refuse(500, "Internal Server Error")
             if response is None:
                 try:
                     response = await call_next(request)

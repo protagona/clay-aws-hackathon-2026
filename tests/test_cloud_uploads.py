@@ -133,3 +133,18 @@ def test_the_same_trace_twice_is_a_409_locally_and_across_instances(tmp_path, cl
         t = client.post("/api/uploads", headers=headers, json={"kind": "trace", "filename": "t.json", "size": len(data)}).json()
         store.put_object(f"uploads/{t['upload_id']}", data, if_none_match=False)
         assert client.post("/api/import/by-upload", headers=headers, json={"upload_id": t["upload_id"]}).status_code == want
+
+
+def test_the_multipart_routes_reach_every_instance_in_the_cloud(cloud):  # Verify pass 2: imports were lost
+    from test_cli_remote import TRACE
+
+    _, (a, ha), (b, _) = cloud
+    r = a.post("/api/import", headers=ha, files={"file": ("t.json", json.dumps(TRACE).encode())},
+               data={"task": "adb", "prompt_id": "imported", "config": ""})
+    assert r.status_code == 201, r.text
+    (run_id,) = r.json()["runs"]
+    assert b.get(f"/api/runs/{run_id}").status_code == 200
+    d = a.post("/api/rubric/drafts", headers=ha, files={"file": ("clay.json", json.dumps(RUBRIC).encode())},
+               data={"task": "adb", "kind": "file", "config": "offline"})
+    assert d.status_code == 201, d.text
+    assert any(x["draft_id"] == d.json()["draft_id"] for x in b.get("/api/rubric").json()["drafts"])

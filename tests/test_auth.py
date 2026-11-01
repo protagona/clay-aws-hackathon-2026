@@ -133,3 +133,12 @@ def test_fails_closed_when_the_token_store_is_gone(deploy):
 def test_ipv6_clients_are_limited_by_their_64():
     assert client_key("2001:db8:1:2:3:4:5:6") == client_key("2001:db8:1:2:ffff::1") == "2001:db8:1:2::/64"
     assert client_key("203.0.113.7") == "203.0.113.7"
+
+
+def test_a_token_name_with_dots_keeps_its_browser_session(deploy):  # Verify pass 2: "jane.doe" looped on sign-in
+    store, _, a, _ = deploy
+    other = "fdy_" + "b" * 43
+    store.write(Put({"pk": "TOKEN", "sk": "jane.doe", "sha256": sha256(other)}))
+    r, cookie, _ = login(a, other)
+    assert r.status_code == 200 and cookie
+    assert a.get("/api/session", headers={"cookie": f"fdy_session={cookie}"}).json()["user"] == "jane.doe"

@@ -124,6 +124,20 @@ class CloudBackend:
     def start(self, ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *, singleton: bool,
               prompt_ids: list[str], evaluate_dir: Path | None, quiet: bool, task: str | None,
               reservation: float = 0.0, invoke: bool = True):
+        try:
+            return self._start(ws, kind, run_id, label, args, singleton=singleton, prompt_ids=prompt_ids,
+                               evaluate_dir=evaluate_dir, quiet=quiet, task=task, reservation=reservation, invoke=invoke)
+        except ServiceError as exc:
+            # A slot or lock held by a job past its deadline: finish that job (the sweep), then try once more, so a
+            # start alone frees it in time (spec S3) even when nothing has read the job list.
+            if exc.status != 409 or not self.sweep():
+                raise
+        return self._start(ws, kind, run_id, label, args, singleton=singleton, prompt_ids=prompt_ids,
+                           evaluate_dir=evaluate_dir, quiet=quiet, task=task, reservation=reservation, invoke=invoke)
+
+    def _start(self, ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *, singleton: bool,
+               prompt_ids: list[str], evaluate_dir: Path | None, quiet: bool, task: str | None,
+               reservation: float = 0.0, invoke: bool = True):
         now = self.clock()
         job_id = secrets.token_hex(8)
         deadline = now + EVENT_AGE_S + RUN_LIMIT_S + MARGIN_S if kind != "batch" else FAR
@@ -209,8 +223,8 @@ class CloudBackend:
         """Finish (as interrupted) every queued or running job past its deadline. Returns how many it finished."""
         now, n = self.clock(), 0
         for it in self.store.query(PK):
-            if it.get("status") not in ("queued", "running"):
-                continue
+            if it.get("status") not in ("queued", "running") or it.get("parent"):
+                continue  # a batch's item records are Finalize's: it charges a dead item its worst case (ADR-7)
             if it.get("deadline", FAR) < now:
                 n += finish(self.store, it["sk"], "interrupted", None,
                             "interrupted: the worker stopped before finishing (timeout or crash)", now)

@@ -162,7 +162,8 @@ def test_a_started_job_that_dies_frees_its_slot_17_minutes_after_it_started(clou
     clock.t += 60  # it waited a minute in Lambda's queue, then a worker claimed it and died
     workers.claim(store, job.id, clock.t, deadline=clock.t + cloud_jobs.RUN_LIMIT_S + cloud_jobs.MARGIN_S)
     clock.t += cloud_jobs.RUN_LIMIT_S + cloud_jobs.MARGIN_S - 1
-    assert jobs.find(b, job.id).status == "running"
-    clock.t += 2  # 17 minutes after it started
-    assert jobs.find(b, job.id).status == "interrupted"
-    jobs.start(b, "run", "r-2", "Run", run_args(b, "r-2"), singleton=True, task="adb")  # the slot is free
+    with pytest.raises(ServiceError):  # still within its 17 minutes: the slot is held
+        jobs.start(b, "run", "r-2", "Run", run_args(b, "r-2"), singleton=True, task="adb")
+    clock.t += 2  # 17 minutes after it started: a start alone frees it (no job-list read first, as from the CLI)
+    jobs.start(b, "run", "r-2", "Run", run_args(b, "r-2"), singleton=True, task="adb")
+    assert jobs.find(b, job.id).status == "interrupted"  # the next job-list read marks the dead job

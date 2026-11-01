@@ -190,6 +190,8 @@ def test_cloud_data_is_retained_and_names_no_app_resource():  # D4
         "TimeToLiveSpecification": {"AttributeName": "ttl", "Enabled": True}, "BillingMode": "PAY_PER_REQUEST"})
     data.has_resource_properties("AWS::SNS::Subscription", {"Protocol": "email", "Endpoint": "ops@example.com"})
     data.resource_count_is("AWS::Budgets::Budget", 1)
+    outputs = data.to_json()["Outputs"]  # what a deploy after `destroy` reuses
+    assert outputs["CapUsd"]["Value"] == "30" and outputs["ApiConcurrency"]["Value"] == "20"
 
 
 def test_cloud_bucket_rules():

@@ -52,7 +52,7 @@ def _tag(stack: Stack) -> None:
 
 class FoundryDataStack(Stack):
     def __init__(self, scope: Construct, cid: str, *, email: str, budget_usd: float | None = None,
-                 cap_usd: float | None = 30.0, **kw) -> None:
+                 cap_usd: float | None = 30.0, api_concurrency: int = 20, **kw) -> None:
         super().__init__(scope, cid, **kw)
         self.bucket = s3.Bucket(
             self, "State", versioned=True, block_public_access=s3.BlockPublicAccess.BLOCK_ALL, enforce_ssl=True,
@@ -91,6 +91,8 @@ class FoundryDataStack(Stack):
         CfnOutput(self, "BudgetUsd", value=f"{budget_usd:g}" if budget_usd else "0")
         # The cap is the app stack's setting, kept here too so a deploy after `destroy` keeps it ("0" = no cap).
         CfnOutput(self, "CapUsd", value="0" if cap_usd is None else f"{cap_usd:g}")
+        # Spec A6's function-level limit, applied by cloud.sh (it checks the account can spare it) and kept here.
+        CfnOutput(self, "ApiConcurrency", value=str(api_concurrency))
         _tag(self)
 
 
