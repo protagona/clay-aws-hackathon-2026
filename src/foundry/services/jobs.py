@@ -24,7 +24,7 @@ from pathlib import Path
 
 from foundry.data import locks as lock
 from foundry.data import spend as local_spend
-from foundry.services import spend
+from foundry.services import job_kinds, spend
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -35,7 +35,7 @@ RECENT_JOB_S = 120  # finished jobs reported to the UI for toasts
 @dataclass
 class Job:
     id: str
-    kind: str  # "run" | "evaluate" | "batch" | "tools"
+    kind: str  # a services.job_kinds name
     run_id: str
     label: str
     proc: subprocess.Popen
@@ -51,13 +51,12 @@ class Job:
         return self.exit_code is None
 
     @property
+    def status(self) -> str:
+        return "running" if self.alive else "done"
+
+    @property
     def failed_visibly(self) -> bool:
-        """Runs that exit 1 are ordinary failed runs with a card; only exit 2 (nothing created) needs a banner."""
-        if self.exit_code is None or self.dismissed:
-            return False
-        if self.kind in ("run", "batch"):  # exit 1 = ordinary failed run / budget stop, shown on its own page
-            return self.exit_code == 2
-        return self.exit_code != 0
+        return job_kinds.failed_visibly(self.kind, self.exit_code, self.status, self.alive, self.dismissed)
 
     def read_log(self) -> str:
         return self.log.read_text(errors="replace") if self.log.exists() else ""
@@ -130,10 +129,6 @@ def dismiss(ws: Workspace, job_id: str) -> None:
 
 # --- the backend seam (aws-deploy slice 3) ----------------------------------------------------------------------
 
-BUSY = {"run": "A run is already in progress: {}", "batch": "A batch is already running: {}",
-        "tools": "The tool list is already being refreshed"}
-
-
 class LocalBackend:
     """Jobs as `foundry` subprocesses of this server, tracked in `ws.jobs` and serialized by `ws.lock` (as before)."""
 
@@ -161,7 +156,7 @@ class LocalBackend:
                     raise refused
                 if quiet:
                     return None
-                raise ServiceError(409, BUSY[kind].format(active.run_id))
+                raise ServiceError(409, job_kinds.kind(kind).busy.format(active.run_id))
             job = spawn(ws, kind, run_id, label, args, lock_token=token, lock_dir=evaluate_dir)
             if ws.cap_usd is not None and reservation > 0:
                 local_spend.charge(ws.runs_dir, spend.month(), job.id, reservation)  # locally: charged in full
@@ -212,6 +207,8 @@ def start(ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *,
     """Start a job atomically with its checks: `singleton` refuses (409) while another job of the kind is live,
     `evaluate_dir` takes the run's evaluation lock first, and a run of `task` waits out an edit of that task's
     prompts (cloud: their lease). With `quiet`, a busy singleton returns None instead."""
+    if not job_kinds.kind(kind).startable:
+        raise ValueError(f"job kind {kind!r} is a reservation only")
     return backend(ws).start(ws, kind, run_id, label, args, singleton=singleton, prompt_ids=list(prompt_ids),
                              evaluate_dir=evaluate_dir, quiet=quiet, task=task, reservation=reservation)
 
@@ -226,6 +223,7 @@ def note(ws: Workspace, job, **attrs) -> None:
 def reserve(ws: Workspace, kind: str, label: str, reservation: float):
     """Spend held for work done in this request (a rubric draft), not by a worker: a handle for `settle`, or None
     when there's nothing to hold. Raises the cap's 409 like a job start."""
+    job_kinds.kind(kind)  # declared, or a ValueError
     if reservation <= 0 or ws.cap_usd is None:
         return None
     return backend(ws).reserve(ws, kind, label, reservation)

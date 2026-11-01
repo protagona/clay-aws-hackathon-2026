@@ -19,9 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from foundry.data.store import Check, Conflict, Cond, Delete, NotFound, Put, Update
-from foundry.services import spend
+from foundry.services import job_kinds, spend
 from foundry.services.errors import ServiceError
-from foundry.services.jobs import BUSY
 from foundry.services.workspace import Workspace
 
 PK = "JOB"
@@ -58,13 +57,7 @@ class JobRecord:
 
     @property
     def failed_visibly(self) -> bool:
-        if self.alive or self.dismissed:
-            return False
-        if self.status == "interrupted":
-            return True
-        if self.kind in ("run", "batch"):
-            return self.exit_code == 2
-        return self.exit_code not in (0, None)
+        return job_kinds.failed_visibly(self.kind, self.exit_code, self.status, self.alive, self.dismissed)
 
     def last_stderr_line(self) -> str:
         return self.message or (f"exited with code {self.exit_code}" if self.exit_code is not None else "")
@@ -151,7 +144,8 @@ class CloudBackend:
                reservation: float = 0.0, invoke: bool = True):
         now = self.clock()
         job_id = secrets.token_hex(8)
-        deadline = now + EVENT_AGE_S + RUN_LIMIT_S + MARGIN_S if kind != "batch" else FAR
+        k = job_kinds.kind(kind)
+        deadline = FAR if k.long_running else now + EVENT_AGE_S + RUN_LIMIT_S + MARGIN_S
         eval_lock = f"eval#{evaluate_dir.name}" if evaluate_dir is not None else ""
         item = {"pk": PK, "sk": job_id, "kind": kind, "run_id": run_id, "label": label, "status": "queued",
                 "args": json.dumps(args), "prompt_ids": json.dumps(prompt_ids or None), "task": task or "",
@@ -184,7 +178,7 @@ class CloudBackend:
                 if quiet:
                     return None
                 holder = self.store.get_item("SLOT", kind) or {}
-                raise ServiceError(409, BUSY[kind].format(holder.get("run_id", "?"))) from None
+                raise ServiceError(409, k.busy.format(holder.get("run_id", "?"))) from None
             if any(f == "Put:LOCK" for f in failed):
                 raise ServiceError(409, f"Run {run_id} is already being scored.") from None
             if any(f == "Check:LOCK" for f in failed):
@@ -195,7 +189,7 @@ class CloudBackend:
         try:
             if not invoke:
                 pass
-            elif kind == "batch" and self.start_batch is not None:
+            elif k.long_running and self.start_batch is not None:  # its workflow runs it (Step Functions)
                 arn = self.start_batch(job_id)
                 self.store.write(Update(PK, job_id, set={"execution_arn": arn}))
             elif self.invoke is not None:

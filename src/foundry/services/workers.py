@@ -16,7 +16,7 @@ import time
 from foundry.data import runs as data_runs
 from foundry.data.mirror import PK as TREE
 from foundry.data.store import Conflict, Cond, Update
-from foundry.services import cloud_jobs, jobs, runs
+from foundry.services import cloud_jobs, job_kinds, jobs, runs
 from foundry.services.cloud_state import CloudState
 from foundry.services.workspace import Workspace
 
@@ -78,15 +78,16 @@ def local_args(ws: Workspace, kind: str, run_id: str, args: list[str]) -> list[s
 
 def actual_cost(ws: Workspace, kind: str, run_id: str, code: int) -> float | None:
     """What the job really cost, or None when unknown (then its reservation is charged; spec A5)."""
-    if kind == "tools":
+    how = job_kinds.kind(kind).cost
+    if how == "zero":
         return 0.0
     d = data_runs.safe_run_path(ws.runs_dir, run_id)
     if d is None:
         return None
-    if kind == "run":
+    if how == "run":
         s = runs.summary_for(d)
         return s["spent"] if s is not None else None
-    if kind == "evaluate" and code == 0:  # a failed scoring may leave an older scores.json: charge the reservation
+    if how == "evaluate" and code == 0:  # a failed scoring may leave an older scores.json: charge the reservation
         ev = (data_runs.read_scores(d) or {}).get("evaluation")
         cost = data_runs.num(ev.get("cost_usd")) if isinstance(ev, dict) else None
         return cost
@@ -100,6 +101,7 @@ def run_job(ws: Workspace, store, mirror, job_id: str, clock=time.time) -> str:
     if job is None:
         return "duplicate"
     kind, run_id = job["kind"], job["run_id"]
+    k = job_kinds.kind(kind)
     log.info("job %s start: kind=%s run=%s", job_id, kind, run_id)
     args = local_args(ws, kind, run_id, json.loads(job["args"]))
     pull_projects(store, mirror)
@@ -107,17 +109,17 @@ def run_job(ws: Workspace, store, mirror, job_id: str, clock=time.time) -> str:
     def present() -> bool:
         return data_runs.safe_run_path(ws.runs_dir, run_id) is not None
 
-    if kind == "run":
+    if k.syncs_run:
         def tick():
             if present():
                 index_run(ws, mirror, run_id)
-    elif kind == "evaluate":
+    elif k.reads_run:
         mirror.pull(f"run#{run_id}")
     code, err = jobs.run_foundry(args, cwd=ws.root, tick=tick, every=SYNC_EVERY_S)
-    if kind == "evaluate" and present():
-        index_run(ws, mirror, run_id)  # scores, report, copied rubric, card (still "evaluating": lock held)
-    elif kind == "tools":
-        mirror.push_file("file#tools", "ui-tools.json", ws.runs_dir / ".ui-tools.json")
+    if k.reads_run and present():
+        index_run(ws, mirror, run_id)  # scores, report, copied rubric, card
+    elif k.output_file:
+        mirror.push_file(f"file#{kind}", k.output_file, ws.runs_dir / f".{k.output_file}")
     store.put_object(f"jobs/{job_id}.log", err.encode(), if_none_match=False)
     lines = [ln for ln in err.splitlines() if ln.strip()]
     status = "done" if code == 0 else "failed"
@@ -126,8 +128,8 @@ def run_job(ws: Workspace, store, mirror, job_id: str, clock=time.time) -> str:
     log.info("job %s end: kind=%s run=%s status=%s exit=%s cost=%s duration=%.1fs", job_id, kind, run_id, status, code,
              "unknown" if cost is None else f"${cost:.4f}", clock() - now)
     log_output(job_id, err, failed=code != 0)
-    if kind in ("run", "evaluate") and present():
-        index_run(ws, mirror, run_id)  # the card without "evaluating" now the lock is released
+    if (k.syncs_run or k.reads_run) and present():
+        index_run(ws, mirror, run_id)  # the run as it ended
     return status
 
 

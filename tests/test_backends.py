@@ -207,3 +207,52 @@ def test_worker_events_are_listed_once():
         + (ROOT / "scripts" / "cloud_ops.py").read_text()
     for kind in lambda_worker.EVENTS:
         assert f'"{kind}"' in sent or f"'{kind}'" in sent or f"\\\"{kind}\\\"" in sent, kind
+
+
+# --- job kinds (backend-parity ADR-4, spec AC7) ---------------------------------------------------------------------
+
+KIND_CALLS = {"start": 1, "reserve": 1, "of_kind": 1, "live": 1, "of_run": 1, "alive_of": 1}  # jobs.<fn>: kind arg index
+
+
+def _kind_uses():
+    """(file:line, kind literal, the call's keywords) for every jobs.<fn>(ws, "<kind>", ...) in services and api."""
+    out = []
+    for path in sorted((ROOT / "src" / "foundry").rglob("*.py")):
+        if path.parent.name not in ("services", "api"):
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in KIND_CALLS
+                    and isinstance(node.func.value, ast.Name) and node.func.value.id == "jobs"):
+                i = KIND_CALLS[node.func.attr]
+                if len(node.args) > i and isinstance(node.args[i], ast.Constant):
+                    out.append((f"{path.name}:{node.lineno}", node.args[i].value,
+                                {k.arg: ast.unparse(k.value) for k in node.keywords}, node.func.attr))
+    return out
+
+
+def test_every_job_kind_used_is_declared_once():
+    from foundry.services import job_kinds
+
+    uses = _kind_uses()
+    assert len(uses) >= 5, uses  # the scan finds the real call sites
+    unknown = [(where, k) for where, k, _, _ in uses if k not in job_kinds.KINDS]
+    assert not unknown, unknown
+    for where, k, kw, fn in uses:  # a start call agrees with the registry about one-at-a-time
+        if fn == "start":
+            assert (kw.get("singleton") == "True") == job_kinds.KINDS[k].singleton, (where, k, kw)
+            assert job_kinds.KINDS[k].startable, (where, k)
+
+
+def test_an_unknown_job_kind_is_refused_and_an_old_record_is_tolerated(tmp_path):
+    import pytest
+
+    from foundry.services import job_kinds, jobs
+    from foundry.services.workspace import Workspace
+
+    with pytest.raises(ValueError, match="unknown job kind"):
+        jobs.start(Workspace(tmp_path, tmp_path, 0), "nope", "x", "x", [])
+    with pytest.raises(ValueError, match="reservation only"):
+        jobs.start(Workspace(tmp_path, tmp_path, 0), "draft", "x", "x", [])
+    assert job_kinds.failed_visibly("retired-kind", 1, "done", alive=False, dismissed=False) is True
+    assert job_kinds.failed_visibly("run", 1, "done", alive=False, dismissed=False) is False
+    assert job_kinds.failed_visibly("run", None, "interrupted", alive=False, dismissed=False) is True
