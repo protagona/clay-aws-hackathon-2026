@@ -83,7 +83,7 @@ def record(item: dict, store) -> JobRecord:
 
 
 def finish(store, job_id: str, status: str, exit_code: int | None, message: str | None, now: float,
-           actual: float | None = None) -> bool:
+           actual: float | None = None, expect: dict | None = None) -> bool:
     """Mark a job done/failed/interrupted exactly once, settling its spend in the same transaction (its reservation
     is replaced by `actual`, or kept as the charge when the cost is unknown), then release its slot and evaluation
     lock. False if someone (its worker or a sweep) already finished it."""
@@ -92,7 +92,9 @@ def finish(store, job_id: str, status: str, exit_code: int | None, message: str 
     charge = reserved if actual is None else actual
     actions = [Update(PK, job_id, set={"status": status, "exit_code": exit_code, "message": (message or "")[:300],
                                        "finished_at": now, "charged": charge},
-                      cond=Cond.isin("status", ["queued", "running"]))]
+                      cond=Cond.all(Cond.isin("status", ["queued", "running"]),
+                                    *(Cond.any(Cond.missing(k), Cond.eq(k, v)) if v in (0, None) else Cond.eq(k, v)
+                                      for k, v in (expect or {}).items())))]
     if item.get("month") and (reserved or charge):
         # Settled on the month whose cap allowed the job (its start month), so a job crossing a month boundary
         # can't free headroom in the new month.
@@ -111,8 +113,11 @@ def finish(store, job_id: str, status: str, exit_code: int | None, message: str 
 
 
 class CloudBackend:
-    def __init__(self, store, invoke=None, clock=time.time):
+    def __init__(self, store, invoke=None, clock=time.time, start_batch=None, describe=None):
+        """`invoke(job_id)` hands a job to the worker; `start_batch(job_id) -> execution ARN` starts the batch
+        workflow; `describe(arn) -> status` reads it back (RUNNING / SUCCEEDED / FAILED / TIMED_OUT / ABORTED)."""
         self.store, self.invoke, self.clock = store, invoke, clock
+        self.start_batch, self.describe = start_batch, describe
 
     # --- starting ------------------------------------------------------------------------------------------------
 
@@ -163,7 +168,10 @@ class CloudBackend:
                 raise spend.refusal(self._committed(now), ws.cap_usd, now) from None
             raise ServiceError(409, "Busy; try again") from None
         try:
-            if self.invoke is not None:
+            if kind == "batch" and self.start_batch is not None:
+                arn = self.start_batch(job_id)
+                self.store.write(Update(PK, job_id, set={"execution_arn": arn}))
+            elif self.invoke is not None:
                 self.invoke(job_id)
         except Exception as exc:  # the worker never got it: finish now so nothing stays reserved
             finish(self.store, job_id, "failed", 2, f"could not start the worker: {type(exc).__name__}", self.clock())
@@ -178,16 +186,23 @@ class CloudBackend:
 
     def all(self, ws: Workspace) -> list[JobRecord]:  # noqa: ARG002
         self.sweep()
-        items = self.store.query(PK)
+        items = [i for i in self.store.query(PK) if not i.get("parent")]  # a batch's per-item records stay internal
         return [record(i, self.store) for i in sorted(items, key=lambda i: i.get("queued_at", 0))]
 
     def sweep(self) -> int:
         """Finish (as interrupted) every queued or running job past its deadline. Returns how many it finished."""
         now, n = self.clock(), 0
         for it in self.store.query(PK):
-            if it.get("status") in ("queued", "running") and it.get("deadline", FAR) < now:
+            if it.get("status") not in ("queued", "running"):
+                continue
+            if it.get("deadline", FAR) < now:
                 n += finish(self.store, it["sk"], "interrupted", None,
                             "interrupted: the worker stopped before finishing (timeout or crash)", now)
+            elif it.get("kind") == "batch" and it.get("execution_arn") and self.describe is not None:
+                # A batch has no deadline; its workflow ending without Finalize having run means it was cut off.
+                if self.describe(it["execution_arn"]) in ("FAILED", "TIMED_OUT", "ABORTED"):
+                    n += finish(self.store, it["sk"], "interrupted", None, "interrupted: the batch workflow ended "
+                                "without finishing", now)
         return n
 
     def is_evaluating(self, ws: Workspace, run_dir: Path) -> bool:  # noqa: ARG002
@@ -199,10 +214,12 @@ class CloudBackend:
 
     # --- the per-task lease (prompt edits vs run starts) ----------------------------------------------------------
 
+    def exclusive(self, ws: Workspace, task: str):
+        return self.exclusive_key(ws, lease_key(task))
+
     @contextmanager
-    def exclusive(self, ws: Workspace, task: str):  # noqa: ARG002
+    def exclusive_key(self, ws: Workspace, key: str):  # noqa: ARG002
         owner = secrets.token_hex(8)
-        key = lease_key(task)
         for _ in range(40):
             now = self.clock()
             try:

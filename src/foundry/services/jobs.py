@@ -182,6 +182,11 @@ class LocalBackend:
         with ws.lock:
             yield
 
+    @contextmanager
+    def exclusive_key(self, ws: Workspace, key: str):  # noqa: ARG002
+        with ws.lock:
+            yield
+
 
 LOCAL = LocalBackend()
 
@@ -252,6 +257,11 @@ def pending_prompt(ws: Workspace, pid: str) -> bool:
 
 def is_evaluating(ws: Workspace, run_dir: Path) -> bool:
     return backend(ws).is_evaluating(ws, run_dir)
+
+
+def exclusive_key(ws: Workspace, key: str):
+    """A named lease (cloud) or the server lock (local): a batch's summary rewrite."""
+    return backend(ws).exclusive_key(ws, key)
 
 
 def exclusive(ws: Workspace, task: str):

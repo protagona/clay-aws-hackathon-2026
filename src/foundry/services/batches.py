@@ -8,7 +8,7 @@ import time
 from foundry.config import ConfigError
 from foundry.data import batches as data_batches
 from foundry.engine.batch import spread
-from foundry.services import configs, jobs, spend
+from foundry.services import cloud_state, configs, jobs, spend
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -67,6 +67,8 @@ def variant_stats(rows: list[dict]) -> list[dict]:
 
 
 def batch_view(ws: Workspace, batch_id: str) -> dict:
+    cloud_state.pull_batches(ws)
+    cloud_state.pull_runs(ws)  # rows link to their runs when those exist here
     path = data_batches.batch_path(ws.batches_dir, batch_id)
     if path is None:
         raise ServiceError(404, "Batch not found")
@@ -82,4 +84,6 @@ def batch_view(ws: Workspace, batch_id: str) -> dict:
 
 
 def batch_list(ws: Workspace) -> list[dict]:
+    cloud_state.pull_batches(ws)
+    cloud_state.pull_runs(ws)
     return data_batches.batch_list(ws.batches_dir, ws.runs_dir)

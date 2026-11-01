@@ -21,7 +21,18 @@ def context():
 
 
 def handler(event, context_):  # noqa: ARG001 (Lambda's signature)
-    from foundry.services.workers import run_job
+    """`{"job_id"}` from the API's async invoke, or a batch workflow step: `{"kind": "batch_prepare" | "batch_item" |
+    "batch_finalize", ...}` (aws-deploy design ADR-7)."""
+    from foundry.services import workers
 
     ws, store, mirror = context()
-    return {"job_id": event["job_id"], "status": run_job(ws, store, mirror, event["job_id"])}
+    kind = event.get("kind")
+    if kind == "batch_prepare":
+        return workers.batch_prepare(ws, store, mirror, event["batch_job_id"])
+    if kind == "batch_item":
+        return workers.batch_item(ws, store, mirror, event["item"])
+    if kind == "batch_finalize":
+        error = event.get("error")
+        return workers.batch_finalize(ws, store, mirror, event["batch_job_id"],
+                                      error=(error.get("Cause") or error.get("Error")) if isinstance(error, dict) else error)
+    return {"job_id": event["job_id"], "status": workers.run_job(ws, store, mirror, event["job_id"])}

@@ -46,6 +46,13 @@ def pull_project(ws: Workspace, task: str) -> None:
         mirror.pull(f"project#{task}")
 
 
+def pull_batches(ws: Workspace) -> None:
+    if on(ws):
+        store, mirror = ws.cloud
+        for it in store.query(TREE, prefix="batch#"):
+            mirror.pull(it["sk"], item=it)
+
+
 def pull_projects(ws: Workspace) -> None:
     if on(ws):
         store, mirror = ws.cloud
