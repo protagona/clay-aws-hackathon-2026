@@ -9,6 +9,7 @@ from pathlib import Path
 from foundry.config import Config, ConfigError, load_config
 from foundry.data import project
 from foundry.data.tasks import parse_prompts
+from foundry.services import state
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -18,6 +19,7 @@ def config_names(ws: Workspace) -> list[str]:
 
 
 def task_ids(ws: Workspace) -> list[str]:
+    state.of(ws).fresh_projects(ws)
     return project.task_ids(ws.root)
 
 
@@ -42,6 +44,7 @@ def model_choices(ws: Workspace) -> list[str]:
 def prompt_ids(ws: Workspace) -> list[str]:
     """Active (not archived) prompt ids of every task the configs use, read from this UI's own root."""
     ids: list[str] = []
+    state.of(ws).fresh_projects(ws)
     for stem in config_names(ws):
         try:
             cfg = load(ws, stem)
@@ -67,6 +70,7 @@ def relative_paths(ws: Workspace, msg: str) -> str:
 
 def task_prompts(ws: Workspace, task: str) -> list:
     """Every prompt of a task in this UI's own root (archived ones included)."""
+    state.of(ws).fresh_project(ws, task)
     try:
         return project.task_prompts(ws.root, task)
     except ConfigError as exc:

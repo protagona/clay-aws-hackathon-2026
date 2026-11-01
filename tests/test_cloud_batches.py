@@ -122,22 +122,22 @@ def test_a_reader_never_sees_a_finished_job_with_an_unfinished_batch(setup, monk
 
 
 def test_a_finalize_during_a_read_never_shows_a_stopped_batch(setup, monkeypatch):  # slice 10, found live
-    from foundry.services import cloud_state
+    from foundry.services.cloud_state import CloudState
 
     store, started, calls, c, h, w, wm = setup
     batch_id = start(c, h)
     (job_id,) = started
     for item in workers.batch_prepare(w, store, wm, job_id)["items"]:
         workers.batch_item(w, store, wm, item)
-    real, fired = cloud_state.pull_runs, []
+    real, fired = CloudState.fresh_runs, []
 
-    def finalize_meanwhile(ws):  # Finalize lands while the API is pulling the runs
+    def finalize_meanwhile(self, ws):  # Finalize lands while the API is pulling the runs
         if not fired:
             fired.append(1)
             workers.batch_finalize(w, store, wm, job_id)
-        return real(ws)
+        return real(self, ws)
 
-    monkeypatch.setattr(cloud_state, "pull_runs", finalize_meanwhile)
+    monkeypatch.setattr(CloudState, "fresh_runs", finalize_meanwhile)
     view = c.get(f"/api/batches/{batch_id}").json()
     assert fired and view["meta"]["status"] != "stopped"
     assert view["running"] or view["meta"]["status"] == "finished"

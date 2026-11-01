@@ -17,7 +17,7 @@ from foundry.engine.rubrics import sources
 from foundry.engine.rubrics.draft import MAX_TOKENS as DRAFT_MAX_TOKENS
 from foundry.engine.rubrics.draft import draft
 from foundry.engine.rubrics.sources import BINARY, SourceError
-from foundry.services import cloud_state, configs, jobs, spend
+from foundry.services import configs, jobs, spend, state
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -81,19 +81,19 @@ def save_draft(task_dir, source: sources.Source, result, cfg) -> tuple[str, dict
 def store_for(ws: Workspace, task: str) -> Store:
     if task not in configs.task_ids(ws):
         raise ServiceError(404, "Unknown task")
-    cloud_state.pull_project(ws, task)
+    state.of(ws).fresh_project(ws, task)
     return Store(project.task_dir(ws.root, task))
 
 
 def overview(ws: Workspace, task: str) -> dict:
     store = store_for(ws, task)
-    cloud_state.pull_runs(ws)  # versions() counts the runs each version scored
+    state.of(ws).fresh_runs(ws)  # versions() counts the runs each version scored
     try:
         active, _ = load_rubric(store.task / "rubric.json")
     except RubricError:
         active = None
     versions = store.versions(ws.runs_dir)
-    v = cloud_state.project_version(ws, task)
+    v = state.of(ws).project_version(ws, task)
     return {"task": task, "active": active, "versions": versions, "drafts": store.drafts(),
             "active_entry": next((v for v in versions if v["active"]), None), **({} if v is None else {"base_version": v})}
 
@@ -135,7 +135,7 @@ def ui_create_draft(ws: Workspace, task: str, kind: str, config: str, *, file_na
             raise ServiceError(400, str(exc)) from None
         except ProviderError as exc:
             raise ServiceError(502, f"The model could not draft the rubric: {exc}") from None
-        with cloud_state.project_write(ws, task):
+        with state.of(ws).project_write(ws, task):
             store = store_for(ws, task)
             draft_id, meta = save_draft(store.task, source, result, cfg)
         cost = (meta.get("usage") or {}).get("cost_usd")
@@ -153,14 +153,14 @@ def draft_view(ws: Workspace, task: str, draft_id: str) -> dict:
     text = None
     if src is not None and meta["source"]["format"] not in BINARY:
         text = read_source(src, SOURCE_PREVIEW).decode("utf-8", "replace")
-    v = cloud_state.project_version(ws, task)
+    v = state.of(ws).project_version(ws, task)
     return {"task": task, "draft_id": draft_id, "meta": meta, "body": body, "source_text": text,
             **({} if v is None else {"base_version": v})}
 
 
 def update_draft(ws: Workspace, task: str, draft_id: str, body: dict, activate: bool = False) -> str | None:
     """Save an edited draft; returns its validation error (None when valid). With activate, also activates it."""
-    with cloud_state.project_write(ws, task):
+    with state.of(ws).project_write(ws, task):
         store = store_for(ws, task)
         try:
             store.load_draft(draft_id)
@@ -175,7 +175,7 @@ def update_draft(ws: Workspace, task: str, draft_id: str, body: dict, activate: 
 
 
 def discard(ws: Workspace, task: str, draft_id: str) -> None:
-    with cloud_state.project_write(ws, task):
+    with state.of(ws).project_write(ws, task):
         try:
             store_for(ws, task).discard(draft_id)
         except StoreError as exc:
@@ -220,7 +220,7 @@ def active(ws: Workspace, task: str) -> dict:
 
 
 def activate_version(ws: Workspace, task: str, name: str) -> None:
-    with cloud_state.project_write(ws, task):
+    with state.of(ws).project_write(ws, task):
         try:
             store_for(ws, task).activate_version(name)
         except StoreError as exc:

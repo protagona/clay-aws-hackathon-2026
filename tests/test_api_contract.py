@@ -10,10 +10,8 @@ import pytest
 from conftest import FIXTURES, ROOT
 from eval_helpers import eval_config, load
 from fastapi.routing import APIRoute
-from fastapi.testclient import TestClient
 
 from foundry.engine.evaluate.evaluate import evaluate
-from foundry.server import create_app
 from foundry.services import batches as batch_service
 
 BASE = "http://127.0.0.1:8765"
@@ -24,11 +22,6 @@ spec.loader.exec_module(gen)
 # Routes that don't return a JSON model: a file download, and the catch-all that only ever raises 404.
 EXEMPT = {("GET", "/api/rubric/drafts/{draft_id}/source"), ("GET", "/api/{rest:path}"), ("POST", "/api/{rest:path}"),
           ("PUT", "/api/{rest:path}"), ("DELETE", "/api/{rest:path}"), ("PATCH", "/api/{rest:path}")}
-
-
-def _client(tmp_path):
-    c = TestClient(create_app(tmp_path / "runs", ROOT, port=8765), base_url=BASE, follow_redirects=False)
-    return c, {"x-csrf-token": c.get("/api/session").json()["csrf"]}
 
 
 # --- R1: every route declares its response ----------------------------------------------------------------------
@@ -55,10 +48,10 @@ def test_every_json_route_declares_its_response(tmp_path):
 # --- R2: a response that breaks its model is a 500 --------------------------------------------------------------
 
 
-def test_response_drift_is_a_500(tmp_path, monkeypatch, caplog):
+def test_response_drift_is_a_500(backend, monkeypatch, caplog):
     from foundry.services import imports
 
-    c, _ = _client(tmp_path)
+    c = backend.client
     assert c.get("/api/receiver").status_code == 200
     monkeypatch.setattr(imports, "receiver_status", lambda ws: {"running": False, "port": 1, "endpoint": "x",
                                                                 "count": 0, "received": [], "renamed": 1})
@@ -75,7 +68,7 @@ def test_response_drift_is_a_500(tmp_path, monkeypatch, caplog):
 
 
 def _hostile_runs(runs):
-    runs.mkdir(parents=True)
+    runs.mkdir(parents=True, exist_ok=True)
     for name in ("clean", "hostile", "failed"):
         shutil.copytree(FIXTURES / name, runs / f"fixture-{name}")
     base = json.loads((runs / "fixture-clean" / "run.json").read_text())
@@ -88,10 +81,8 @@ def _hostile_runs(runs):
     return list(bad)
 
 
-def test_hostile_history_never_500(tmp_path):
-    root = tmp_path / "proj"
-    shutil.copytree(ROOT / "tasks", root / "tasks", ignore=shutil.ignore_patterns("drafts", "sources"))
-    shutil.copytree(ROOT / "config", root / "config")
+def test_hostile_history_never_500(backend):
+    root = backend.project
     hist = root / "tasks" / "adb" / "rubrics" / "history.jsonl"
     hist.parent.mkdir(parents=True, exist_ok=True)
     good = {"rubric_id": "r", "version": "1", "sha256": "a" * 64, "file": "r@1.json", "activated_at": "x"}
@@ -100,14 +91,14 @@ def test_hostile_history_never_500(tmp_path):
              {**good, "file": "r@4.json", "source": {"kind": 5}}, {**good, "file": "r@5.json", "rubric_id": 7},
              {**good, "file": "r@6.json", "note": ["x"]}]
     hist.write_text("\n".join(json.dumps(x) for x in lines) + "\nnot json\n")
-    c = TestClient(create_app(tmp_path / "runs", root, port=8765), base_url=BASE)
-    r = c.get("/api/rubric")
+    backend.sync_project()
+    r = backend.client.get("/api/rubric")
     assert r.status_code == 200, r.text
     assert {v["file"] for v in r.json()["versions"]} <= {"r@1.json", "r@2.json", "r@3.json"}
 
 
-def test_hostile_files_never_500(tmp_path):
-    runs = tmp_path / "runs"
+def test_hostile_files_never_500(backend, tmp_path):
+    runs = backend.runs_dir
     bad = _hostile_runs(runs)
     evaluate(runs / "fixture-clean", load(eval_config(tmp_path / "e")))
     sc = json.loads((runs / "fixture-clean" / "scores.json").read_text())
@@ -124,7 +115,8 @@ def test_hostile_files_never_500(tmp_path):
     evaluate(runs / "nan-score", load(eval_config(tmp_path / "e2")))
     nan = json.loads((runs / "nan-score" / "scores.json").read_text()) | {"overall": float("nan")}
     (runs / "nan-score" / "scores.json").write_text(json.dumps(nan))  # Python writes the token NaN
-    c, _ = _client(tmp_path)
+    backend.sync()
+    c = backend.client
     board = c.get("/api/runs").json()
     assert next(r for r in board["runs"] if r["run_id"] == "nan-score")["overall"] is None  # NaN is not a score
     unreadable = {r["run_id"] for r in board["runs"] if r.get("unreadable")}
@@ -330,14 +322,14 @@ BODIES = [("post", "/api/runs", {"prompt_id": "adb-001", "config": "offline"}),
 
 
 @pytest.mark.parametrize(("method", "path", "body"), BODIES)
-def test_unknown_body_field_is_422(tmp_path, method, path, body):
-    c, h = _client(tmp_path)
+def test_unknown_body_field_is_422(backend, method, path, body):
+    c, h = backend.client, backend.headers()
     r = getattr(c, method)(path, headers=h, json={**body, "surprise": 1})
     assert r.status_code == 422 and r.json() == {"error": "surprise: Extra inputs are not permitted"}
 
 
-def test_batch_ranges_are_422(tmp_path):
-    c, h = _client(tmp_path)
+def test_batch_ranges_are_422(backend):
+    c, h = backend.client, backend.headers()
     base = {"config": "offline", "prompts": ["adb-001"]}
     lo_r, hi_r = batch_service.REPEATS
     lo_c, hi_c = batch_service.CONCURRENCY

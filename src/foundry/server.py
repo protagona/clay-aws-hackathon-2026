@@ -17,6 +17,7 @@ from fastapi import FastAPI
 
 from foundry.api import errors, guard
 from foundry.api.routes import make_router
+from foundry.services.cloud_state import CloudState
 from foundry.services.workspace import Workspace
 from foundry.ui import spa
 
@@ -28,6 +29,7 @@ def create_app(runs_dir: str | Path, project_root: str | Path, port: int = 8765,
     if cloud is not None:
         store, mirror, backend = cloud
         ws.cloud, ws.backend = (store, mirror), backend
+        ws.state = CloudState(store, mirror)
         ws.receiver_enabled = False
     ws.cap_usd = cap_usd
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)

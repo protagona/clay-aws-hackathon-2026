@@ -10,9 +10,9 @@ import pytest
 from conftest import FIXTURES, ROOT
 from eval_helpers import eval_config, load
 from fastapi.testclient import TestClient
-from harness_helpers import write_config
+from harness_helpers import write_config  # noqa: F401
+from test_backends import add_config
 
-from foundry.data import locks as lock
 from foundry.engine.evaluate.evaluate import evaluate
 from foundry.server import create_app
 
@@ -34,14 +34,10 @@ def _seed(runs, *names):
     return out
 
 
-def _project(tmp_path, turns, **kw):
-    """A throwaway project root: config/test.toml driving the fault server, plus the real tasks/."""
-    root = tmp_path / "proj"
-    (root / "config").mkdir(parents=True)
-    shutil.copytree(ROOT / "tasks", root / "tasks")
-    shutil.copy(write_config(tmp_path / "cfgsrc", turns, **kw), root / "config" / "test.toml")
-    shutil.copy(ROOT / "config" / "offline.toml", root / "config" / "offline.toml")
-    return root
+def _project(backend, turns, **kw):
+    """The harness's project with config/test.toml driving the fault server (the real tasks/ and offline.toml)."""
+    add_config(backend, "test", turns, **kw)
+    return backend.project
 
 
 def _wait(pred, timeout=60):
@@ -62,68 +58,72 @@ def test_ui_binds_localhost_only(monkeypatch):  # was test_binds_localhost_only 
     assert seen == {"host": "127.0.0.1", "port": 8799}
 
 
-def test_evaluate_holds_and_releases_the_lock(tmp_path):  # was test_evaluate_from_ui_holds_and_releases_lock (AC25)
-    runs = tmp_path / "runs"
-    d = _seed(runs, "recovered")
-    app, c, h = _client(runs)
+def test_evaluate_holds_and_releases_the_lock(backend, tmp_path):  # was ..._from_ui_holds_and_releases_lock (AC25)
+    runs = backend.runs_dir
+    _seed(runs, "recovered")
+    backend.sync()
+    c, h = backend.client, backend.headers()
     assert c.post("/api/runs/fixture-recovered/evaluate", headers=h).status_code == 202
-    (job,) = app.state.ui.jobs.values()
+    (job,) = [j for j in c.get("/api/jobs").json()["jobs"] if j["kind"] == "evaluate"]
     second = c.post("/api/runs/fixture-recovered/evaluate", headers=h)
-    if job.exit_code is None:  # the lock is taken before the subprocess starts, so a second click is refused
+    if job["alive"]:  # the lock is taken before the job starts, so a second click is refused while it runs
         assert second.status_code == 409 and "already being scored" in second.json()["error"]
-    assert _wait(lambda: job.exit_code is not None and not lock.is_locked(d["recovered"]))
-    assert job.exit_code == 0, job.log.read_text()
-    assert c.get("/api/runs/fixture-recovered").json()["scores"]["workflow"]["score"] == pytest.approx(0.93, abs=0.01)
+    backend.drain()
+    d = c.get("/api/runs/fixture-recovered").json()
+    assert d["evaluating"] is False  # the lock is released whatever the outcome
+    (job,) = [j for j in c.get("/api/jobs").json()["jobs"] if j["id"] == job["id"]]
+    assert job["exit_code"] == 0, c.get(f"/api/jobs/{job['id']}/log").text
+    assert d["scores"]["workflow"]["score"] == pytest.approx(0.93, abs=0.01)
 
 
-def test_failed_start_is_reported_then_dismissed(tmp_path):  # was test_failed_job_banner
-    root = _project(tmp_path, [{"text": "x"}])
+def test_failed_start_is_reported_then_dismissed(backend, tmp_path):  # was test_failed_job_banner
+    root = _project(backend, [{"text": "x"}])
     cfg = root / "config" / "test.toml"
-    (root / "broken").mkdir()  # a script that exists (the up-front check passes) but can't load: exit 2
-    (root / "broken" / "adb-001.json").write_text("{}")
-    cfg.write_text(re.sub(r'script = ".*"', 'script = "broken/{prompt_id}.json"', cfg.read_text()))
-    app, c, h = _client(tmp_path / "runs", root)
+    (root / "config" / "broken").mkdir()  # a script that exists (the up-front check passes) but can't load: exit 2
+    (root / "config" / "broken" / "adb-001.json").write_text("{}")
+    cfg.write_text(re.sub(r'script = ".*"', 'script = "config/broken/{prompt_id}.json"', cfg.read_text()))
+    c, h = backend.client, backend.headers()
     assert c.post("/api/runs", headers=h, json={"prompt_id": "adb-001", "config": "test"}).status_code == 201
-    (job,) = app.state.ui.jobs.values()
-    assert _wait(lambda: job.exit_code is not None) and job.exit_code == 2
-    (j,) = [x for x in c.get("/api/jobs").json()["jobs"] if x["id"] == job.id]
-    assert j["failed"] is True and "must be a JSON array of turns" in j["message"]
-    assert c.get(f"/api/jobs/{job.id}/log").status_code == 200
-    assert c.post(f"/api/jobs/{job.id}/dismiss", headers=h).status_code == 200
-    assert not any(x["id"] == job.id and x["failed"] for x in c.get("/api/jobs").json()["jobs"])
+    backend.drain()
+    (j,) = c.get("/api/jobs").json()["jobs"]
+    assert j["exit_code"] == 2 and j["failed"] is True and "must be a JSON array of turns" in j["message"]
+    assert c.get(f"/api/jobs/{j['id']}/log").status_code == 200
+    assert c.post(f"/api/jobs/{j['id']}/dismiss", headers=h).status_code == 200
+    assert not any(x["id"] == j["id"] and x["failed"] for x in c.get("/api/jobs").json()["jobs"])
 
 
-def test_ordinary_failed_run_is_not_a_failed_start(tmp_path):  # was test_ordinary_failed_run_has_no_banner
-    root = _project(tmp_path, [{"text": "x"}], server_args=["--crash-on-start"])
-    app, c, h = _client(tmp_path / "runs", root)
+def test_ordinary_failed_run_is_not_a_failed_start(backend, tmp_path):  # was test_ordinary_failed_run_has_no_banner
+    _project(backend, [{"text": "x"}], server_args=["--crash-on-start"])
+    c, h = backend.client, backend.headers()
     c.post("/api/runs", headers=h, json={"prompt_id": "adb-001", "config": "test"})
-    (job,) = app.state.ui.jobs.values()
-    assert _wait(lambda: job.exit_code is not None) and job.exit_code == 1
-    assert not any(x["failed"] for x in c.get("/api/jobs").json()["jobs"])  # a run with a card, not a banner
+    backend.drain()
+    (j,) = c.get("/api/jobs").json()["jobs"]
+    assert j["exit_code"] == 1 and not j["failed"]  # a run with a card, not a banner
     assert any(r["status"] == "failed" for r in c.get("/api/runs").json()["runs"])
 
 
-def test_api_never_shows_credentials(tmp_path, monkeypatch):  # was test_ui_pages_never_show_credentials (AC21)
+def test_api_never_shows_credentials(backend, tmp_path, monkeypatch):  # was test_ui_pages_never_show_credentials (AC21)
     from test_secrets import SENTINEL, sentinel_env
 
     for k, v in sentinel_env().items():
         if SENTINEL in v:
             monkeypatch.setenv(k, v)
-    root = _project(tmp_path, [{"tool": "fail", "input": {"message": "x"}}, {"text": "done"}])
-    runs = tmp_path / "runs"
-    app, c, h = _client(runs, root)
-    c.post("/api/runs", headers=h, json={"prompt_id": "adb-001", "config": "test"})
-    (job,) = app.state.ui.jobs.values()
-    assert _wait(lambda: job.exit_code is not None)
-    (run_dir,) = [p for p in runs.iterdir() if p.is_dir() and not p.name.startswith(".")]
+    _project(backend, [{"tool": "fail", "input": {"message": "x"}}, {"text": "done"}])
+    c, h = backend.client, backend.headers()
+    run_id = c.post("/api/runs", headers=h, json={"prompt_id": "adb-001", "config": "test"}).json()["run_id"]
+    backend.drain()
+    (job,) = c.get("/api/jobs").json()["jobs"]
+    run_dir = backend.pull(run_id)
     evaluate(run_dir, load(eval_config(tmp_path / "e")))
-    bodies = [c.get(p).text for p in ("/api/session", "/api/runs", f"/api/runs/{run_dir.name}", "/api/jobs",
-                                      f"/api/jobs/{job.id}/log", "/api/dashboard")]
+    backend.sync()
+    bodies = [c.get(p).text for p in ("/api/session", "/api/runs", f"/api/runs/{run_id}", "/api/jobs",
+                                      f"/api/jobs/{job['id']}/log", "/api/dashboard")]
     assert not any(SENTINEL in b for b in bodies)
 
 
-def test_security_headers_and_framing(tmp_path):  # was test_security_headers_and_framing (F5), now API and SPA
-    _, c, _ = _client(tmp_path / "runs")
+def test_security_headers_and_framing(backend, tmp_path):  # was test_security_headers_and_framing (F5), now API and SPA
+    backend.sync()
+    c = backend.client
     for r in (c.get("/api/session"), c.get("/"), c.get("/api/runs/nope")):
         assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
         assert r.headers["x-frame-options"] == "DENY" and r.headers["x-content-type-options"] == "nosniff"
@@ -138,24 +138,26 @@ def test_render_blocks_protocol_relative_links():  # was test_render_blocks_prot
     assert 'href="https://ok.example"' in html and 'href="runs/x"' in html
 
 
-def test_compare_unevaluated_and_hostile_scores(tmp_path):  # was the server-rendered compare tests (C1)
-    runs = tmp_path / "runs"
+def test_compare_unevaluated_and_hostile_scores(backend, tmp_path):  # was the server-rendered compare tests (C1)
+    runs = backend.runs_dir
     d = _seed(runs, "clean", "recovered", "failed")
     for n in ("clean", "recovered"):
         evaluate(d[n], load(eval_config(tmp_path / f"e-{n}")))
-    _, c, _ = _client(runs)
+    backend.sync()
+    c = backend.client
     body = c.get("/api/compare?a=fixture-clean&b=fixture-failed").json()  # B never evaluated: dashes, not a crash
     assert next(r for r in body["rows"] if r["label"] == "Overall")["b"] == "—" and body["b"]["steps"]
     s = json.loads((d["recovered"] / "scores.json").read_text())
     s["workflow"]["components"] = {"<script>x</script>": "NaN", "ok": True}
     s["output"]["criteria"] = [{"id": "<b>crit</b>", "score": "4"}, "junk", {"id": "m", "score": 3, "max": 4}]
     (d["recovered"] / "scores.json").write_text(json.dumps(s))
+    backend.sync()
     r = c.get("/api/compare?a=fixture-clean&b=fixture-recovered")
     assert r.status_code == 200 and r.headers["content-type"] == "application/json"
     assert next(x for x in r.json()["rows"] if x["label"] == "m")["b"] == "3/4"
 
 
-def test_pipeline_run_detail_compare_and_card(tmp_path):  # was test_pipeline_run_page_compare_and_cards (increment 7)
+def test_pipeline_run_detail_compare_and_card(backend, tmp_path):  # was test_pipeline_run_page_compare_and_cards (increment 7)
     from harness_helpers import PROMPT
     from harness_helpers import load as load_cfg
 
@@ -164,11 +166,12 @@ def test_pipeline_run_detail_compare_and_card(tmp_path):  # was test_pipeline_ru
     turns = [{"text": "1. Search."}, {"tool": "echo", "input": {"text": "hi"}}, {"text": "## Plan\nUse NAIP."},
              {"text": "VERDICT: approve"}]
     cfg = load_cfg(write_config(tmp_path / "cfg", turns, extra='\n[agents]\nmode = "pipeline"\n'))
-    runs = tmp_path / "runs"
+    runs = backend.runs_dir
     pipe_dir, status = run_agent(cfg, PROMPT, runs)
     assert status == "succeeded"
     _seed(runs, "clean")
-    _, c, _ = _client(runs)
+    backend.sync()
+    c = backend.client
     m = c.get(f"/api/runs/{pipe_dir.name}").json()["m"]
     agents = [r for r in m["rows"] if r["kind"] == "agent"]
     assert [a["label"] for a in agents] == ["planner", "executor", "checker"] and agents[-1]["verdict"] == "approve"
@@ -179,11 +182,12 @@ def test_pipeline_run_detail_compare_and_card(tmp_path):  # was test_pipeline_ru
     assert card["agents_mode"] == "pipeline"
 
 
-def test_run_detail_names_the_rubric_that_scored_it(tmp_path):  # was test_run_page_names_the_rubric_that_scored_it
-    runs = tmp_path / "runs"
+def test_run_detail_names_the_rubric_that_scored_it(backend, tmp_path):  # was test_run_page_names_the_rubric_that_scored_it
+    runs = backend.runs_dir
     d = _seed(runs, "clean")
     evaluate(d["clean"], load(eval_config(tmp_path / "e")))
-    _, c, _ = _client(runs)
+    backend.sync()
+    c = backend.client
     info = c.get("/api/runs/fixture-clean").json()["rubric_info"]
     assert info["id"] == "adb-rubric-v0" and info["version"] == "0.1"
 
@@ -195,7 +199,7 @@ def test_run_detail_names_the_rubric_that_scored_it(tmp_path):  # was test_run_p
     {"criteria": [{"id": "a", "name": "A", "description": "d", "max": 25, "weight": 1, "levels": {"1": "x", "25": "y"}}]},
     {"criteria": [{"id": "a", "name": "A", "description": "d", "max": 3, "weight": "inf", "levels": {"1": "x", "3": "y"}}]},
 ])
-def test_malformed_model_drafts_open_and_can_be_discarded(tmp_path, monkeypatch, bad):  # was the server-rendered UI's one
+def test_malformed_model_drafts_open_and_can_be_discarded(backend, tmp_path, monkeypatch, bad):  # was the server-rendered UI's one
     import foundry.engine.models.registry as registry
     from foundry.engine.models.base import Completion
 
@@ -208,22 +212,24 @@ def test_malformed_model_drafts_open_and_can_be_discarded(tmp_path, monkeypatch,
             return Completion(reply, 10, 10, "fake")
 
     monkeypatch.setattr(registry, "build_provider", lambda *a, **k: Fake())
-    root = tmp_path / "proj"
-    shutil.copytree(ROOT / "tasks", root / "tasks")
-    shutil.copytree(ROOT / "config", root / "config")
-    _, c, h = _client(tmp_path / "runs", root)
+    root = backend.project
+    backend.sync()
+    c, h = backend.client, backend.headers()
     r = c.post("/api/rubric/drafts", headers=h, data={"task": "adb", "kind": "text", "text": "x", "config": "bedrock"})
     assert r.status_code == 201, r.text
     draft_id = r.json()["draft_id"]
     d = c.get(f"/api/rubric/drafts/{draft_id}?task=adb")
     assert d.status_code == 200 and d.json()["meta"]["valid"] is False
     assert c.delete(f"/api/rubric/drafts/{draft_id}?task=adb", headers=h).status_code == 200
-    assert not list((root / "tasks/adb/rubrics/drafts").iterdir())
+    backend.pull_project()
+    drafts = root / "tasks/adb/rubrics/drafts"
+    assert not drafts.is_dir() or not list(drafts.iterdir())
 
 
-def test_batch_validation(tmp_path):  # was test_batch_form_validation
-    root = _project(tmp_path, [{"text": "done"}])
-    _, c, h = _client(tmp_path / "runs", root)
+def test_batch_validation(backend, tmp_path):  # was test_batch_form_validation
+    _project(backend, [{"text": "done"}])
+    backend.sync()
+    c, h = backend.client, backend.headers()
     base = {"config": "test", "prompts": ["adb-001"], "repeats": 1, "concurrency": 2, "max_cost": 1}
     assert c.post("/api/batches", headers={"x-csrf-token": "nope"}, json=base).status_code == 403
     for bad in ({"config": "../x"}, {"prompts": []}, {"prompts": ["adb-999"]}, {"models": ["not-a-model"]}):
@@ -253,28 +259,29 @@ def _hand_otlp():
          "attributes": [attr(k, v) for k, v in a.items()], "events": e} for i, p, n, t, a, e in spans]}]}]}
 
 
-def test_batch_runs_end_to_end(tmp_path):  # was test_batch_from_the_ui
-    root = _project(tmp_path, [{"tool": "echo", "input": {"text": "x"}}, {"text": "done"}])
-    app, c, h = _client(tmp_path / "runs", root)
+def test_batch_runs_end_to_end(backend, tmp_path):  # was test_batch_from_the_ui
+    _project(backend, [{"tool": "echo", "input": {"text": "x"}}, {"text": "done"}])
+    c, h = backend.client, backend.headers()
     body = {"config": "test", "prompts": ["adb-001", "adb-002"], "repeats": 1, "concurrency": 2, "evaluate": True, "max_cost": 1}
     r = c.post("/api/batches", headers=h, json=body)
     assert r.status_code == 201, r.text
     batch_id = r.json()["batch_id"]
     assert c.post("/api/batches", headers=h, json=body).status_code in (201, 409)  # one at a time
-    (job,) = [j for j in app.state.ui.jobs.values() if j.kind == "batch"]
-    assert _wait(lambda: job.exit_code is not None, 120), "batch did not finish"
-    assert job.exit_code == 0, job.log.read_text()[-2000:]
+    backend.drain(timeout=180)
+    (job,) = [j for j in c.get("/api/jobs").json()["jobs"] if j["kind"] == "batch" and j["run_id"] == batch_id]
+    assert job["exit_code"] == 0, c.get(f"/api/jobs/{job['id']}/log").text[-2000:]
     d = c.get(f"/api/batches/{batch_id}").json()
     assert d["done"] == 2 and all(r["status"] == "succeeded" for r in d["rows"]) and d["variants"]
     links = [r["link"] for r in d["rows"] if r["link"]]
     assert len(links) == 2 and all(name.startswith(f"{batch_id}_") for name in links)
-    cards = {r["run_id"] for r in c.get("/api/runs").json()["runs"]}
-    assert set(links) <= cards  # batch runs are ordinary cards too
+    cards = {r["run_id"]: r for r in c.get("/api/runs").json()["runs"]}
+    assert set(links) <= set(cards) and all(cards[x]["column"] == "scored" for x in links)  # ordinary, scored cards
     assert any(b["id"] == batch_id for b in c.get("/api/batches").json()["batches"])
 
 
-def test_import_a_trace_end_to_end(tmp_path):  # was test_import_upload_from_the_ui
-    _, c, h = _client(tmp_path / "runs")
+def test_import_a_trace_end_to_end(backend, tmp_path):  # was test_import_upload_from_the_ui
+    backend.sync()
+    c, h = backend.client, backend.headers()
     files = {"file": ("trace.json", json.dumps(_hand_otlp()), "application/json")}
     r = c.post("/api/import", headers=h, data={"task": "adb", "prompt_id": "ext-1", "config": ""}, files=files)
     assert r.status_code == 201, r.text
@@ -313,8 +320,9 @@ def test_receiver_binds_localhost_and_receives(tmp_path):  # was test_receiver_s
     assert app.state.ui.receiver is None and c.get("/api/receiver").json()["running"] is False
 
 
-def test_symlinked_run_dirs_never_listed(tmp_path):  # was test_symlinked_files_and_dirs_are_never_followed (F1, F2)
-    runs = tmp_path / "runs"
+@pytest.mark.laptop_only("symlinked run dirs: the cloud's store holds no symlinks, by construction")
+def test_symlinked_run_dirs_never_listed(backend, tmp_path):  # was test_symlinked_files_and_dirs_are_never_followed (F1, F2)
+    runs = backend.runs_dir
     _seed(runs, "clean")
     outside = tmp_path / "outside"
     shutil.copytree(FIXTURES / "clean", outside / "secretrun")
@@ -324,17 +332,19 @@ def test_symlinked_run_dirs_never_listed(tmp_path):  # was test_symlinked_files_
     (runs / "symdir").symlink_to(outside / "secretrun")
     (runs / "symjson").mkdir()
     (runs / "symjson" / "run.json").symlink_to(outside / "secretrun/run.json")
-    _, c, _ = _client(runs)
+    backend.sync()
+    c = backend.client
     body = c.get("/api/runs").text
     assert "OUTSIDE-SECRET" not in body and '"symdir"' not in body
     assert "OUTSIDE-SECRET" not in c.get("/api/dashboard?rubric=all").text
 
 
-def test_malformed_scores_do_not_break_the_board(tmp_path):  # was test_malformed_files_do_not_break_the_index (F4)
-    runs = tmp_path / "runs"
+def test_malformed_scores_do_not_break_the_board(backend, tmp_path):  # was test_malformed_files_do_not_break_the_index (F4)
+    runs = backend.runs_dir
     d = _seed(runs, "clean", "recovered")
     (d["clean"] / "scores.json").write_text(json.dumps({"overall": "x", "workflow": {"score": "y"}}))
-    _, c, _ = _client(runs)
+    backend.sync()
+    c = backend.client
     r = c.get("/api/runs")
     assert r.status_code == 200
     clean = next(x for x in r.json()["runs"] if x["run_id"] == "fixture-clean")
@@ -342,15 +352,16 @@ def test_malformed_scores_do_not_break_the_board(tmp_path):  # was test_malforme
     assert c.get("/api/runs/fixture-clean").status_code == 200 and c.get("/api/dashboard?rubric=all").status_code == 200
 
 
-def test_cards_order_and_headlines(tmp_path):  # was test_cards_states_and_order (AC24)
-    runs = tmp_path / "runs"
+def test_cards_order_and_headlines(backend, tmp_path):  # was test_cards_states_and_order (AC24)
+    runs = backend.runs_dir
     d = _seed(runs, "clean", "recovered", "failed")
     evaluate(d["clean"], load(eval_config(tmp_path / "e1")))
     evaluate(d["recovered"], load(eval_config(tmp_path / "e2", judge=[{"text": "x"}, {"text": "y"}])))  # incomplete
     rj = json.loads((d["failed"] / "run.json").read_text())
     rj["status"], rj["started_at"] = "running", "2026-10-29T15:00:00.000Z"
     (d["failed"] / "run.json").write_text(json.dumps(rj))
-    _, c, _ = _client(runs)
+    backend.sync()
+    c = backend.client
     cards = c.get("/api/runs").json()["runs"]
     by = {x["run_id"]: x for x in cards}
     assert by["fixture-recovered"]["headline"] == "incomplete" and by["fixture-failed"]["column"] == "running"
@@ -359,8 +370,8 @@ def test_cards_order_and_headlines(tmp_path):  # was test_cards_states_and_order
     assert ids.index("fixture-failed") < ids.index("fixture-clean")  # newest (running, 15:00) first
 
 
-def test_run_text_is_inert_but_still_markdown(tmp_path):  # was test_untrusted_content_rendered_inert + feed markdown
-    runs = tmp_path / "runs"
+def test_run_text_is_inert_but_still_markdown(backend, tmp_path):  # was test_untrusted_content_rendered_inert + feed markdown
+    runs = backend.runs_dir
     d = _seed(runs, "recovered", "hostile")
     trace = d["recovered"] / "trace.jsonl"
     last = max(json.loads(ln)["step"] for ln in trace.read_text().splitlines() if ln.strip())
@@ -369,7 +380,8 @@ def test_run_text_is_inert_but_still_markdown(tmp_path):  # was test_untrusted_c
     with open(trace, "a") as fh:
         fh.write(json.dumps({"step": last + 1, "type": "llm_call", "name": "model", "status": "ok",
                              "started_at": "2026-10-29T14:03:00.000Z", "duration_ms": 10, "text": text}) + "\n")
-    _, c, _ = _client(runs)
+    backend.sync()
+    c = backend.client
     feed = c.get("/api/runs/fixture-recovered").json()["m"]["feed"]
     html = next(f["s"]["text_html"] for f in feed if f["s"]["step"] == last + 1)
     assert "<h2>Plan</h2>" in html and "<table>" in html and "<strong>NAIP</strong>" in html  # still Markdown
@@ -381,16 +393,18 @@ def test_run_text_is_inert_but_still_markdown(tmp_path):  # was test_untrusted_c
         assert "<script" not in h_ and "<img" not in h_ and "javascript:" not in h_.lower()
 
 
-def test_host_checks_on_every_path(tmp_path):  # was test_host_origin_csrf_checks (AC29), the parts /api lacked
-    _, c, h = _client(tmp_path / "runs")
+def test_host_checks_on_every_path(backend, tmp_path):  # was test_host_origin_csrf_checks (AC29), the parts /api lacked
+    backend.sync()
+    c = backend.client
     for path in ("/", "/runs/x", "/api/session"):
         assert c.get(path, headers={"host": "evil.example"}).status_code == 400
         assert c.get(path, headers={"host": "127.0.0.1:9999"}).status_code == 400  # wrong port
         assert c.get(path, headers={"host": "localhost:8765"}).status_code == 200  # localhost is allowed
 
 
-def test_start_run_rejects_config_traversal(tmp_path):  # was test_start_run_validation (AC28)
-    _, c, h = _client(tmp_path / "runs")
+def test_start_run_rejects_config_traversal(backend, tmp_path):  # was test_start_run_validation (AC28)
+    backend.sync()
+    c, h = backend.client, backend.headers()
     r = c.post("/api/runs", headers=h, json={"prompt_id": "adb-001", "config": "../../etc/passwd"})
     assert r.status_code == 400 and "Unknown config" in r.json()["error"]
     r = c.post("/api/runs", headers=h, json={"prompt_id": "adb-999", "config": "offline"})
@@ -399,7 +413,8 @@ def test_start_run_rejects_config_traversal(tmp_path):  # was test_start_run_val
 
 @pytest.mark.parametrize("query", ["", "?a=fixture-clean", "?a=fixture-clean&b=nope", "?a=../x&b=fixture-clean",
                                    "?a=fixture-clean&b=%2e%2e%2fetc"])
-def test_compare_bad_ids_404(tmp_path, query):  # was test_compare_bad_ids_404 (C1)
+def test_compare_bad_ids_404(backend, tmp_path, query):  # was test_compare_bad_ids_404 (C1)
     _seed(tmp_path / "runs", "clean")
-    _, c, _ = _client(tmp_path / "runs")
+    backend.sync()
+    c = backend.client
     assert c.get(f"/api/compare{query}").status_code == 404

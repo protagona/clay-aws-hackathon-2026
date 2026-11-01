@@ -9,7 +9,7 @@ from foundry.data.runs import is_valid_run_id
 from foundry.engine import importer
 from foundry.engine.importer import ImportError_, import_spans, spans_from_file
 from foundry.engine.receiver import Receiver
-from foundry.services import cloud_state, configs
+from foundry.services import configs, state
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -29,7 +29,7 @@ def _prices(ws: Workspace, config: str):
 
 
 def import_saved_trace(ws: Workspace, dest: Path, filename: str, task: str, prompt_id: str, config: str) -> list[Path]:
-    cloud_state.pull_runs(ws)  # a run another instance imported must exist here too, or it would be overwritten
+    state.of(ws).fresh_runs(ws)  # a run another instance imported must exist here too, or it would be overwritten
     try:
         prices = _prices(ws, config)  # before reading the trace, so a bad config is reported first, as before
         return import_spans(spans_from_file(dest), ws.runs_dir, task, prompt_id,
@@ -46,12 +46,8 @@ def import_upload(ws: Workspace, filename: str, path: Path, task: str, prompt_id
     store with their board cards, so every instance sees them."""
     check_import_form(ws, task, prompt_id, config)
     made = import_saved_trace(ws, path, filename, task, prompt_id, config)
-    if ws.cloud is not None:
-        from foundry.services import workers
-
-        _, mirror = ws.cloud
-        for d in made:
-            workers.index_run(ws, mirror, d.name)
+    for d in made:
+        state.of(ws).record_run(ws, d.name)
     return made
 
 

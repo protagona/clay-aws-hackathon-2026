@@ -21,7 +21,7 @@ from foundry.api.guard import expected_csrf, write_check
 from foundry.api import schemas as S
 from foundry.api.render import render
 from foundry.api.uploads import read_bytes, read_rubric_upload, save_upload, save_upload_to
-from foundry.services import batches, cloud_state, configs, dashboard, imports, jobs, prompts, rubrics, runs, tools, uploads
+from foundry.services import batches, configs, dashboard, imports, jobs, prompts, rubrics, runs, state, tools, uploads
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -224,7 +224,7 @@ def make_router(ws: Workspace, csrf: str, access=None) -> APIRouter:
     @route("PUT", "/rubric/drafts/{draft_id}", S.DraftSaveResult, dependencies=write)
     def update_draft(draft_id: str, body: S.DraftBody):
         try:
-            with cloud_state.expecting(body.base_version):
+            with state.expecting(body.base_version):
                 err = rubrics.update_draft(ws, body.task, draft_id, body.body, activate=body.activate)
         except ServiceError as exc:
             if exc.status == 400:  # not activated: say which field
@@ -257,7 +257,7 @@ def make_router(ws: Workspace, csrf: str, access=None) -> APIRouter:
 
     @route("POST", "/rubric/history/activate", S.Ok, dependencies=write)
     def activate_version(body: S.HistoryBody):
-        with cloud_state.expecting(body.base_version):
+        with state.expecting(body.base_version):
             rubrics.activate_version(ws, body.task, body.file)
         return {"ok": True}
 
@@ -282,29 +282,29 @@ def make_router(ws: Workspace, csrf: str, access=None) -> APIRouter:
 
     @route("POST", "/prompts", S.CreatePromptResponse, dependencies=write, status_code=201)
     def create_prompt(body: S.PromptBody):
-        with cloud_state.expecting(body.base_version):
+        with state.expecting(body.base_version):
             return {"prompt_id": prompts.create(ws, body.task, body.prompt_id, body.prompt)}
 
     @route("PUT", "/prompts/{prompt_id}", S.Ok, dependencies=write)
     def update_prompt(prompt_id: str, body: S.PromptBody):
-        with cloud_state.expecting(body.base_version):
+        with state.expecting(body.base_version):
             prompts.set_text(ws, body.task, prompt_id, body.prompt)
         return {"ok": True}
 
     @route("POST", "/prompts/{prompt_id}/version", S.CreatePromptResponse, dependencies=write, status_code=201)
     def version_prompt(prompt_id: str, body: S.TaskBody):
-        with cloud_state.expecting(body.base_version):
+        with state.expecting(body.base_version):
             return {"prompt_id": prompts.new_version(ws, body.task, prompt_id)}
 
     @route("POST", "/prompts/{prompt_id}/archive", S.Ok, dependencies=write)
     def archive_prompt(prompt_id: str, body: S.ArchiveBody):
-        with cloud_state.expecting(body.base_version):
+        with state.expecting(body.base_version):
             prompts.archive(ws, body.task, prompt_id, body.archived)
         return {"ok": True}
 
     @route("PUT", "/prompts/{prompt_id}/stages", S.StagesSaved, dependencies=write)
     def prompt_stages(prompt_id: str, body: S.StagesBody):
-        with cloud_state.expecting(body.base_version):
+        with state.expecting(body.base_version):
             return {"ok": True, "expected_sha256": prompts.set_stages(ws, body.task, prompt_id, body.stages)}
 
     # --- jobs (toasts, failures) ------------------------------------------------------------------------------

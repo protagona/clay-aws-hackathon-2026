@@ -43,6 +43,8 @@ packages = ["src/foundry"]
 testpaths = ["tests"]
 markers = [
     "network: needs internet access (real RODA MCP server via uvx)",
+    "laptop_only(reason): runs on the laptop setup only (tests/backends.py), with why",
+    "cloud_only(reason): runs on the cloud setup only (tests/backends.py), with why",
 ]
 filterwarnings = [
     # strands-agents 1.62.0 bug on MCP start failure (see src/foundry/engine/harness/mcp.py); the failure itself is tested

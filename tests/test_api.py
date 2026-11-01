@@ -2,27 +2,20 @@
 
 import json
 import shutil
-import time
 
 import pytest
 from conftest import FIXTURES, ROOT
+from test_backends import add_config
 from eval_helpers import eval_config, load
-from fastapi.testclient import TestClient
 
 from foundry.engine.evaluate.evaluate import evaluate
 from foundry.ui.spa import DIST
-from foundry.server import create_app
 
 BASE = "http://127.0.0.1:8765"
+RECEIVER_REFUSED = {"laptop": 400, "cloud": 409}  # a bad form on a laptop; the cloud has no receiver at all (I7)
 RUBRIC = {"rubric_id": "clay-adb", "version": "1.0", "task_id": "adb", "description": "d",
           "criteria": [{"id": "accuracy", "name": "Accuracy", "description": "d", "max": 3, "weight": 2,
                         "levels": {"1": "x", "3": "y"}}]}
-
-
-def _client(tmp_path, root=ROOT):
-    app = create_app(tmp_path / "runs", root, port=8765)
-    c = TestClient(app, base_url=BASE, follow_redirects=False)
-    return app, c, c.get("/api/session").json()["csrf"]
 
 
 def _seed(runs, *names):
@@ -31,23 +24,17 @@ def _seed(runs, *names):
         shutil.copytree(FIXTURES / n, runs / f"fixture-{n}")
 
 
-def _project(tmp_path):
-    root = tmp_path / "proj"
-    shutil.copytree(ROOT / "tasks", root / "tasks")
-    shutil.copytree(ROOT / "config", root / "config")
-    return root
-
-
-def test_session(tmp_path, monkeypatch):  # A1, U1
+def test_session(backend, tmp_path, monkeypatch):  # A1, U1
     monkeypatch.setenv("AWS_PROFILE", "sandbox")
-    _, c, _ = _client(tmp_path)
+    backend.sync()
+    c = backend.client
     s = c.get("/api/session").json()
     assert s["csrf"] and "offline" in s["configs"] and "adb-001" in s["prompts"] and s["tasks"] == ["adb"]
     assert s["rubric"]["id"] == "adb-rubric-v0" and s["aws_profile"] == "sandbox" and "bedrock" not in s
 
 
-def test_runs_kpis_and_columns(tmp_path):  # A5, U2
-    runs = tmp_path / "runs"
+def test_runs_kpis_and_columns(backend, tmp_path):  # A5, U2
+    runs = backend.runs_dir
     _seed(runs, "clean", "recovered", "failed")
     evaluate(runs / "fixture-clean", load(eval_config(tmp_path / "e")))
     rj = json.loads((runs / "fixture-recovered" / "run.json").read_text())
@@ -55,7 +42,8 @@ def test_runs_kpis_and_columns(tmp_path):  # A5, U2
     (runs / "fixture-recovered" / "run.json").write_text(json.dumps(rj))
     (runs / "broken").mkdir()
     (runs / "broken" / "run.json").write_text("{nope")
-    _, c, _ = _client(tmp_path)
+    backend.sync()
+    c = backend.client
     body = c.get("/api/runs").json()
     cols = {r["run_id"]: r["column"] for r in body["runs"]}
     assert cols == {"fixture-clean": "scored", "fixture-recovered": "running", "fixture-failed": "attention",
@@ -68,11 +56,12 @@ def test_runs_kpis_and_columns(tmp_path):  # A5, U2
     assert failed["reason"] == "Hit the model-call limit (3)" and "reason" not in clean  # board-attention B1
 
 
-def test_run_detail_and_404(tmp_path):  # A1, A4
-    runs = tmp_path / "runs"
+def test_run_detail_and_404(backend, tmp_path):  # A1, A4
+    runs = backend.runs_dir
     _seed(runs, "clean", "hostile")
     evaluate(runs / "fixture-clean", load(eval_config(tmp_path / "e")))
-    _, c, _ = _client(tmp_path)
+    backend.sync()
+    c = backend.client
     d = c.get("/api/runs/fixture-clean").json()
     assert d["run"]["run_id"] == "fixture-clean" and d["scores"]["overall"] and "<h2>" in d["report_html"]
     assert d["rubric_info"]["id"] == "adb-rubric-v0" and d["m"]["rows"] and isinstance(d["m"]["feed"][0]["s"], dict)
@@ -84,9 +73,10 @@ def test_run_detail_and_404(tmp_path):  # A1, A4
         assert r.status_code == 404 and r.json() == {"error": "Run not found"}
 
 
-def test_writes_need_csrf_header_and_json(tmp_path):  # A3
-    _seed(tmp_path / "runs", "clean")
-    _, c, csrf = _client(tmp_path)
+def test_writes_need_csrf_header_and_json(backend, tmp_path):  # A3
+    _seed(backend.runs_dir, "clean")
+    backend.sync()
+    c, csrf = backend.client, backend.csrf
     body = {"prompt_id": "adb-001", "config": "offline"}
     assert c.post("/api/runs", json=body).status_code == 403  # no header
     assert c.post("/api/runs", json=body, headers={"x-csrf-token": "nope"}).status_code == 403
@@ -99,9 +89,10 @@ def test_writes_need_csrf_header_and_json(tmp_path):  # A3
     assert r.status_code == 415 and "multipart" in r.json()["error"]
 
 
-def test_origin_and_host_checked_on_every_write(tmp_path):  # A3
-    _seed(tmp_path / "runs", "clean")
-    _, c, csrf = _client(tmp_path)
+def test_origin_and_host_checked_on_every_write(backend, tmp_path):  # A3
+    _seed(backend.runs_dir, "clean")
+    backend.sync()
+    c, csrf = backend.client, backend.csrf
     h = {"x-csrf-token": csrf, "origin": "http://evil.example"}
     for method, url in (("post", "/api/runs"), ("put", "/api/rubric/drafts/aaaaaaaaaaaa"),
                         ("delete", "/api/rubric/drafts/aaaaaaaaaaaa")):
@@ -111,8 +102,9 @@ def test_origin_and_host_checked_on_every_write(tmp_path):  # A3
     assert r.status_code == 400 and r.json() == {"error": "Bad Host header"}
 
 
-def test_errors_are_json(tmp_path):  # A4
-    _, c, csrf = _client(tmp_path)
+def test_errors_are_json(backend, tmp_path):  # A4
+    backend.sync()
+    c, csrf = backend.client, backend.csrf
     r = c.post("/api/runs", json={"prompt_id": "adb-001"}, headers={"x-csrf-token": csrf})
     assert r.status_code == 422 and r.json() == {"error": "config: Field required"}
     r = c.post("/api/runs", json={"prompt_id": "adb-001", "config": "nope"}, headers={"x-csrf-token": csrf})
@@ -121,36 +113,31 @@ def test_errors_are_json(tmp_path):  # A4
     assert c.get("/api/batches/b-..%2F..%2Fetc").status_code == 404
 
 
-def test_start_run_and_evaluate_through_api(tmp_path):  # A1: real subprocesses, offline config
-    _, c, csrf = _client(tmp_path)
-    r = c.post("/api/runs", json={"prompt_id": "adb-001", "config": "offline"}, headers={"x-csrf-token": csrf})
+def test_start_run_and_evaluate_through_api(backend, tmp_path):  # A1: real subprocesses (fault server: no network)
+    add_config(backend, "ok", [{"tool": "echo", "input": {"text": "x"}}, {"text": "done"}])
+    c, csrf = backend.client, backend.csrf
+    r = c.post("/api/runs", json={"prompt_id": "adb-001", "config": "ok"}, headers={"x-csrf-token": csrf})
     assert r.status_code == 201
     run_id = r.json()["run_id"]
-    deadline = time.monotonic() + 120
-    while time.monotonic() < deadline:
-        jobs = c.get("/api/jobs").json()["jobs"]
-        if jobs and not jobs[0]["alive"]:
-            break
-        time.sleep(0.2)
-    assert jobs[0]["kind"] == "run" and jobs[0]["finished_at"] and jobs[0]["run_id"] == run_id
+    backend.drain()
+    jobs = c.get("/api/jobs").json()["jobs"]
+    assert jobs[0]["kind"] == "run" and not jobs[0]["alive"] and jobs[0]["finished_at"] and jobs[0]["run_id"] == run_id
     card = next(x for x in c.get("/api/runs").json()["runs"] if x["run_id"] == run_id)
     assert card["column"] == "attention" and card["headline"] == "not evaluated"
     assert c.post(f"/api/runs/{run_id}/evaluate", headers={"x-csrf-token": csrf}).status_code == 202
-    while time.monotonic() < deadline:
-        card = next(x for x in c.get("/api/runs").json()["runs"] if x["run_id"] == run_id)
-        if card["column"] == "scored":
-            break
-        time.sleep(0.2)
+    backend.drain()
+    card = next(x for x in c.get("/api/runs").json()["runs"] if x["run_id"] == run_id)
     assert card["column"] == "scored" and card["overall"] is not None
     r = c.post("/api/runs/nope/evaluate", headers={"x-csrf-token": csrf})
     assert r.status_code == 404
 
 
-def test_compare_dashboard_batches_receiver(tmp_path):  # A1
-    runs = tmp_path / "runs"
+def test_compare_dashboard_batches_receiver(backend, tmp_path):  # A1
+    runs = backend.runs_dir
     _seed(runs, "clean", "recovered")
     evaluate(runs / "fixture-clean", load(eval_config(tmp_path / "e")))
-    _, c, csrf = _client(tmp_path)
+    backend.sync()
+    c, csrf = backend.client, backend.csrf
     cmp = c.get("/api/compare?a=fixture-clean&b=fixture-recovered").json()
     assert cmp["rows"][0]["label"] == "Overall" and cmp["a"]["run"]["run_id"] == "fixture-clean"
     assert c.get("/api/compare?a=fixture-clean&b=nope").status_code == 404
@@ -162,12 +149,12 @@ def test_compare_dashboard_batches_receiver(tmp_path):  # A1
     assert r.status_code == 400 and "Pick one or more prompts" in r.json()["error"]
     assert c.get("/api/receiver").json()["running"] is False
     r = c.post("/api/receiver/start", json={"task": "../x"}, headers={"x-csrf-token": csrf})
-    assert r.status_code == 400
+    assert r.status_code == RECEIVER_REFUSED[backend.name]
 
 
-def test_rubric_flow_through_api(tmp_path):  # A1: draft (JSON shortcut), update, activate, rollback, discard
-    root = _project(tmp_path)
-    _, c, csrf = _client(tmp_path, root=root)
+def test_rubric_flow_through_api(backend, tmp_path):  # A1: draft (JSON shortcut), update, activate, rollback, discard
+    backend.sync()
+    c, csrf = backend.client, backend.csrf
     h = {"x-csrf-token": csrf}
     r = c.post("/api/rubric/drafts", headers=h, data={"task": "adb", "kind": "file", "config": "offline"},
                files={"file": ("clay.json", json.dumps(RUBRIC).encode())})
@@ -203,8 +190,9 @@ def test_rubric_flow_through_api(tmp_path):  # A1: draft (JSON shortcut), update
     assert r.status_code == 413
 
 
-def test_spa_served_and_fallback(tmp_path):  # B1, B3
-    _, c, _ = _client(tmp_path)
+def test_spa_served_and_fallback(backend, tmp_path):  # B1, B3
+    backend.sync()
+    c = backend.client
     for path in ("/", "/runs/whatever", "/rubric/drafts/abc", "/dashboard?rubric=all"):
         r = c.get(path)
         assert r.status_code == 200 and '<div id="root"></div>' in r.text
@@ -220,8 +208,9 @@ def test_spa_served_and_fallback(tmp_path):  # B1, B3
         assert r.status_code == 404 and r.text != index and "def " not in r.text, bad
 
 
-def test_csp_and_bundle(tmp_path):  # B2, B2a
-    _, c, _ = _client(tmp_path)
+def test_csp_and_bundle(backend, tmp_path):  # B2, B2a
+    backend.sync()
+    c = backend.client
     csp = c.get("/").headers["content-security-policy"]
     for part in ("default-src 'none'", "script-src 'self'", "font-src 'self'", "connect-src 'self'",
                  "frame-ancestors 'none'"):
@@ -233,11 +222,11 @@ def test_csp_and_bundle(tmp_path):  # B2, B2a
         assert "data:font" not in css.read_text() and "url(data:application/font" not in css.read_text()
 
 
-def test_must_deny_paths(tmp_path, monkeypatch):  # A3: the must-deny cases of the old server-rendered UI, against /api
-    runs = tmp_path / "runs"
+def test_must_deny_paths(backend, tmp_path, monkeypatch):  # A3: the must-deny cases of the old server-rendered UI, against /api
+    runs = backend.runs_dir
     _seed(runs, "clean")
-    root = _project(tmp_path)
-    _, c, csrf = _client(tmp_path, root=root)
+    backend.sync()
+    c, csrf = backend.client, backend.csrf
     h = {"x-csrf-token": csrf}
     for bad in ("nope", "a..b", ".ui-jobs", "%2e%2e"):
         assert c.get(f"/api/runs/{bad}").status_code == 404
@@ -245,7 +234,7 @@ def test_must_deny_paths(tmp_path, monkeypatch):  # A3: the must-deny cases of t
     assert c.get("/api/batches/b-..%2F..%2Fetc").status_code == 404
     assert c.get("/api/compare?a=fixture-clean&b=..%2F..%2Fetc").status_code == 404
     assert c.get("/api/rubric?task=nope").status_code == 404
-    assert c.post("/api/receiver/start", headers=h, json={"task": "nope"}).status_code == 400
+    assert c.post("/api/receiver/start", headers=h, json={"task": "nope"}).status_code == RECEIVER_REFUSED[backend.name]
     import foundry.engine.importer
 
     monkeypatch.setattr(foundry.engine.importer, "MAX_FILE_BYTES", 1000)
@@ -263,21 +252,23 @@ def test_must_deny_paths(tmp_path, monkeypatch):  # A3: the must-deny cases of t
         assert c.get(f"/api/rubric/drafts/{bad}/source?task=adb").status_code == 404
 
 
-def test_spent_counts_every_run_mean_only_active_rubric(tmp_path):  # A5
-    runs = tmp_path / "runs"
+def test_spent_counts_every_run_mean_only_active_rubric(backend, tmp_path):  # A5
+    runs = backend.runs_dir
     _seed(runs, "clean", "failed")
     evaluate(runs / "fixture-clean", load(eval_config(tmp_path / "e")))
-    _, c, _ = _client(tmp_path)
+    backend.sync()
+    c = backend.client
     k = c.get("/api/runs").json()["kpis"]
     d_all = c.get("/api/dashboard?rubric=all").json()["d"]["kpis"]
     assert k["spent"] == pytest.approx(d_all["spent"]) and k["scored"] == 1 and k["runs"] == 2
 
 
-def test_must_deny_paths_continued(tmp_path, monkeypatch):  # A3: the rest of those must-deny cases
+@pytest.mark.laptop_only("symlinked run dirs: the cloud's store holds no symlinks, by construction")
+def test_must_deny_paths_continued(backend, tmp_path, monkeypatch):  # A3: the rest of those must-deny cases
     import os
     import socket
 
-    runs = tmp_path / "runs"
+    runs = backend.runs_dir
     _seed(runs, "clean", "recovered")
     rj = json.loads((runs / "fixture-recovered" / "run.json").read_text())
     rj["status"] = "running"
@@ -285,8 +276,8 @@ def test_must_deny_paths_continued(tmp_path, monkeypatch):  # A3: the rest of th
     os.symlink(runs / "fixture-clean", runs / "symdir")  # a symlinked run dir is never followed
     (runs / "symjson").mkdir()
     os.symlink(runs / "fixture-clean" / "run.json", runs / "symjson" / "run.json")
-    root = _project(tmp_path)
-    _, c, csrf = _client(tmp_path, root=root)
+    backend.sync()
+    c, csrf = backend.client, backend.csrf
     h = {"x-csrf-token": csrf}
     r = c.post("/api/runs/fixture-recovered/evaluate", headers=h)
     assert r.status_code == 409 and "still running" in r.json()["error"]
@@ -301,12 +292,13 @@ def test_must_deny_paths_continued(tmp_path, monkeypatch):  # A3: the rest of th
     assert r.status_code == 400 and "non-public address" in r.json()["error"]
 
 
-def test_must_deny_paths_parity(tmp_path):  # A3: the remaining must-deny cases, ported (verify 2)
+@pytest.mark.laptop_only("a symlinked report.md and a rubric lock file: neither exists in the cloud's store")
+def test_must_deny_paths_parity(backend, tmp_path):  # A3: the remaining must-deny cases, ported (verify 2)
     import os
 
     from foundry.data import locks as lock
 
-    runs = tmp_path / "runs"
+    runs = backend.runs_dir
     _seed(runs, "clean", "hostile", "recovered")
     evaluate(runs / "fixture-clean", load(eval_config(tmp_path / "e")))
     evaluate(runs / "fixture-hostile", load(eval_config(tmp_path / "e2")))
@@ -318,8 +310,9 @@ def test_must_deny_paths_parity(tmp_path):  # A3: the remaining must-deny cases,
     (runs / "fixture-recovered" / "run.json").write_text(json.dumps(rj))
     (runs / "bad-list").mkdir()  # F4: a run.json that isn't an object
     (runs / "bad-list" / "run.json").write_text("[1, 2]")
-    root = _project(tmp_path)
-    _, c, csrf = _client(tmp_path, root=root)
+    root = backend.project
+    backend.sync()
+    c, csrf = backend.client, backend.csrf
     h = {"x-csrf-token": csrf}
 
     assert "TOP SECRET" not in c.get("/api/runs/fixture-clean").text and "TOP SECRET" not in c.get("/api/runs").text
@@ -361,28 +354,29 @@ def test_must_deny_paths_parity(tmp_path):  # A3: the remaining must-deny cases,
     assert "access-control-allow-origin" not in pre.headers  # no CORS is ever granted
 
 
-def test_second_run_while_one_is_running_is_409(tmp_path, monkeypatch):  # A3: one UI-started run at a time
-    _, c, csrf = _client(tmp_path)
-    app_state = c.app.state.ui
+def test_second_run_while_one_is_running_is_409(backend, tmp_path):  # A3: one UI-started run at a time
+    add_config(backend, "slow", [{"tool": "sleep", "input": {"seconds": 2}}, {"text": "done"}])
+    c, h = backend.client, backend.headers()
+    busy = c.post("/api/runs", headers=h, json={"prompt_id": "adb-001", "config": "slow"}).json()["run_id"]
+    r = c.post("/api/runs", headers=h, json={"prompt_id": "adb-002", "config": "slow"})
+    assert r.status_code == 409 and f"already in progress: {busy}" in r.json()["error"]
+    backend.drain()
+    assert c.post("/api/runs", headers=h, json={"prompt_id": "adb-002", "config": "slow"}).status_code == 201
+    backend.drain()
 
-    class Alive:
-        kind, alive, run_id = "run", True, "busy-run"
 
-    app_state.jobs["0" * 16] = Alive()
-    r = c.post("/api/runs", headers={"x-csrf-token": csrf}, json={"prompt_id": "adb-001", "config": "offline"})
-    assert r.status_code == 409 and "already in progress: busy-run" in r.json()["error"]
-
-
-def test_rubric_contents_viewable(tmp_path):  # increment 10: R1, R2, R4
+@pytest.mark.laptop_only("a symlinked rubric.json copy: the cloud's store holds no symlinks")
+def test_rubric_contents_viewable(backend, tmp_path):  # increment 10: R1, R2, R4
     import os
 
-    runs = tmp_path / "runs"
+    runs = backend.runs_dir
     _seed(runs, "clean", "recovered", "failed")
     evaluate(runs / "fixture-clean", load(eval_config(tmp_path / "e")))
     evaluate(runs / "fixture-recovered", load(eval_config(tmp_path / "e2")))
     (runs / "fixture-recovered" / "rubric.json").unlink()  # a symlinked copy is never followed
     os.symlink(ROOT / "tasks/adb/rubric.json", runs / "fixture-recovered" / "rubric.json")
-    _, c, _ = _client(tmp_path)
+    backend.sync()
+    c = backend.client
     a = c.get("/api/rubric/active?task=adb").json()
     assert a["rubric"]["rubric_id"] == "adb-rubric-v0" and len(a["rubric"]["criteria"]) == 4 and a["active"]
     assert len(a["sha256"]) == 64 and a["file"] is None  # not in a history yet
@@ -396,15 +390,16 @@ def test_rubric_contents_viewable(tmp_path):  # increment 10: R1, R2, R4
     assert c.get("/api/dashboard?rubric=all").json()["scored_by"][a["sha256"]] in ("fixture-clean", "fixture-recovered")
 
 
-def test_card_kpi_shares_add_up_to_the_totals(tmp_path):  # increment 11, K3: the board totals filtered cards from these
-    runs = tmp_path / "runs"
+def test_card_kpi_shares_add_up_to_the_totals(backend, tmp_path):  # increment 11, K3: the board totals filtered cards from these
+    runs = backend.runs_dir
     _seed(runs, "clean", "failed", "recovered")
     evaluate(runs / "fixture-clean", load(eval_config(tmp_path / "e")))
     trace = runs / "fixture-failed" / "trace.jsonl"  # offline fixtures cost nothing; give one run a real cost
     trace.write_text(trace.read_text().replace('"cost_usd":null', '"cost_usd":0.25', 1))
     (runs / "broken").mkdir()
     (runs / "broken" / "run.json").write_text("{nope")
-    _, c, _ = _client(tmp_path)
+    backend.sync()
+    c = backend.client
     body = c.get("/api/runs").json()
     k, shares = body["kpis"], {r["run_id"]: r["kpi"] for r in body["runs"]}
     assert set(shares) == {"fixture-clean", "fixture-failed", "fixture-recovered", "broken"}
@@ -414,12 +409,13 @@ def test_card_kpi_shares_add_up_to_the_totals(tmp_path):  # increment 11, K3: th
     assert shares["fixture-failed"]["spent"] == pytest.approx(0.25) and shares["broken"] == {"spent": 0.0, "overall": None}
 
 
-def test_compare_rows_say_which_way_is_better(tmp_path):  # increment 12, C6: a cost increase must not read as an improvement
-    runs = tmp_path / "runs"
+def test_compare_rows_say_which_way_is_better(backend, tmp_path):  # increment 12, C6: a cost increase must not read as an improvement
+    runs = backend.runs_dir
     _seed(runs, "clean", "recovered")
     for name in ("fixture-clean", "fixture-recovered"):
         evaluate(runs / name, load(eval_config(tmp_path / f"e-{name}")))
-    _, c, _ = _client(tmp_path)
+    backend.sync()
+    c = backend.client
     rows = c.get("/api/compare?a=fixture-clean&b=fixture-recovered").json()["rows"]
     better = {r["label"]: r["better"] for r in rows}
     assert better["Overall"] == better["Workflow"] == better["Output"] == "higher"
@@ -430,8 +426,9 @@ def test_compare_rows_say_which_way_is_better(tmp_path):  # increment 12, C6: a 
     assert any(r["label"] == "data-fit" for r in indented)
 
 
-def test_logo_and_tab_icons_served(tmp_path):  # increment 14, L2/L3: TF mark, charcoal on light and cyan on dark
-    _, c, _ = _client(tmp_path)
+def test_logo_and_tab_icons_served(backend, tmp_path):  # increment 14, L2/L3: TF mark, charcoal on light and cyan on dark
+    backend.sync()
+    c = backend.client
     for name in ("logo-light-v1", "logo-dark-v1", "favicon-light-16-v1", "favicon-light-32-v1",
                  "favicon-dark-16-v1", "favicon-dark-32-v1"):
         r = c.get(f"/assets/brand/{name}.png")

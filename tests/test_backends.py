@@ -1,0 +1,120 @@
+"""The harness itself (backend-parity ADR-6): a run and its scoring through the API on both setups, with jobs run
+by each setup's own machinery; and the rule that single-setup tests stay few (spec AC1)."""
+
+import ast
+
+from conftest import ROOT
+from harness_helpers import write_config
+
+CONVERTED = ["test_api.py", "test_api_contract.py", "test_api_ports.py", "test_backends.py"]
+MAX_SINGLE_SETUP = 10
+
+
+def add_config(h, name: str, turns: list[dict], **kw) -> None:
+    """A scripted config on the fault server (no network), saved as config/<name>.toml of the project."""
+    src = write_config(h.project.parent / f"cfg-{name}", turns, **kw)
+    (h.project / "config" / f"{name}.toml").write_text(src.read_text())
+
+
+def test_a_run_and_its_scoring_on_both_setups(backend):
+    h = backend
+    add_config(h, "ok", [{"tool": "echo", "input": {"text": "x"}}, {"text": "done"}])
+    r = h.client.post("/api/runs", headers=h.headers(), json={"prompt_id": "adb-001", "config": "ok"})
+    assert r.status_code == 201, r.text
+    run_id = r.json()["run_id"]
+    h.drain()
+    d = h.client.get(f"/api/runs/{run_id}")
+    assert d.status_code == 200 and d.json()["run"]["status"] == "succeeded", d.text
+    assert h.client.post(f"/api/runs/{run_id}/evaluate", headers=h.headers()).status_code == 202
+    h.drain()
+    (card,) = [c for c in h.client.get("/api/runs").json()["runs"] if c["run_id"] == run_id]
+    assert card["column"] == "scored" and card["overall"] is not None
+    assert (h.pull(run_id) / "scores.json").is_file()
+
+
+def test_single_setup_tests_are_few():
+    marked = []
+    for name in CONVERTED:
+        tree = ast.parse((ROOT / "tests" / name).read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+                for dec in node.decorator_list:
+                    src = ast.unparse(dec)
+                    if "laptop_only" in src or "cloud_only" in src:
+                        marked.append(f"{name}::{node.name}")
+    assert len(marked) <= MAX_SINGLE_SETUP, marked
+
+
+# --- one board (backend-parity ADR-2, spec AC4) -------------------------------------------------------------------
+
+
+def _board(h) -> dict:
+    """GET /api/runs without what depends on the clock (the card's `when`, the KPI `today`)."""
+    body = h.client.get("/api/runs").json()
+    for c in body["runs"]:
+        c.pop("when", None)
+    body["kpis"].pop("today", None)
+    return body
+
+
+def test_the_same_runs_make_the_same_board_on_both_setups(tmp_path, monkeypatch):
+    from backends import CloudHarness, LaptopHarness
+    from eval_helpers import eval_config, load
+
+    from foundry.engine.evaluate.evaluate import evaluate
+
+    boards = []
+    for h in (LaptopHarness(tmp_path / "laptop"), CloudHarness(tmp_path / "cloud", monkeypatch)):
+        for name in ("clean", "recovered", "failed", "hostile"):
+            h.seed(name)
+        evaluate(h.runs_dir / "fixture-clean", load(eval_config(tmp_path / f"e-{h.name}")))
+        (h.runs_dir / "broken").mkdir()
+        (h.runs_dir / "broken" / "run.json").write_text("{nope")
+        h.sync()
+        boards.append(_board(h))
+    laptop, cloud = boards
+    assert [c["run_id"] for c in laptop["runs"]] == [c["run_id"] for c in cloud["runs"]]
+    assert laptop == cloud
+
+
+def test_a_laptop_run_whose_process_died_shows_interrupted(tmp_path):  # spec AC9
+    import json
+
+    from backends import LaptopHarness
+
+    from foundry.services import jobs
+
+    h = LaptopHarness(tmp_path)
+    add_config(h, "slow", [{"tool": "sleep", "input": {"seconds": 30}}, {"text": "done"}])
+    run_id = h.client.post("/api/runs", headers=h.headers(), json={"prompt_id": "adb-001", "config": "slow"}).json()["run_id"]
+    (job,) = jobs.live(h.ws)
+    for _ in range(200):  # until run.json exists and says running
+        f = h.runs_dir / run_id / "run.json"
+        if f.is_file() and json.loads(f.read_text()).get("status") == "running":
+            break
+        __import__("time").sleep(0.05)
+    job.proc.kill()
+    h.drain()
+    card = next(c for c in h.client.get("/api/runs").json()["runs"] if c["run_id"] == run_id)
+    assert (card["status"], card["headline"], card["column"]) == ("interrupted", "interrupted", "attention")
+    assert card["reason"] == "Its worker stopped before finishing"
+    assert h.client.get(f"/api/runs/{run_id}").json()["run"]["status"] == "interrupted"
+
+
+def test_a_stored_card_from_other_code_never_breaks_the_board(tmp_path, monkeypatch):  # spec AC4
+    import json
+
+    from backends import CloudHarness
+
+    from foundry.data.store import Update
+
+    h = CloudHarness(tmp_path, monkeypatch)
+    h.seed("clean")
+    item = h.store.get_item("TREE", "run#fixture-clean")
+    card = {**json.loads(item["card"]), "added_by_newer_code": 1}
+    card.pop("footer")  # and one field older code didn't write
+    h.store.write(Update("TREE", "run#fixture-clean", set={"card": json.dumps(card)}))
+    r = h.client.get("/api/runs")
+    assert r.status_code == 200, r.text
+    (c,) = r.json()["runs"]
+    assert "added_by_newer_code" not in c and "footer" not in c and c["column"] == "attention"

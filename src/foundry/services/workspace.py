@@ -19,7 +19,8 @@ class Workspace:
     receiver_enabled: bool = True  # off in the cloud: nothing can reach a port inside a Lambda (aws-deploy I7)
     backend: object | None = None  # services.jobs backend; None = LocalBackend (subprocesses, as on a laptop)
     cap_usd: float | None = None  # the monthly spend cap (aws-deploy A5); None = no cap
-    cloud: tuple | None = None  # (store, mirror) when state lives in the cloud store (services.cloud_state)
+    cloud: tuple | None = None  # (store, mirror) in the cloud; read by the backend modules only (test_architecture)
+    state: object | None = None  # services.state: None = LocalState (files, as on a laptop); CloudState in AWS
 
     @property
     def batches_dir(self) -> Path:

@@ -301,3 +301,55 @@ def test_no_duplicate_test_names():
         names = [n.name for n in ast.parse(f.read_text()).body if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")]
         dups += [f"{f.name}: {n}" for n in set(names) if names.count(n) > 1]
     assert not dups, dups
+
+
+# --- one code path for the laptop and AWS (backend-parity design ADR-1) -------------------------------------------
+
+# The backend modules: the cloud's state, job backend and worker. Only they touch the store, the mirror and the run
+# index, or read `.cloud`; the rest of services and api go through `state.of(ws)` and `jobs.*`, so a feature written
+# once works on both setups. Entry points (server, lambda_*, cloud_boot) and scripts are wiring and aren't checked.
+BACKEND = {"foundry/services/cloud_state.py", "foundry/services/cloud_jobs.py", "foundry/services/workers.py"}
+BACKEND_ONLY = ("foundry.data.store", "foundry.data.mirror", "foundry.data.index", "foundry.services.cloud_state",
+                "foundry.services.cloud_jobs", "foundry.services.workers")
+
+
+def backend_leaks(src: Path) -> list[str]:
+    found = []
+    for path in sorted(src.joinpath("foundry").rglob("*.py")):
+        rel = path.relative_to(src).as_posix()
+        if not rel.startswith(("foundry/services/", "foundry/api/")) or rel in BACKEND or "__pycache__" in path.parts:
+            continue
+        for line, target, name in imports(path, src):
+            full = f"{target}.{name}" if name else target
+            hit = next((m for m in BACKEND_ONLY if full == m or full.startswith(m + ".")), None)
+            if hit:
+                found.append(f"{rel}:{line} imports {hit}: only the backend modules may (use state.of(ws) / jobs.*)")
+        for node in ast.walk(ast.parse(path.read_text(), filename=str(path))):
+            if isinstance(node, ast.Attribute) and node.attr == "cloud":
+                found.append(f"{rel}:{node.lineno} reads .cloud: only the backend modules may (use state.of(ws))")
+    return found
+
+
+def test_only_backend_modules_know_the_cloud():
+    problems = backend_leaks(SRC)
+    assert not problems, "\n".join(problems)
+
+
+def test_the_backend_check_catches_a_leak(tmp_path):
+    """Each of the three checks reports: a module import, a function-local `from` import of a name, and `.cloud`."""
+    pkg = tmp_path / "foundry"
+    for d in ("", "services", "data", "api"):
+        (pkg / d).mkdir(parents=True, exist_ok=True)
+        (pkg / d / "__init__.py").write_text("")
+    for m in ("data/store.py", "data/index.py", "services/cloud_state.py", "services/state.py"):
+        (pkg / m).write_text("X = 1\n")
+    (pkg / "services" / "leaky.py").write_text("from foundry.data import store\n"
+                                               "def f(ws):\n    from foundry.services.cloud_state import X\n"
+                                               "    return ws.cloud\n")
+    (pkg / "api" / "fine.py").write_text("from foundry.services import state\n")
+    (pkg / "services" / "cloud_state.py").write_text("from foundry.data import index\nY = lambda ws: ws.cloud\n")
+    problems = backend_leaks(tmp_path)
+    assert any("services/leaky.py:1 imports foundry.data.store" in p for p in problems), problems
+    assert any("services/leaky.py:3 imports foundry.services.cloud_state" in p for p in problems), problems
+    assert any("services/leaky.py:4 reads .cloud" in p for p in problems), problems
+    assert not any("api/fine.py" in p or "cloud_state.py" in p for p in problems), problems

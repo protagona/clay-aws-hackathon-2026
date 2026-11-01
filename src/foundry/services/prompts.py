@@ -8,7 +8,7 @@ from foundry.data import project
 from foundry.data import runs as data_runs
 from foundry.data.prompts import PromptStore, StoreError
 from foundry.data.tasks import PROMPT_ID_RE, RubricError
-from foundry.services import cloud_state, configs, jobs, runs, stats
+from foundry.services import configs, jobs, runs, state, stats
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -16,7 +16,7 @@ from foundry.services.workspace import Workspace
 def prompt_store(ws: Workspace, task: str) -> PromptStore:
     if task not in configs.task_ids(ws):
         raise ServiceError(400, f"Unknown task '{task}'")
-    cloud_state.pull_project(ws, task)
+    state.of(ws).fresh_project(ws, task)
     return PromptStore(project.task_dir(ws.root, task), task)
 
 
@@ -31,7 +31,7 @@ def call(ws: Workspace, fn, *args):
 
 
 def version_of(ws: Workspace, task: str) -> dict:
-    v = cloud_state.project_version(ws, task)
+    v = state.of(ws).project_version(ws, task)
     return {} if v is None else {"base_version": v}
 
 
@@ -46,7 +46,7 @@ def need_prompt_id(pid: str) -> None:
 
 def runs_by_prompt(ws: Workspace, task: str) -> tuple[dict[str, list[dict]], list[str]]:
     """Readable runs of the task grouped by prompt id, and the names of unreadable run dirs (counted by name)."""
-    cloud_state.pull_runs(ws)
+    state.of(ws).fresh_runs(ws)
     by: dict[str, list[dict]] = {}
     unreadable = []
     for d in data_runs.run_dirs(ws.runs_dir):
@@ -73,7 +73,7 @@ def prompts_view(ws: Workspace, task: str) -> dict:
     store = prompt_store(ws, task)
     rows = call(ws, store.rows)
     index = runs_by_prompt(ws, task)
-    shares = runs.board_kpis(ws)["shares"]
+    shares = runs.shares(ws)
     out = []
     for r in rows:
         own = [shares.get(x["run_id"], {}).get("overall") for x in index[0].get(r["prompt_id"], [])]
@@ -92,7 +92,7 @@ def prompt_view(ws: Workspace, task: str, pid: str) -> dict:
         raise ServiceError(404, f"No prompt {pid}")
     index = runs_by_prompt(ws, task)
     count = run_count(ws, task, pid, index)
-    shares = runs.board_kpis(ws)["shares"]
+    shares = runs.shares(ws)
     mine = index[0].get(pid, [])
     rows = sorted(({"run_id": x["run_id"], "model": stats.model_key(x["run"]), "started_at": x["run"].get("started_at"),
                     "overall": runs.overall(ws, x["run_id"]), "cost": shares.get(x["run_id"], {}).get("spent")}
@@ -105,7 +105,7 @@ def prompt_view(ws: Workspace, task: str, pid: str) -> dict:
 
 
 def create(ws: Workspace, task: str, pid, text) -> str:
-    with cloud_state.project_write(ws, task):
+    with state.of(ws).project_write(ws, task):
         store = prompt_store(ws, task)
         index = runs_by_prompt(ws, task)
         taken = set(index[0]) | ({pid} if isinstance(pid, str) and run_count(ws, task, pid, index)["runs"] else set())
@@ -116,7 +116,7 @@ def create(ws: Workspace, task: str, pid, text) -> str:
 def set_text(ws: Workspace, task: str, pid: str, text) -> None:
     need_prompt_id(pid)
     store = prompt_store(ws, task)
-    with cloud_state.project_write(ws, task, hold_starts=True):  # no run may start between the check and the write
+    with state.of(ws).project_write(ws, task, hold_starts=True):  # no run may start between the check and the write
         count = run_count(ws, task, pid)
         if count["runs"]:
             raise ServiceError(409, f"{pid} has {count['runs']} run{'s' if count['runs'] != 1 else ''}, so its text "
@@ -129,17 +129,17 @@ def set_text(ws: Workspace, task: str, pid: str, text) -> None:
 
 def new_version(ws: Workspace, task: str, pid: str) -> str:
     need_prompt_id(pid)
-    with cloud_state.project_write(ws, task):
+    with state.of(ws).project_write(ws, task):
         return call(ws, prompt_store(ws, task).copy_version, pid, set(runs_by_prompt(ws, task)[0]))
 
 
 def archive(ws: Workspace, task: str, pid: str, archived: bool) -> None:
     need_prompt_id(pid)
-    with cloud_state.project_write(ws, task):
+    with state.of(ws).project_write(ws, task):
         call(ws, prompt_store(ws, task).set_archived, pid, bool(archived))
 
 
 def set_stages(ws: Workspace, task: str, pid: str, stages) -> str:
     need_prompt_id(pid)
-    with cloud_state.project_write(ws, task):
+    with state.of(ws).project_write(ws, task):
         return call(ws, prompt_store(ws, task).set_stages, pid, stages)

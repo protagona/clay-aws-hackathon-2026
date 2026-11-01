@@ -13,11 +13,11 @@ import json
 import logging
 import time
 
-from foundry.data import index
 from foundry.data import runs as data_runs
 from foundry.data.mirror import PK as TREE
 from foundry.data.store import Conflict, Cond, Update
 from foundry.services import cloud_jobs, jobs, runs
+from foundry.services.cloud_state import CloudState
 from foundry.services.workspace import Workspace
 
 SYNC_EVERY_S = 5.0
@@ -61,14 +61,8 @@ def pull_projects(store, mirror) -> None:
 
 
 def index_run(ws: Workspace, mirror, run_id: str) -> None:
-    """Push the run's changed files together with its board card and summary."""
-    d = ws.runs_dir / run_id
-    summary = runs.summary_for(d)
-    card = runs.card_for(ws, d)
-    if not card.get("unreadable"):
-        card = {**card, **runs.card_extras(ws, run_id)}
-    attrs = index.run_attrs(card, summary) if summary is not None else None
-    mirror.push_dir(f"run#{run_id}", attrs=attrs)
+    """Push the run's changed files together with its board card and summary (CloudState.record_run)."""
+    CloudState(mirror.store, mirror).record_run(ws, run_id)
 
 
 def local_args(ws: Workspace, kind: str, run_id: str, args: list[str]) -> list[str]:

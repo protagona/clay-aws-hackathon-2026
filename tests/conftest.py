@@ -28,3 +28,11 @@ def foundry(*args: str, env: dict | None = None, timeout: float = 300) -> subpro
         [sys.executable, "-m", "foundry", *args],
         cwd=ROOT, capture_output=True, text=True, env=env, timeout=timeout,
     )
+
+
+@pytest.fixture(params=["laptop", "cloud"])
+def backend(request, tmp_path, monkeypatch):
+    """The app on a laptop and in the cloud (tests/backends.py, backend-parity ADR-6): one test, both setups."""
+    from backends import make
+
+    return make(request, tmp_path, monkeypatch)

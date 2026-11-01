@@ -12,7 +12,9 @@ from foundry.contract import evaluation_interrupted
 from foundry.data import project as data_project
 from foundry.data import runs as data_runs
 from foundry.data.runs import new_run_id
-from foundry.services import cloud_state, configs, jobs, rubrics, spend, stats
+from foundry.services import cards, configs, jobs, rubrics, spend, state, stats
+from foundry.services.cards import (  # noqa: F401 (re-exported: callers and tests use runs.*)
+    INTERRUPTED_REASON, card_extras, card_for, entry_for, failure_reason, short, summary_for, when)
 from foundry.services.errors import ServiceError
 from foundry.services.run_view import monitor
 from foundry.services.workspace import Workspace
@@ -23,7 +25,7 @@ from foundry.services.workspace import Workspace
 
 def run_path(ws: Workspace, run_id: str) -> Path | None:
     if data_runs.is_valid_run_id(run_id) and not run_id.startswith("."):
-        cloud_state.pull_run(ws, run_id)
+        state.of(ws).fresh_run(ws, run_id)
     return data_runs.safe_run_path(ws.runs_dir, run_id)
 
 
@@ -38,19 +40,17 @@ def detail(ws: Workspace, path: Path, seen: int | None = None) -> dict:
     """Everything the run drawer shows, from the run's own files. The report is Markdown (`report_md`); the API
     renders it, and model text, to safe HTML."""
     run = {**data_runs.read_run(path), "run_id": path.name}  # links use the directory name, never run.json's
-    if run.get("status") == "running" and cloud_state.on(ws):
-        job = jobs.of_run(ws, "run", path.name)
-        if job is not None and job.status == "interrupted":  # its worker stopped; run.json will never say so
-            run["status"] = "interrupted"
+    if interrupted(ws, path.name, run.get("status")):  # its job ended; run.json will never say so
+        run["status"] = "interrupted"
     scores = data_runs.read_scores(path)
-    interrupted = scores is not None and evaluation_interrupted(path)
-    report_md = data_runs.read_report(path) if scores is not None and not interrupted else None
+    scoring_cut = scores is not None and evaluation_interrupted(path)
+    report_md = data_runs.read_report(path) if scores is not None and not scoring_cut else None
     steps = data_runs.read_steps_safely(path)
     evaluating = jobs.is_evaluating(ws, path)
     live = evaluating or run.get("status") == "running"
-    return {"run": run, "scores": None if interrupted else scores, "report_md": report_md,
-            "rubric_info": None if interrupted else rubrics.rubric_info(ws, run, scores),
-            "interrupted": interrupted, "evaluating": evaluating, "m": monitor(run, steps, live=live, seen=seen)}
+    return {"run": run, "scores": None if scoring_cut else scores, "report_md": report_md,
+            "rubric_info": None if scoring_cut else rubrics.rubric_info(ws, run, scores),
+            "interrupted": scoring_cut, "evaluating": evaluating, "m": monitor(run, steps, live=live, seen=seen)}
 
 
 def overall(ws: Workspace, run_id: str) -> float | None:
@@ -122,212 +122,78 @@ def board_column(card: dict) -> str:
     return "attention"
 
 
-def short(score) -> str:
-    return "—" if score is None else f"{score:.2f}".removeprefix("0")
-
-
-def when(iso: str | None) -> str:
-    try:
-        return datetime.strptime(iso.replace("Z", "+0000"), "%Y-%m-%dT%H:%M:%S.%f%z").strftime("%m-%d %H:%M")
-    except (AttributeError, ValueError):
-        return ""
-
-
-def card_for(ws: Workspace, d: Path) -> dict:
-    """One run directory's board card (the board, and cloud workers indexing a run they just synced)."""
-    run = data_runs.read_run(d)
-    if run is None:
-        return {"unreadable": True, "name": d.name, "started_at": ""}
-    scores = data_runs.read_scores(d)
-    status = run["status"]
-    if jobs.is_evaluating(ws, d):
-        headline = "evaluating"
-    elif status == "running":
-        headline = "running"
-    elif scores is None:
-        headline = "not evaluated" if not data_runs.has_scores_file(d) else "incomplete"
-    elif evaluation_interrupted(d) or scores["overall"] is None:
-        headline = "incomplete"
-    else:
-        headline = f"{scores['overall']:.2f}"
-    sub = ""
-    if scores is not None and headline not in ("incomplete", "evaluating") and scores["workflow"]["score"] is not None:
-        sub = f"W{short(scores['workflow']['score'])} O{short(scores['output']['score'])}"
-    started = run.get("started_at") if isinstance(run.get("started_at"), str) else ""
-    return {"unreadable": False, "run_id": d.name, "prompt_id": run["prompt_id"],
-            "model": stats.model_key(run), "headline": headline, "sub": sub, "status": status,
-            "when": when(started), "footer": f"{run.get('task_id', '?')} · …{d.name[-4:]}",
-            "started_at": started}
-
-
-def cards(ws: Workspace) -> list[dict]:
-    return sorted((card_for(ws, d) for d in data_runs.run_dirs(ws.runs_dir)), key=lambda c: c["started_at"], reverse=True)
-
-
-INTERRUPTED_REASON = "Its worker stopped before finishing"
-_LIMITS = (("max_model_calls (", "Hit the model-call limit ({})"), ("max_input_tokens (", "Hit the input-token limit ({})"),
-           ("max_seconds (", "Hit the time limit ({} s)"))
-
-
-def _exc_name(error) -> str:
-    return str(error or "").split(":", 1)[0].strip()[:60] or "unknown"
-
-
-def failure_reason(status, steps: list[dict]) -> str | None:
-    """Why a run failed, in a few plain words, for its board card (board-attention spec B1); None unless it failed,
-    timed out or was interrupted. Only the trace's note names, limit texts and exception names are used, never
-    prompt or model text. The first matching rule wins."""
-    if status == "interrupted":
-        return INTERRUPTED_REASON
-    if status not in ("failed", "timeout"):
-        return None
-    notes = [(s.get("name"), str(s.get("text") or "")) for s in steps if s.get("type") == "note"]
-    for name, text in notes:
-        if name == "limit":
-            for prefix, phrase in _LIMITS:
-                if text.startswith(prefix):
-                    return phrase.format(text[len(prefix):].split(")", 1)[0])
-            if text.startswith("hard timeout"):
-                return "Timed out, and the agent didn't stop"
-    if status == "timeout":
-        return "Hit the time limit"
-    if any(name == "mcp_start" for name, _ in notes):
-        return "A tool server didn't start"
-    errors = [s for s in steps if s.get("status") == "error" and s.get("type") in ("note", "llm_call")
-              and (s.get("type") == "llm_call" or s.get("name") == "agent_error")]
-    if any("MaxTokensReachedException" in str(s.get("error") or "") for s in errors):
-        return "Hit the output-token limit; the answer was cut off"
-    if errors:
-        last = errors[-1]
-        return f"{'Model call failed' if last.get('type') == 'llm_call' else 'Agent error'}: {_exc_name(last.get('error'))}"
-    return "No final answer"
-
-
-def card_extras(ws: Workspace, run_id: str) -> dict:
-    """Numbers a board card shows beyond the card basics (all from the run's own files)."""
-    path = ws.runs_dir / run_id
-    sc = data_runs.read_scores(path) or {}
-    run = data_runs.read_run(path) or {}
-    agents = run.get("agents") if isinstance(run.get("agents"), dict) else {}
-    cost = None
-    wf = sc.get("workflow") if isinstance(sc.get("workflow"), dict) else {}
-    if data_runs.num(wf.get("cost_usd")) is not None:  # never a bool (increment 17)
-        cost = wf["cost_usd"]
-    mode = agents.get("mode") if isinstance(agents.get("mode"), str) else None
-    started: list[str] = []
-    status = run.get("status")
-    live_pipeline = mode == "pipeline" and status == "running"
-    failed = status in ("failed", "timeout", "interrupted")
-    trace = data_runs.read_trace_lenient(path) if live_pipeline or cost is None or failed else []
-    if live_pipeline or cost is None:  # unscored runs: cost from the trace; live pipeline runs: agents started so far
-        total, seen_cost = 0.0, False
-        for s in trace:
-            if live_pipeline and s.get("type") == "agent_step" and isinstance(s.get("name"), str):
-                started.append(s["name"])
-            c = s.get("cost_usd")
-            if isinstance(c, (int, float)) and not isinstance(c, bool):
-                total, seen_cost = total + c, True
-        if cost is None and seen_cost:
-            cost = round(total, 6)
-    return {"overall": sc.get("overall"), "workflow": wf.get("score"),
-            "output": (sc.get("output") or {}).get("score") if isinstance(sc.get("output"), dict) else None,
-            "cost": cost, "agents_mode": mode, "agents_started": started[:8],
-            **({"reason": failure_reason(status, trace)} if failed else {})}
-
-
-def entry_for(d: Path) -> dict | None:
-    """One readable run with its scores (None if never or partly scored) and steps; None if unreadable."""
-    run = data_runs.read_run(d)
-    if run is None:
-        return None
-    scores = data_runs.read_scores(d)
-    if scores is not None and evaluation_interrupted(d):
-        scores = None
-    return {"run_id": d.name, "run": run, "scores": scores, "steps": data_runs.read_steps_safely(d)}
+def interrupted(ws: Workspace, run_id: str, status, cards_fresh: bool | None = None, job=None) -> bool:
+    """A run that says running but whose run job ended without saying so (backend-parity ADR-2). The laptop's card is
+    read from run.json now, so a dead job means a crash; a stored cloud card can lag a normal finish, so there the job
+    must say it was interrupted. A run with no job (the CLI, a batch, the receiver) is never overlaid."""
+    if status != "running":
+        return False
+    job = job if job is not None else jobs.of_run(ws, "run", run_id)
+    if job is None or job.alive:
+        return False
+    fresh = state.of(ws).cards_fresh if cards_fresh is None else cards_fresh
+    return fresh or getattr(job, "status", None) == "interrupted"
 
 
 def entries(ws: Workspace) -> list[dict]:
     """Every readable run with its scores and steps: the dashboard's input."""
-    cloud_state.pull_runs(ws)
-    return [e for e in (entry_for(d) for d in data_runs.run_dirs(ws.runs_dir)) if e is not None]
+    state.of(ws).fresh_runs(ws)
+    return [e for e in (cards.entry_for(d) for d in data_runs.run_dirs(ws.runs_dir)) if e is not None]
 
 
-def summary_for(d: Path) -> dict | None:
-    """What the cloud run index keeps per run, with `entries()` semantics (scores dropped when interrupted; spend =
-    the run's calls plus its evaluation): enough for the board's KPIs and the prompt pages without the run's files."""
-    e = entry_for(d)
-    if e is None:
-        return None
-    sc = e["scores"] or {}
-    ov = sc.get("overall")
-    return {"task_id": e["run"].get("task_id"), "prompt_id": e["run"]["prompt_id"], "status": e["run"]["status"],
-            "started_at": e["run"].get("started_at") if isinstance(e["run"].get("started_at"), str) else "",
-            "model": stats.model_key(e["run"]), "spent": sum(stats.costs(e)),
-            "overall": float(ov) if isinstance(ov, (int, float)) and not isinstance(ov, bool) else None,
-            "rubric_sha256": sc.get("rubric_sha256") if isinstance(sc.get("rubric_sha256"), str) else None}
+def active_rubrics(ws: Workspace) -> set[str]:
+    """The sha256 of every task's active rubric.json: the board's mean counts runs scored by these only."""
+    state.of(ws).fresh_projects(ws)
+    return {sha for task in configs.task_ids(ws) if (sha := data_project.active_rubric_sha(ws.root, task))}
 
 
-def board_kpis(ws: Workspace, all_entries: list[dict] | None = None) -> dict:
-    """Runs-board KPIs (increment 9, A5): spend over every run and evaluation; mean over the active rubric only."""
-    all_entries = all_entries if all_entries is not None else entries(ws)
-    _, active = rubrics.rubric_options(ws, all_entries)
-    every = stats.build(all_entries)["kpis"]
-    scored = stats.build([e for e in all_entries if (e["scores"] or {}).get("rubric_sha256") in active])["kpis"]
-    # Each run's share (increment 11), so the board can total just the runs its filters show.
-    shares = {}
-    for e in all_entries:
-        ov = (e["scores"] or {}).get("overall") if (e["scores"] or {}).get("rubric_sha256") in active else None
-        shares[e["run_id"]] = {"spent": sum(stats.costs(e)),
-                               "overall": float(ov) if isinstance(ov, (int, float)) and not isinstance(ov, bool) else None}
-    return {"spent": every["spent"], "mean": scored["mean"], "scored": scored["scored"], "shares": shares}
-
-
-def board_from_index(ws: Workspace) -> tuple[list[dict], dict]:
-    """The cloud board's cards and KPIs from the run index alone (aws-deploy design ADR-4): no run files are read.
-    Live state is overlaid at read time: runs being scored (evaluation locks) and runs whose job was interrupted."""
-    from foundry.data import index
-
-    cloud_state.pull_projects(ws)  # the active rubrics' hashes come from the project files
-    active = {sha for task in configs.task_ids(ws) if (sha := data_project.active_rubric_sha(ws.root, task))}
-    evaluating = cloud_state.evaluating_runs(ws)
-    interrupted = {j.run_id for j in jobs.of_kind(ws, "run") if j.status == "interrupted"}
-    items = index.run_items(ws.cloud[0])
-    spent, scored = 0.0, []
-    shares, out = {}, []
-    for it in items:
-        s, card = it["summary"] or {}, dict(it["card"] or {"unreadable": True, "name": it["run_id"], "started_at": ""})
+def kpi_shares(rows: list[dict], active: set[str]) -> dict:
+    """Spend over every run and its scoring; mean and count over runs scored by an active rubric; each run's share
+    (increment 11: the board totals just the runs its filters show). From the rows' summaries alone."""
+    spent, scored, shares = 0.0, [], {}
+    for row in rows:
+        s = row.get("summary") or {}
         ov = s.get("overall") if s.get("rubric_sha256") in active else None
         spent += s.get("spent") or 0.0
         if ov is not None:
             scored.append(ov)
-        shares[it["run_id"]] = {"spent": s.get("spent") or 0.0, "overall": ov}
-        if not card.get("unreadable"):
-            if it["run_id"] in evaluating:
-                card["headline"] = "evaluating"
-            elif card.get("headline") == "running" and it["run_id"] in interrupted:
-                card["headline"] = card["status"] = "interrupted"
-                card["reason"] = INTERRUPTED_REASON
-        out.append(card)
-    k = {"spent": spent, "mean": sum(scored) / len(scored) if scored else None, "scored": len(scored), "shares": shares}
-    return sorted(out, key=lambda c: c.get("started_at") or "", reverse=True), k
+        shares[row["run_id"]] = {"spent": s.get("spent") or 0.0, "overall": ov}
+    return {"spent": spent, "mean": sum(scored) / len(scored) if scored else None, "scored": len(scored),
+            "shares": shares}
+
+
+def shares(ws: Workspace) -> dict:
+    """Each run's KPI share (spend, and overall when its rubric is active): the prompt pages' scores and costs."""
+    return kpi_shares(state.of(ws).board_rows(ws), active_rubrics(ws))["shares"]
+
+
+UNREADABLE = {"unreadable": True, "column": "attention", "prompt_id": "?", "model": "unreadable run.json", "status": "?",
+              "headline": "unreadable", "kpi": {"spent": 0.0, "overall": None}}
 
 
 def board(ws: Workspace) -> dict:
-    """GET /api/runs: every card in its column, with its KPI share, plus the board's KPIs."""
-    if cloud_state.on(ws):
-        all_cards, k = board_from_index(ws)
-    else:
-        all_cards, k = cards(ws), board_kpis(ws)
+    """GET /api/runs: every card in its column, with its KPI share, plus the board's KPIs. The same assembly on a
+    laptop and in AWS (backend-parity ADR-2): rows from the state, live state overlaid here."""
+    st = state.of(ws)
+    run_jobs = {j.run_id: j for j in jobs.of_kind(ws, "run")}  # before the rows: a run finishing in between isn't
+    rows = st.board_rows(ws)                                    # mistaken for a crash
+    evaluating = st.evaluating_runs(ws)
+    k = kpi_shares(rows, active_rubrics(ws))
     out = []
-    for c in all_cards:
-        if c["unreadable"]:
-            out.append({"run_id": c["name"], "unreadable": True, "column": "attention", "prompt_id": "?",
-                        "model": "unreadable run.json", "status": "?", "headline": "unreadable",
-                        "kpi": {"spent": 0.0, "overall": None}})
+    order = lambda r: ((r.get("card") or {}).get("started_at") or "", r["run_id"])  # noqa: E731 (ties: one order everywhere)
+    for row in sorted(rows, key=order, reverse=True):
+        card = row.get("card")
+        if not card or card.get("unreadable"):
+            out.append({"run_id": row["run_id"], **UNREADABLE})
             continue
-        extras = {} if cloud_state.on(ws) else card_extras(ws, c["run_id"])  # cloud cards carry their extras
-        out.append({**c, "column": board_column(c), **extras,
-                    "kpi": k["shares"].get(c["run_id"], {"spent": 0.0, "overall": None})})
+        c = {f: card[f] for f in cards.CARD_FIELDS if f in card}  # a stored card from other code: known fields only
+        if row["run_id"] in evaluating:
+            c["headline"], c["sub"] = "evaluating", ""
+        elif interrupted(ws, row["run_id"], c.get("status"), st.cards_fresh, run_jobs.get(row["run_id"])):
+            c["headline"] = c["status"] = "interrupted"
+            c["reason"] = cards.INTERRUPTED_REASON
+        out.append({**c, "run_id": row["run_id"], "column": board_column(c),
+                    "kpi": k["shares"].get(row["run_id"], {"spent": 0.0, "overall": None})})
     live = sum(c["column"] in ("running", "evaluating") for c in out)
     today = time.strftime("%Y-%m-%d", time.gmtime())
     return {"runs": out, "live": live + (1 if ws.receiver is not None else 0),

@@ -8,7 +8,7 @@ import time
 from foundry.config import ConfigError
 from foundry.data import batches as data_batches
 from foundry.engine.batch import spread
-from foundry.services import cloud_state, configs, jobs, spend
+from foundry.services import configs, jobs, spend, state
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -73,8 +73,8 @@ def batch_view(ws: Workspace, batch_id: str) -> dict:
     # it finishes the job. Read the other way round, a Finalize landing in between paired a finished job with
     # stale files, and the batch read as "stopped" (found live, aws-deploy slice 10).
     job = jobs.of_run(ws, "batch", batch_id)
-    cloud_state.pull_batches(ws)
-    cloud_state.pull_runs(ws)  # rows link to their runs when those exist here
+    state.of(ws).fresh_batches(ws)
+    state.of(ws).fresh_runs(ws)  # rows link to their runs when those exist here
     path = data_batches.batch_path(ws.batches_dir, batch_id)
     if path is None:
         raise ServiceError(404, "Batch not found")
@@ -89,6 +89,6 @@ def batch_view(ws: Workspace, batch_id: str) -> dict:
 
 
 def batch_list(ws: Workspace) -> list[dict]:
-    cloud_state.pull_batches(ws)
-    cloud_state.pull_runs(ws)
+    state.of(ws).fresh_batches(ws)
+    state.of(ws).fresh_runs(ws)
     return data_batches.batch_list(ws.batches_dir, ws.runs_dir)

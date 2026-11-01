@@ -11,11 +11,13 @@ def context():
     global _ctx
     if _ctx is None:
         from foundry import cloud_boot
+        from foundry.services.cloud_state import CloudState
         from foundry.services.workspace import Workspace
 
         store, mirror, backend = cloud_boot.cloud_context()
         ws = Workspace(cloud_boot.runs_dir(), cloud_boot.project_root(), 0, backend=backend)
         ws.cloud = (store, mirror)
+        ws.state = CloudState(store, mirror)
         _ctx = (ws, store, mirror)
     return _ctx
 
