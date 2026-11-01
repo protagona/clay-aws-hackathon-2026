@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from foundry.data.store import Check, Conflict, Cond, Delete, NotFound, Put, Update
+from foundry.services import spend
 from foundry.services.errors import ServiceError
 from foundry.services.jobs import BUSY
 from foundry.services.workspace import Workspace
@@ -81,16 +82,25 @@ def record(item: dict, store) -> JobRecord:
                      json.loads(item.get("prompt_ids") or "null"), item.get("message"), store)
 
 
-def finish(store, job_id: str, status: str, exit_code: int | None, message: str | None, now: float) -> bool:
-    """Mark a job done/failed/interrupted exactly once, then release its slot and evaluation lock. False if someone
-    (its worker or a sweep) already finished it."""
+def finish(store, job_id: str, status: str, exit_code: int | None, message: str | None, now: float,
+           actual: float | None = None) -> bool:
+    """Mark a job done/failed/interrupted exactly once, settling its spend in the same transaction (its reservation
+    is replaced by `actual`, or kept as the charge when the cost is unknown), then release its slot and evaluation
+    lock. False if someone (its worker or a sweep) already finished it."""
+    item = store.get_item(PK, job_id) or {}
+    reserved = float(item.get("reservation") or 0.0)
+    charge = reserved if actual is None else actual
+    actions = [Update(PK, job_id, set={"status": status, "exit_code": exit_code, "message": (message or "")[:300],
+                                       "finished_at": now, "charged": charge},
+                      cond=Cond.isin("status", ["queued", "running"]))]
+    if item.get("month") and (reserved or charge):
+        # Settled on the month whose cap allowed the job (its start month), so a job crossing a month boundary
+        # can't free headroom in the new month.
+        actions.append(Update("SPEND", item["month"], add={"committed": round(charge - reserved, 6)}))
     try:
-        store.write(Update(PK, job_id, set={"status": status, "exit_code": exit_code, "message": (message or "")[:300],
-                                            "finished_at": now},
-                           cond=Cond.isin("status", ["queued", "running"])))
+        store.transact(actions, token=f"fin-{secrets.token_hex(8)}")  # unique per call: one call's retries share it
     except Conflict:
         return False
-    item = store.get_item(PK, job_id) or {}
     for pk, sk, attr in (("SLOT", item.get("slot") or "", "job_id"), ("LOCK", item.get("eval_lock") or "", "owner")):
         if sk:
             try:
@@ -107,7 +117,8 @@ class CloudBackend:
     # --- starting ------------------------------------------------------------------------------------------------
 
     def start(self, ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *, singleton: bool,
-              prompt_ids: list[str], evaluate_dir: Path | None, quiet: bool, task: str | None):
+              prompt_ids: list[str], evaluate_dir: Path | None, quiet: bool, task: str | None,
+              reservation: float = 0.0):
         now = self.clock()
         job_id = secrets.token_hex(8)
         deadline = now + EVENT_AGE_S + RUN_LIMIT_S + MARGIN_S if kind != "batch" else FAR
@@ -116,7 +127,16 @@ class CloudBackend:
                 "args": json.dumps(args), "prompt_ids": json.dumps(prompt_ids or None), "task": task or "",
                 "queued_at": now, "deadline": deadline, "dismissed": False, "slot": kind if singleton else "",
                 "eval_lock": eval_lock}
+        capped = ws.cap_usd is not None and reservation > 0
+        if capped:
+            if reservation > ws.cap_usd:
+                raise spend.refusal(self._committed(now), ws.cap_usd, now)
+            item.update(reservation=reservation, month=spend.month(now))
         actions = [Put(item, cond=Cond.absent())]
+        if capped:  # a condition can't do arithmetic: the app supplies the threshold cap − reservation (ADR-8)
+            actions.append(Update("SPEND", item["month"], add={"committed": reservation},
+                                  cond=Cond.any(Cond.missing("committed"),
+                                                Cond.le("committed", round(ws.cap_usd - reservation, 6)))))
         if singleton:
             actions.append(Put({"pk": "SLOT", "sk": kind, "job_id": job_id, "run_id": run_id, "expires": deadline},
                                cond=Cond.any(Cond.absent(), Cond.lt("expires", now))))
@@ -139,6 +159,8 @@ class CloudBackend:
                 raise ServiceError(409, f"Run {run_id} is already being scored.") from None
             if any(f == "Check:LOCK" for f in failed):
                 raise ServiceError(409, "This task's prompts are being edited; try again in a moment.") from None
+            if any(f == "Update:SPEND" for f in failed):
+                raise spend.refusal(self._committed(now), ws.cap_usd, now) from None
             raise ServiceError(409, "Busy; try again") from None
         try:
             if self.invoke is not None:
@@ -147,6 +169,10 @@ class CloudBackend:
             finish(self.store, job_id, "failed", 2, f"could not start the worker: {type(exc).__name__}", self.clock())
             raise ServiceError(500, "Could not start the job; try again") from None
         return record(item, self.store)
+
+    def _committed(self, now: float) -> float:
+        item = self.store.get_item("SPEND", spend.month(now)) or {}
+        return float(item.get("committed") or 0.0)
 
     # --- reading ------------------------------------------------------------------------------------------------
 

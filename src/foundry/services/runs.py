@@ -12,7 +12,7 @@ from foundry.contract import evaluation_interrupted
 from foundry.data import project as data_project
 from foundry.data import runs as data_runs
 from foundry.data.runs import new_run_id
-from foundry.services import cloud_state, configs, jobs, rubrics, stats
+from foundry.services import cloud_state, configs, jobs, rubrics, spend, stats
 from foundry.services.errors import ServiceError
 from foundry.services.run_view import monitor
 from foundry.services.workspace import Workspace
@@ -77,10 +77,11 @@ def start_run(ws: Workspace, prompt_id: str, config: str) -> str:
         raise ServiceError(400, configs.relative_paths(ws, str(exc))) from None
     configs.check_runnable(ws, cfg, config, [prompt_id], prompts)
     run_id = new_run_id(prompt_id)
+    reservation = spend.run_reservation(cfg, config) if ws.cap_usd is not None else 0.0
     jobs.start(ws, "run", run_id, f"Run {prompt_id}",
                ["run", "--config", f"config/{config}.toml", "--prompt", prompt_id, "--runs-dir", str(ws.runs_dir),
                 "--run-id", run_id], singleton=True, prompt_ids=[prompt_id],
-               task=cfg.task.id)
+               task=cfg.task.id, reservation=reservation)
     return run_id
 
 
@@ -91,8 +92,15 @@ def start_evaluate(ws: Workspace, run_id: str) -> None:
         raise ServiceError(409, f"Run {run_id} is still running. If it crashed, score it from the CLI: "
                                 f"foundry evaluate runs/{run_id} --force.")
     config = configs.eval_config_for(ws, run)
+    reservation = 0.0
+    if ws.cap_usd is not None:
+        stem = config.removeprefix("config/").removesuffix(".toml")
+        try:
+            reservation = spend.eval_reservation(configs.load(ws, stem), stem)
+        except ConfigError as exc:
+            raise ServiceError(400, configs.relative_paths(ws, str(exc))) from None
     jobs.start(ws, "evaluate", run_id, f"Evaluation of {run_id}", ["evaluate", str(path), "--config", config],
-               evaluate_dir=path)
+               evaluate_dir=path, reservation=reservation)
 
 
 # --- the board -------------------------------------------------------------------------------------------------

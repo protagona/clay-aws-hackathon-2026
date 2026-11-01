@@ -8,7 +8,7 @@ import time
 from foundry.config import ConfigError
 from foundry.data import batches as data_batches
 from foundry.engine.batch import spread
-from foundry.services import configs, jobs
+from foundry.services import configs, jobs, spend
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -42,9 +42,14 @@ def start_batch(ws: Workspace, config: str, models: list[str], prompts: list[str
         args += ["--models", ",".join(models)]
     if evaluate:
         args.append("--evaluate")
+    reservation = 0.0
+    if ws.cap_usd is not None:
+        run_wc = max(spend.run_reservation(cfg, config, m) for m in (models or [cfg.model.id]))
+        eval_wc = spend.eval_reservation(cfg, config) if evaluate else 0.0
+        reservation = spend.batch_reservation(max_cost, concurrency, run_wc, eval_wc)
     # A queued batch has no run dirs yet: its prompt ids keep those prompts' text locked (prompts.set_text).
     jobs.start(ws, "batch", batch_id, f"Batch {batch_id}", args, singleton=True, prompt_ids=prompts,
-               task=cfg.task.id)
+               task=cfg.task.id, reservation=reservation)
     return batch_id
 
 

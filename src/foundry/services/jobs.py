@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from foundry.data import locks as lock
+from foundry.data import spend as local_spend
+from foundry.services import spend
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -136,7 +138,8 @@ class LocalBackend:
     """Jobs as `foundry` subprocesses of this server, tracked in `ws.jobs` and serialized by `ws.lock` (as before)."""
 
     def start(self, ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *, singleton: bool,
-              prompt_ids: list[str], evaluate_dir: Path | None, quiet: bool, task: str | None) -> Job | None:  # noqa: ARG002
+              prompt_ids: list[str], evaluate_dir: Path | None, quiet: bool, task: str | None,  # noqa: ARG002
+              reservation: float = 0.0) -> Job | None:
         token = None
         if evaluate_dir is not None:
             try:
@@ -146,13 +149,22 @@ class LocalBackend:
             args = [*args, "--lock-held", token]
         with ws.lock:
             active = alive_of(ws, kind) if singleton else None
-            if active is not None:
+            refused = None
+            if active is None and ws.cap_usd is not None and reservation > 0:
+                committed = local_spend.month_total(ws.runs_dir, spend.month())
+                if committed + reservation > ws.cap_usd:
+                    refused = spend.refusal(committed, ws.cap_usd)
+            if active is not None or refused is not None:
                 if token:
                     lock.release(evaluate_dir, token)
+                if refused is not None:
+                    raise refused
                 if quiet:
                     return None
                 raise ServiceError(409, BUSY[kind].format(active.run_id))
             job = spawn(ws, kind, run_id, label, args, lock_token=token, lock_dir=evaluate_dir)
+            if ws.cap_usd is not None and reservation > 0:
+                local_spend.charge(ws.runs_dir, spend.month(), job.id, reservation)  # locally: charged in full
             job.prompts = list(prompt_ids) or None
         return job
 
@@ -180,12 +192,12 @@ def backend(ws: Workspace):
 
 def start(ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *, singleton: bool = False,
           prompt_ids: list[str] | tuple = (), evaluate_dir: Path | None = None, quiet: bool = False,
-          task: str | None = None) -> Job | None:
+          task: str | None = None, reservation: float = 0.0) -> Job | None:
     """Start a job atomically with its checks: `singleton` refuses (409) while another job of the kind is live,
     `evaluate_dir` takes the run's evaluation lock first, and a run of `task` waits out an edit of that task's
     prompts (cloud: their lease). With `quiet`, a busy singleton returns None instead."""
     return backend(ws).start(ws, kind, run_id, label, args, singleton=singleton, prompt_ids=list(prompt_ids),
-                             evaluate_dir=evaluate_dir, quiet=quiet, task=task)
+                             evaluate_dir=evaluate_dir, quiet=quiet, task=task, reservation=reservation)
 
 
 def run_foundry(args: list[str], cwd: Path, env: dict | None = None, tick=None, every: float = 5.0,

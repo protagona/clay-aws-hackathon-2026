@@ -17,6 +17,7 @@ class Workspace:
     receiver_port: int = 4318
     receiver: object | None = None  # foundry.engine.receiver.Receiver while running
     backend: object | None = None  # services.jobs backend; None = LocalBackend (subprocesses, as on a laptop)
+    cap_usd: float | None = None  # the monthly spend cap (aws-deploy A5); None = no cap
     cloud: tuple | None = None  # (store, mirror) when state lives in the cloud store (services.cloud_state)
 
     @property

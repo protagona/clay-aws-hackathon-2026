@@ -59,6 +59,23 @@ def local_args(ws: Workspace, kind: str, run_id: str, args: list[str]) -> list[s
     return out
 
 
+def actual_cost(ws: Workspace, kind: str, run_id: str, code: int) -> float | None:
+    """What the job really cost, or None when unknown (then its reservation is charged; spec A5)."""
+    if kind == "tools":
+        return 0.0
+    d = data_runs.safe_run_path(ws.runs_dir, run_id)
+    if d is None:
+        return None
+    if kind == "run":
+        s = runs.summary_for(d)
+        return s["spent"] if s is not None else None
+    if kind == "evaluate" and code == 0:  # a failed scoring may leave an older scores.json: charge the reservation
+        ev = (data_runs.read_scores(d) or {}).get("evaluation")
+        cost = data_runs.num(ev.get("cost_usd")) if isinstance(ev, dict) else None
+        return cost
+    return None
+
+
 def run_job(ws: Workspace, store, mirror, job_id: str, clock=time.time) -> str:
     """Do one job. Returns its final status, or "duplicate" when this delivery wasn't the one to run it."""
     job = claim(store, job_id, clock())
@@ -85,7 +102,8 @@ def run_job(ws: Workspace, store, mirror, job_id: str, clock=time.time) -> str:
     store.put_object(f"jobs/{job_id}.log", err.encode(), if_none_match=False)
     lines = [ln for ln in err.splitlines() if ln.strip()]
     status = "done" if code == 0 else "failed"
-    cloud_jobs.finish(store, job_id, status, code, lines[-1][:300] if lines and code else None, clock())
+    cloud_jobs.finish(store, job_id, status, code, lines[-1][:300] if lines and code else None, clock(),
+                      actual=actual_cost(ws, kind, run_id, code))
     if kind in ("run", "evaluate") and present():
         index_run(ws, mirror, run_id)  # the card without "evaluating" now the lock is released
     return status
