@@ -65,7 +65,7 @@ export default function Batches() {
           <div className="grid grid-cols-3 gap-3">
             <label className="field">Repeats<span className="block text-xs font-normal text-slate-400">runs per model and prompt</span><input className="input" type="number" min={1} max={5} value={repeats} onChange={(e) => setRepeats(+e.target.value)} /></label>
             <label className="field">At once<span className="block text-xs font-normal text-slate-400">runs side by side</span><input className="input" type="number" min={1} max={4} value={concurrency} onChange={(e) => setConcurrency(+e.target.value)} /></label>
-            <label className="field">Stop at ($)<span className="block text-xs font-normal text-slate-400">cost cap</span><input className="input" type="number" min={0.1} max={50} step={0.5} value={maxCost} onChange={(e) => setMaxCost(+e.target.value)} /></label>
+            <label className="field">Stop at ($)<span className="block text-xs font-normal text-slate-400">cost cap</span><input className="input" type="number" min={0.01} max={50} step="any" value={maxCost} onChange={(e) => setMaxCost(+e.target.value)} /></label>
           </div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={evaluate} onChange={(e) => setEvaluate(e.target.checked)} /> Score each run with the judge</label>
           {error && <p role="alert" className="text-sm text-rose-600">✗ {error}</p>}
