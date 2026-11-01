@@ -168,3 +168,13 @@ class Mirror:
         if not files and not deleted and not attrs:
             return None
         return self.push(tree, files, deleted, lease=lease, attrs=attrs)
+
+    def push_file(self, tree: str, rel: str, path: Path) -> int | None:
+        """Push one local file into a tree under `rel` (the tool listing). None when the file doesn't exist."""
+        try:
+            data = Path(path).read_bytes()
+        except FileNotFoundError:
+            return None
+        if self.seen.get(tree, (None, {}))[1].get(rel, {}).get("md5") == md5(data):
+            return None
+        return self.push(tree, {rel: data})

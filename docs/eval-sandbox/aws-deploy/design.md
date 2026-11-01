@@ -502,3 +502,11 @@ Each slice ends green (full suite, Vitest, ruff, `tsc`, gitleaks) and is its own
 | S-5 transactions + upload | **pass** | **Spend reserve:** the threshold condition refuses past the cap (`ConditionalCheckFailed`). **Idempotency:** a retry with the same `ClientRequestToken` doesn't double the reservation (total 8.1, not 12.1). **SLOT:** a second taker is refused while the slot is held; an expired slot can be taken. **Browser presigned POST** (pinned SigV4, regional virtual host) under a CSP naming the bucket: 1 KB cap, 100 B → 204, 5 KB → 400 (S3 enforces `content-length-range`). | ADR-8, ADR-10 and ADR-6 hold. **The `protagona-sandbox-1` profile's default region is us-east-1**, so every boto3 client in `cloud.sh` and the scripts passes `region_name="us-west-2"` explicitly. |
 
 **Container tooling:** Podman 6.1.4 (arm64) built and pushed the image through `CDK_DOCKER=podman`. The first deploy took 7 minutes, mostly the initial image push.
+
+## Build notes (deviations recorded per slice)
+
+- **Slice 3b: no GSI.** Jobs are listed with one strongly consistent `Query(pk=JOB)` on the base table, not the `status-index` GSI from ADR-4.
+  - **Why:** the live-job checks under a lease (`pending_prompt`) need consistent reads, which a GSI can't give, and a sandbox's job count (hundreds) fits one query.
+  - **When to change:** add a GSI and a TTL on finished jobs if job counts grow into the thousands.
+- **Slice 3b: the prompt-edit lease.** A run or batch start of task T carries a `ConditionCheck` that `LOCK lease#project#T` is absent or expired, and a prompt edit holds that lease while it checks live jobs and writes. That's the cross-instance form of "no run may start between the check and the write".
+- **Slice 3b: the tool listing** is pushed as tree `file#tools` (`ui-tools.json`). The API pulls it into `runs/.ui-tools.json` before reading (slice 3c).

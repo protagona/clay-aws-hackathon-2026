@@ -57,6 +57,9 @@ class Job:
             return self.exit_code == 2
         return self.exit_code != 0
 
+    def read_log(self) -> str:
+        return self.log.read_text(errors="replace") if self.log.exists() else ""
+
     def last_stderr_line(self) -> str:
         try:
             lines = [ln for ln in self.log.read_text(errors="replace").splitlines() if ln.strip()]
@@ -106,21 +109,21 @@ def recent(ws: Workspace) -> list[dict]:
     return out
 
 
-def find(ws: Workspace, job_id: str) -> Job | None:
-    return ws.jobs.get(job_id) if JOB_ID_RE.match(job_id) else None
+def find(ws: Workspace, job_id: str):
+    return next((j for j in backend(ws).all(ws) if j.id == job_id), None) if JOB_ID_RE.match(job_id) else None
 
 
 def log_text(ws: Workspace, job_id: str) -> str:
     job = find(ws, job_id)
     if job is None:
         raise ServiceError(404, "Job not found")
-    return job.log.read_text(errors="replace") if job.log.exists() else ""
+    return job.read_log()
 
 
 def dismiss(ws: Workspace, job_id: str) -> None:
     job = find(ws, job_id)
     if job is not None:
-        job.dismissed = True
+        backend(ws).dismiss(ws, job)
 
 
 # --- the backend seam (aws-deploy slice 3) ----------------------------------------------------------------------
@@ -133,7 +136,7 @@ class LocalBackend:
     """Jobs as `foundry` subprocesses of this server, tracked in `ws.jobs` and serialized by `ws.lock` (as before)."""
 
     def start(self, ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *, singleton: bool,
-              prompt_ids: list[str], evaluate_dir: Path | None, quiet: bool) -> Job | None:
+              prompt_ids: list[str], evaluate_dir: Path | None, quiet: bool, task: str | None) -> Job | None:  # noqa: ARG002
         token = None
         if evaluate_dir is not None:
             try:
@@ -156,6 +159,9 @@ class LocalBackend:
     def all(self, ws: Workspace) -> list[Job]:
         return list(ws.jobs.values())
 
+    def dismiss(self, ws: Workspace, job: Job) -> None:  # noqa: ARG002
+        job.dismissed = True
+
     def is_evaluating(self, ws: Workspace, run_dir: Path) -> bool:
         return lock.is_locked(run_dir)
 
@@ -173,11 +179,40 @@ def backend(ws: Workspace):
 
 
 def start(ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *, singleton: bool = False,
-          prompt_ids: list[str] | tuple = (), evaluate_dir: Path | None = None, quiet: bool = False) -> Job | None:
+          prompt_ids: list[str] | tuple = (), evaluate_dir: Path | None = None, quiet: bool = False,
+          task: str | None = None) -> Job | None:
     """Start a job atomically with its checks: `singleton` refuses (409) while another job of the kind is live,
-    `evaluate_dir` takes the run's evaluation lock first. With `quiet`, a busy singleton returns None instead."""
+    `evaluate_dir` takes the run's evaluation lock first, and a run of `task` waits out an edit of that task's
+    prompts (cloud: their lease). With `quiet`, a busy singleton returns None instead."""
     return backend(ws).start(ws, kind, run_id, label, args, singleton=singleton, prompt_ids=list(prompt_ids),
-                             evaluate_dir=evaluate_dir, quiet=quiet)
+                             evaluate_dir=evaluate_dir, quiet=quiet, task=task)
+
+
+def run_foundry(args: list[str], cwd: Path, env: dict | None = None, tick=None, every: float = 5.0,
+                timeout: float | None = None) -> tuple[int, str]:
+    """Run `python -m foundry <args>` to completion in this process's environment (a cloud worker), calling `tick()`
+    every `every` seconds while it runs and once at the end. Returns (exit code, stderr)."""
+    log = Path(os.environ.get("TMPDIR", "/tmp")) / f"foundry-job-{secrets.token_hex(4)}.log"
+    started = time.time()
+    with open(log, "wb") as errf:
+        proc = subprocess.Popen([sys.executable, "-m", "foundry", *args], cwd=cwd, env={**os.environ, **(env or {})},
+                                stdout=subprocess.DEVNULL, stderr=errf, stdin=subprocess.DEVNULL)
+        while True:
+            try:
+                code = proc.wait(timeout=every)
+                break
+            except subprocess.TimeoutExpired:
+                if timeout is not None and time.time() - started > timeout:
+                    proc.kill()
+                    code = proc.wait()
+                    break
+                if tick is not None:
+                    tick()
+    if tick is not None:
+        tick()
+    text = log.read_text(errors="replace")
+    log.unlink(missing_ok=True)
+    return code, text
 
 
 def of_kind(ws: Workspace, kind: str) -> list:

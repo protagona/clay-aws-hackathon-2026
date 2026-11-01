@@ -43,7 +43,8 @@ def start_batch(ws: Workspace, config: str, models: list[str], prompts: list[str
     if evaluate:
         args.append("--evaluate")
     # A queued batch has no run dirs yet: its prompt ids keep those prompts' text locked (prompts.set_text).
-    jobs.start(ws, "batch", batch_id, f"Batch {batch_id}", args, singleton=True, prompt_ids=prompts)
+    jobs.start(ws, "batch", batch_id, f"Batch {batch_id}", args, singleton=True, prompt_ids=prompts,
+               task=cfg.task.id)
     return batch_id
 
 

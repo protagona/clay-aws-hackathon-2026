@@ -76,7 +76,8 @@ def start_run(ws: Workspace, prompt_id: str, config: str) -> str:
     run_id = new_run_id(prompt_id)
     jobs.start(ws, "run", run_id, f"Run {prompt_id}",
                ["run", "--config", f"config/{config}.toml", "--prompt", prompt_id, "--runs-dir", str(ws.runs_dir),
-                "--run-id", run_id], singleton=True, prompt_ids=[prompt_id])
+                "--run-id", run_id], singleton=True, prompt_ids=[prompt_id],
+               task=cfg.task.id)
     return run_id
 
 
@@ -117,34 +118,35 @@ def when(iso: str | None) -> str:
         return ""
 
 
+def card_for(ws: Workspace, d: Path) -> dict:
+    """One run directory's board card (the board, and cloud workers indexing a run they just synced)."""
+    run = data_runs.read_run(d)
+    if run is None:
+        return {"unreadable": True, "name": d.name, "started_at": ""}
+    scores = data_runs.read_scores(d)
+    status = run["status"]
+    if jobs.is_evaluating(ws, d):
+        headline = "evaluating"
+    elif status == "running":
+        headline = "running"
+    elif scores is None:
+        headline = "not evaluated" if not data_runs.has_scores_file(d) else "incomplete"
+    elif evaluation_interrupted(d) or scores["overall"] is None:
+        headline = "incomplete"
+    else:
+        headline = f"{scores['overall']:.2f}"
+    sub = ""
+    if scores is not None and headline not in ("incomplete", "evaluating") and scores["workflow"]["score"] is not None:
+        sub = f"W{short(scores['workflow']['score'])} O{short(scores['output']['score'])}"
+    started = run.get("started_at") if isinstance(run.get("started_at"), str) else ""
+    return {"unreadable": False, "run_id": d.name, "prompt_id": run["prompt_id"],
+            "model": stats.model_key(run), "headline": headline, "sub": sub, "status": status,
+            "when": when(started), "footer": f"{run.get('task_id', '?')} · …{d.name[-4:]}",
+            "started_at": started}
+
+
 def cards(ws: Workspace) -> list[dict]:
-    out = []
-    for d in data_runs.run_dirs(ws.runs_dir):
-        run = data_runs.read_run(d)
-        if run is None:
-            out.append({"unreadable": True, "name": d.name, "started_at": ""})
-            continue
-        scores = data_runs.read_scores(d)
-        status = run["status"]
-        if jobs.is_evaluating(ws, d):
-            headline = "evaluating"
-        elif status == "running":
-            headline = "running"
-        elif scores is None:
-            headline = "not evaluated" if not data_runs.has_scores_file(d) else "incomplete"
-        elif evaluation_interrupted(d) or scores["overall"] is None:
-            headline = "incomplete"
-        else:
-            headline = f"{scores['overall']:.2f}"
-        sub = ""
-        if scores is not None and headline not in ("incomplete", "evaluating") and scores["workflow"]["score"] is not None:
-            sub = f"W{short(scores['workflow']['score'])} O{short(scores['output']['score'])}"
-        started = run.get("started_at") if isinstance(run.get("started_at"), str) else ""
-        out.append({"unreadable": False, "run_id": d.name, "prompt_id": run["prompt_id"],
-                    "model": stats.model_key(run), "headline": headline, "sub": sub, "status": status,
-                    "when": when(started), "footer": f"{run.get('task_id', '?')} · …{d.name[-4:]}",
-                    "started_at": started})
-    return sorted(out, key=lambda c: c["started_at"], reverse=True)
+    return sorted((card_for(ws, d) for d in data_runs.run_dirs(ws.runs_dir)), key=lambda c: c["started_at"], reverse=True)
 
 
 def card_extras(ws: Workspace, run_id: str) -> dict:
@@ -175,18 +177,35 @@ def card_extras(ws: Workspace, run_id: str) -> dict:
             "cost": cost, "agents_mode": mode, "agents_started": started[:8]}
 
 
+def entry_for(d: Path) -> dict | None:
+    """One readable run with its scores (None if never or partly scored) and steps; None if unreadable."""
+    run = data_runs.read_run(d)
+    if run is None:
+        return None
+    scores = data_runs.read_scores(d)
+    if scores is not None and evaluation_interrupted(d):
+        scores = None
+    return {"run_id": d.name, "run": run, "scores": scores, "steps": data_runs.read_steps_safely(d)}
+
+
 def entries(ws: Workspace) -> list[dict]:
-    """Every readable run with its scores (None if never or partly scored) and steps: the dashboard's input."""
-    out = []
-    for d in data_runs.run_dirs(ws.runs_dir):
-        run = data_runs.read_run(d)
-        if run is None:
-            continue
-        scores = data_runs.read_scores(d)
-        if scores is not None and evaluation_interrupted(d):
-            scores = None
-        out.append({"run_id": d.name, "run": run, "scores": scores, "steps": data_runs.read_steps_safely(d)})
-    return out
+    """Every readable run with its scores and steps: the dashboard's input."""
+    return [e for e in (entry_for(d) for d in data_runs.run_dirs(ws.runs_dir)) if e is not None]
+
+
+def summary_for(d: Path) -> dict | None:
+    """What the cloud run index keeps per run, with `entries()` semantics (scores dropped when interrupted; spend =
+    the run's calls plus its evaluation): enough for the board's KPIs and the prompt pages without the run's files."""
+    e = entry_for(d)
+    if e is None:
+        return None
+    sc = e["scores"] or {}
+    ov = sc.get("overall")
+    return {"task_id": e["run"].get("task_id"), "prompt_id": e["run"]["prompt_id"], "status": e["run"]["status"],
+            "started_at": e["run"].get("started_at") if isinstance(e["run"].get("started_at"), str) else "",
+            "model": stats.model_key(e["run"]), "spent": sum(stats.costs(e)),
+            "overall": float(ov) if isinstance(ov, (int, float)) and not isinstance(ov, bool) else None,
+            "rubric_sha256": sc.get("rubric_sha256") if isinstance(sc.get("rubric_sha256"), str) else None}
 
 
 def board_kpis(ws: Workspace, all_entries: list[dict] | None = None) -> dict:
