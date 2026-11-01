@@ -118,3 +118,92 @@ def test_a_stored_card_from_other_code_never_breaks_the_board(tmp_path, monkeypa
     assert r.status_code == 200, r.text
     (c,) = r.json()["runs"]
     assert "added_by_newer_code" not in c and "footer" not in c and c["column"] == "attention"
+
+
+# --- re-indexing (backend-parity ADR-3, spec AC5) -------------------------------------------------------------------
+
+
+def _reindex_setup(tmp_path, monkeypatch, *names):
+    import json
+
+    from backends import CloudHarness
+
+    from foundry.data.store import Update
+
+    h = CloudHarness(tmp_path, monkeypatch)
+    for n in names:
+        h.seed(n)
+
+    def stale(run_id):  # a card written by older code: its headline is wrong and it lacks a field
+        item = h.store.get_item("TREE", f"run#{run_id}")
+        card = {**json.loads(item["card"]), "headline": "stale"}
+        card.pop("reason", None)
+        h.store.write(Update("TREE", f"run#{run_id}", set={"card": json.dumps(card, sort_keys=True)}))
+    return h, stale
+
+
+def test_reindex_rewrites_only_stale_cards_and_is_idempotent(tmp_path, monkeypatch):
+    from foundry.services import workers
+
+    h, stale = _reindex_setup(tmp_path, monkeypatch, "clean", "failed")
+    stale("fixture-failed")
+    versions = {k: h.store.get_item("TREE", f"run#{k}")["version"] for k in ("fixture-clean", "fixture-failed")}
+    out = workers.reindex(h.wws, h.store, h.wmirror)
+    assert out == {"runs": 2, "updated": 1, "skipped": 0, "busy": 0, "next": None}
+    card = next(c for c in h.client.get("/api/runs").json()["runs"] if c["run_id"] == "fixture-failed")
+    assert card["headline"] != "stale" and card["reason"] == "Hit the model-call limit (3)"
+    assert workers.reindex(h.wws, h.store, h.wmirror)["updated"] == 0  # idempotent
+    assert {k: h.store.get_item("TREE", f"run#{k}")["version"] for k in versions} == versions  # no new versions
+
+
+def test_reindex_skips_live_runs_and_counts_a_run_that_moved(tmp_path, monkeypatch):
+    import time
+
+    from foundry.data.store import Put, Update
+    from foundry.services import workers
+
+    h, stale = _reindex_setup(tmp_path, monkeypatch, "clean", "failed", "recovered")
+    for r in ("fixture-clean", "fixture-failed", "fixture-recovered"):
+        stale(r)
+    far = time.time() + 3600
+    h.store.write(Put({"pk": "JOB", "sk": "a" * 16, "kind": "run", "run_id": "fixture-clean", "status": "running",
+                       "deadline": far}))
+    h.store.write(Put({"pk": "JOB", "sk": "b" * 16 + "#0", "kind": "batch_item", "parent": "b" * 16,
+                       "run_id": "fixture-failed", "status": "running", "deadline": far}))  # a batch's item counts
+    real = h.wmirror.pull
+
+    def pull_then_someone_writes(tree, item=None):
+        v = real(tree, item=item)
+        if tree == "run#fixture-recovered":  # a worker pushes between the re-index's pull and its write
+            h.store.write(Update("TREE", tree, set={"version": v + 1}))
+        return v
+
+    monkeypatch.setattr(h.wmirror, "pull", pull_then_someone_writes)
+    assert workers.reindex(h.wws, h.store, h.wmirror) == {"runs": 3, "updated": 0, "skipped": 2, "busy": 1, "next": None}
+
+
+def test_reindex_pages_by_its_time_budget(tmp_path, monkeypatch):
+    from foundry.services import workers
+
+    h, _ = _reindex_setup(tmp_path, monkeypatch, "clean", "failed", "recovered")
+    ticks = iter(range(1000))
+    clock = lambda: float(next(ticks))  # noqa: E731 (each call is a second later)
+    pages, after = [], None
+    while True:
+        out = workers.reindex(h.wws, h.store, h.wmirror, after=after, budget_s=1.5, clock=clock)
+        pages.append(out["runs"])
+        after = out["next"]
+        if after is None:
+            break
+    assert sum(pages) == 3 and len(pages) > 1
+
+
+def test_worker_events_are_listed_once():
+    """lambda_worker.EVENTS names every event kind it dispatches, and nothing else does dispatch."""
+    from foundry import lambda_worker
+
+    assert set(lambda_worker._events()) == set(lambda_worker.EVENTS)
+    sent = (ROOT / "infra" / "foundry_cloud" / "batch_sm.py").read_text() + (ROOT / "scripts" / "cloud.sh").read_text() \
+        + (ROOT / "scripts" / "cloud_ops.py").read_text()
+    for kind in lambda_worker.EVENTS:
+        assert f'"{kind}"' in sent or f"'{kind}'" in sent or f"\\\"{kind}\\\"" in sent, kind

@@ -297,3 +297,38 @@ def batch_finalize(ws: Workspace, store, mirror, batch_job_id: str, error: str |
     log.info("batch %s end: job=%s status=%s failures=%s interrupted=%d spent=$%.4f%s", batch_id, batch_job_id, status,
              "yes" if bad else "no", dead, spent, f" error={error}" if error else "")
     return {"batch_job_id": batch_job_id, "status": status, "spent": spent}
+
+
+# --- re-indexing (backend-parity design ADR-3) ----------------------------------------------------------------------
+
+
+def reindex(ws: Workspace, store, mirror, after: str | None = None, budget_s: float = 600.0, clock=time.time) -> dict:
+    """Rewrite every stored board card and summary that no longer matches its run's files, so a card field added
+    since a run was recorded shows up (`scripts/cloud.sh reindex`). Pages through the runs in id order after `after`
+    and stops once `budget_s` has passed, returning `next` to continue from. Runs with a queued or running job (batch
+    items included) or a scoring lock are skipped; a run that changed after its pull is "busy". Writes only what
+    differs and never bumps a run's version, so it's safe to re-run and safe beside live workers."""
+    cloud_jobs.CloudBackend(store, clock=clock).sweep()  # a job past its deadline must not keep its run skipped
+    st = CloudState(store, mirror)
+    live = {it.get("run_id") for it in store.query(cloud_jobs.PK) if it.get("status") in ("queued", "running")}
+    locked = st.evaluating_runs(ws)
+    started = clock()
+    counts = {"runs": 0, "updated": 0, "skipped": 0, "busy": 0}
+    last, nxt = after, None
+    for it in sorted(store.query(TREE, prefix="run#"), key=lambda i: i["sk"]):
+        run_id = it["sk"].partition("#")[2]
+        if after is not None and run_id <= after:
+            continue
+        if counts["runs"] and clock() - started >= budget_s:
+            nxt = last
+            break
+        counts["runs"] += 1
+        if run_id in live or run_id in locked:
+            counts["skipped"] += 1
+        else:
+            result = st.refresh_row(ws, run_id)
+            if result != "same":
+                counts[result] += 1
+        last = run_id
+    log.info("reindex: %s next=%s", counts, nxt)
+    return {**counts, "next": nxt}

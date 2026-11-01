@@ -8,6 +8,7 @@ live-job check and the operator's CLI login. cloud.sh passes the deployment's bu
     uv run python scripts/cloud_ops.py --bucket B --table T gc [--yes]            # unreferenced objects
     uv run python scripts/cloud_ops.py --bucket B --table T live-jobs             # how many jobs are in flight
     uv run python scripts/cloud_ops.py remote-json <url>                          # the operator's CLI login (D4)
+    uv run python scripts/cloud_ops.py reindex <worker function>                  # rebuild stored board cards
 """
 
 from __future__ import annotations
@@ -149,6 +150,32 @@ def remote_json(url: str) -> Path:
     return save_login(url.rstrip("/"), token)
 
 
+def reindex(function: str, log=print) -> int:
+    """Invoke the worker's re-index page by page (backend-parity ADR-3) and print the totals. One synchronous invoke
+    per page of at most 600 s: botocore's 60 s default read timeout is raised past the worker's 900 s limit, and
+    retries are off, so a slow page is never invoked twice by the client."""
+    import boto3
+    from botocore.config import Config
+
+    client = boto3.client("lambda", config=Config(read_timeout=910, retries={"total_max_attempts": 1}))
+    totals, after, started = {"runs": 0, "updated": 0, "skipped": 0, "busy": 0}, None, time.time()
+    while True:
+        r = client.invoke(FunctionName=function, Qualifier="live",
+                          Payload=json.dumps({"kind": "reindex", "after": after, "budget_s": 600}).encode())
+        out = json.loads(r["Payload"].read() or b"null")
+        if r.get("FunctionError") or not isinstance(out, dict):
+            log(f"The worker failed: {out}")
+            return 1
+        totals = {k: totals[k] + int(out.get(k) or 0) for k in totals}
+        after = out.get("next")
+        log(f"  {totals['runs']} runs checked" + (f", continuing after {after}" if after else ""))
+        if not after:
+            break
+    log(f"Re-indexed in {time.time() - started:.0f} s: {totals['runs']} runs, {totals['updated']} updated, "
+        f"{totals['skipped']} skipped (live), {totals['busy']} changed meanwhile (run it again to retry them)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--bucket")
@@ -161,10 +188,13 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("seed").add_argument("--from", dest="source", default=str(REPO))
     sub.add_parser("gc").add_argument("--yes", action="store_true", help="delete (default: list only)")
     sub.add_parser("remote-json").add_argument("url")
+    sub.add_parser("reindex").add_argument("function")
     a = p.parse_args(argv)
     if a.cmd == "remote-json":
         print(f"CLI login now points at {a.url} ({remote_json(a.url)})")
         return 0
+    if a.cmd == "reindex":
+        return reindex(a.function)
     if not (a.bucket and a.table):
         p.error("--bucket and --table are required")
     from foundry.data.store import AwsStore

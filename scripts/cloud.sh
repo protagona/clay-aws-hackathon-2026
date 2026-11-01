@@ -9,6 +9,7 @@
 #   scripts/cloud.sh token add <name> | token list | token revoke <name>
 #   scripts/cloud.sh seed [--from <dir>]        # local runs/ and tasks/ into an empty deployment (spec S4)
 #   scripts/cloud.sh gc [--yes]                 # objects no manifest references
+#   scripts/cloud.sh reindex                    # rebuild stored board cards (after a new card field)
 #   scripts/cloud.sh logs api|worker|probe|batch [--since 1h] [--follow]
 #   scripts/cloud.sh stop | start               # the kill switch: no API requests are served while stopped
 #   scripts/cloud.sh destroy [--yes]            # the app stack only; the data stays (spec D4)
@@ -322,9 +323,10 @@ case "${1:-}" in
     esac ;;
   seed) shift; ops seed "$@" ;;
   gc) shift; ops gc "$@" ;;
+  reindex) ops reindex "$(out $APP WorkerFunction)" ;;
   logs) shift; cmd_logs "$@" ;;
   stop) cmd_stop ;;
   start) cmd_start ;;
   destroy) shift; cmd_destroy "$@" ;;
-  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
