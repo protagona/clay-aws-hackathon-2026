@@ -216,7 +216,8 @@ class AwsStore:
 
         self.bucket, self.table, self.region = bucket, table, region
         self.s3 = boto3.client("s3", region_name=region,
-                               config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}))
+                               config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"},
+                                             max_pool_connections=32))  # parallel pulls (cloud_state.pull_all)
         self.ddb = boto3.client("dynamodb", region_name=region)
 
     @property

@@ -171,9 +171,12 @@ def batch(c: Client) -> None:
 
 
 def imports(c: Client) -> None:
+    import secrets
+
+    trace = json.loads(json.dumps(TRACE).replace("5a0e7651916cd43dd8448eb211c80319", secrets.token_hex(16)))  # a new run
     with tempfile.TemporaryDirectory() as tmp:
         f = Path(tmp) / "smoke-trace.json"
-        f.write_text(json.dumps(TRACE))
+        f.write_text(json.dumps(trace))
         upload_id = c.upload("trace", f)
     r = c.post("/api/import/by-upload", {"upload_id": upload_id})
     check("a trace imported through a presigned bucket upload", len(r["runs"]) == 1 and bool(c.get(f"/api/runs/{r['runs'][0]}")),

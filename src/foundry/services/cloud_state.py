@@ -9,6 +9,7 @@ pushes what changed (fenced by the lease) when the block ends.
 from __future__ import annotations
 
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
 from foundry.data import tool_cache
@@ -55,11 +56,24 @@ def pull_run(ws: Workspace, run_id: str) -> None:
             mirror.pull(f"run#{run_id}", item=item)
 
 
+PULL_THREADS = 16  # a cold instance pulls every run once: ~900 small GETs took 26-34 s one at a time (slice 10)
+
+
+def pull_all(mirror, items: list[dict]) -> None:
+    """Pull many trees at once: each tree is its own directory and its own `seen` entry, and boto3 clients are
+    thread-safe."""
+    if len(items) < 2:
+        for it in items:
+            mirror.pull(it["sk"], item=it)
+        return
+    with ThreadPoolExecutor(PULL_THREADS) as pool:
+        list(pool.map(lambda it: mirror.pull(it["sk"], item=it), items))
+
+
 def pull_runs(ws: Workspace) -> None:
     if on(ws):
         store, mirror = ws.cloud
-        for it in store.query(TREE, prefix="run#"):
-            mirror.pull(it["sk"], item=it)
+        pull_all(mirror, store.query(TREE, prefix="run#"))
 
 
 def pull_project(ws: Workspace, task: str) -> None:
@@ -71,8 +85,7 @@ def pull_project(ws: Workspace, task: str) -> None:
 def pull_batches(ws: Workspace) -> None:
     if on(ws):
         store, mirror = ws.cloud
-        for it in store.query(TREE, prefix="batch#"):
-            mirror.pull(it["sk"], item=it)
+        pull_all(mirror, store.query(TREE, prefix="batch#"))
 
 
 def pull_projects(ws: Workspace) -> None:
