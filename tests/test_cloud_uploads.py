@@ -1,6 +1,7 @@
 """Two-step uploads, imports and drafts by upload, edit conflicts and the CLI download (aws-deploy slice 6b)."""
 
 import json
+import shutil
 
 import pytest
 from conftest import ROOT
@@ -18,7 +19,12 @@ BASE = "http://127.0.0.1:8765"
 
 
 def local_client(tmp_path):
-    c = TestClient(create_app(tmp_path / "runs", ROOT), base_url=BASE)
+    root = tmp_path / "project"  # a copy: drafts and edits must not land in the repo's tasks/
+    root.mkdir()
+    for d in ("config", "fixtures"):
+        (root / d).symlink_to(ROOT / d)
+    shutil.copytree(ROOT / "tasks", root / "tasks", ignore=shutil.ignore_patterns("drafts"))
+    c = TestClient(create_app(tmp_path / "runs", root), base_url=BASE)
     return c, {"x-csrf-token": c.get("/api/session").json()["csrf"]}
 
 
