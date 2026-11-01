@@ -120,11 +120,15 @@ class FoundryAppStack(Stack):
             self, "WorkerVersionRef", version=worker_version.value_as_string, lambda_=worker))
         profile_ids, regional_ids = bedrock_models()
         profiles = [f"arn:aws:bedrock:{self.region}:{self.account}:inference-profile/{p}" for p in profile_ids]
-        worker.add_to_role_policy(iam.PolicyStatement(actions=BEDROCK_ACTIONS, resources=profiles + [
-            f"arn:aws:bedrock:{self.region}::foundation-model/{m}" for m in regional_ids]))
-        worker.add_to_role_policy(iam.PolicyStatement(actions=BEDROCK_ACTIONS, resources=[
-            f"arn:aws:bedrock:{r}::foundation-model/{p.removeprefix('us.')}" for p in profile_ids for r in PROFILE_REGIONS],
-            conditions={"StringLike": {"bedrock:InferenceProfileArn": profiles}}))
+
+        def bedrock(fn: lam.IFunction) -> None:  # the configs' models only (the existing bedrock_models() rules)
+            fn.add_to_role_policy(iam.PolicyStatement(actions=BEDROCK_ACTIONS, resources=profiles + [
+                f"arn:aws:bedrock:{self.region}::foundation-model/{m}" for m in regional_ids]))
+            fn.add_to_role_policy(iam.PolicyStatement(actions=BEDROCK_ACTIONS, resources=[
+                f"arn:aws:bedrock:{r}::foundation-model/{p.removeprefix('us.')}" for p in profile_ids for r in PROFILE_REGIONS],
+                conditions={"StringLike": {"bedrock:InferenceProfileArn": profiles}}))
+
+        bedrock(worker)
         bucket.grant_read_write(worker)  # includes ListBucket, so a missing key is a 404, not a 403
         bucket.grant_delete(worker)
         worker.add_to_role_policy(iam.PolicyStatement(actions=TABLE_ITEM_ACTIONS, resources=[table.table_arn],
@@ -145,6 +149,7 @@ class FoundryAppStack(Stack):
         api_live = lam.Alias(self, "ApiLive", alias_name="live", version=lam.Version.from_version_attributes(
             self, "ApiVersionRef", version=api_version.value_as_string, lambda_=api))
         url = api_live.add_function_url(auth_type=lam.FunctionUrlAuthType.NONE)
+        bedrock(api)  # rubric drafts call the judge model inside the request (design notes, slice 6b)
         table.grant_read_write_data(api)
         bucket.grant_read_write(api)
         bucket.grant_delete(api)

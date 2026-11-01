@@ -247,3 +247,18 @@ def test_cloud_workflow_alarms_and_logs():
     t.has_resource_properties("AWS::Events::Rule", {"ScheduleExpression": "rate(5 minutes)"})
     for alarm in t.find_resources("AWS::CloudWatch::Alarm").values():
         assert alarm["Properties"]["AlarmActions"]
+
+
+def test_cloud_api_and_worker_may_call_the_configured_models_only():  # drafts run in the api (slice 6b, found live)
+    _, t = _cloud()
+    fns = {k: v["Properties"] for k, v in t.find_resources("AWS::Lambda::Function").items()}
+    for cmd in ("foundry.lambda_api.handler", "foundry.lambda_worker.handler"):
+        role = next(p for p in fns.values() if p.get("ImageConfig", {}).get("Command") == [cmd])["Role"]["Fn::GetAtt"][0]
+        stmts = [s for p in t.find_resources("AWS::IAM::Policy").values() if {"Ref": role} in p["Properties"]["Roles"]
+                 for s in p["Properties"]["PolicyDocument"]["Statement"]]
+        bedrock = [s for s in stmts if "bedrock:InvokeModel" in json.dumps(s["Action"])]
+        assert len(bedrock) == 2, cmd
+        assert "*" not in json.dumps([s["Resource"] for s in bedrock]).replace("arn:aws:bedrock", ""), cmd
+    probe = next(p for p in fns.values() if p.get("ImageConfig", {}).get("Command") == ["foundry.lambda_probe.handler"])
+    assert "bedrock" not in json.dumps([p for p in t.find_resources("AWS::IAM::Policy").values()
+                                        if {"Ref": probe["Role"]["Fn::GetAtt"][0]} in p["Properties"]["Roles"]])
