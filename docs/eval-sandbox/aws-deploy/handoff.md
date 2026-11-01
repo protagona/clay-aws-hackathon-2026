@@ -28,8 +28,8 @@
    - `docs/deploy.md`
 7. **The sandbox deployment** (account 283171504459, us-west-2):
    - URL: **https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/** (`scripts/cloud.sh status` prints it).
-   - Build `cdbd960`, both aliases on version 9.
-   - My test data (runs, batches, job records, six archived smoke prompts and a rubric draft) was removed on 2026-11-01. What's there now is the 77 seeded runs and 5 seeded batches, plus your own work.
+   - Build `7097990`, both aliases on version 12 (2026-11-01). Since `cdbd960`: the board says why a run needs attention ([board-attention](../board-attention/handoff.md)), and the CLI work, which includes the served client's https check ([cli](../cli/handoff.md)).
+   - My test data (runs, batches, job records, six archived smoke prompts and a rubric draft) was removed on 2026-11-01, and so was the CLI live check's (6 runs, 1 batch). What's there now is the 77 seeded runs and 5 seeded batches, plus your own work.
    - `smoke` (used for testing) is revoked. Add tokens with `AWS_PROFILE=<profile> scripts/cloud.sh token add <name>`.
 
 ## Decisions
