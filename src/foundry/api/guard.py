@@ -4,6 +4,7 @@ writes, security headers on every response, and the per-process CSRF token that 
 from __future__ import annotations
 
 import hmac
+import logging
 import secrets
 
 from fastapi import FastAPI, Request
@@ -77,7 +78,8 @@ def install(app: FastAPI, port: int, access=None, upload_origin: str | None = No
             if response is None:
                 try:
                     response = await call_next(request)
-                except Exception:
+                except Exception:  # the traceback goes to the log (CloudWatch in the cloud, spec O1), never the client
+                    logging.getLogger("foundry.api").exception("%s %s failed", request.method, request.url.path)
                     response = refuse(500, "Internal Server Error")
         response.headers["Content-Security-Policy"] = csp
         response.headers["X-Content-Type-Options"] = "nosniff"

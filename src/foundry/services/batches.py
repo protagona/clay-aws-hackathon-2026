@@ -67,12 +67,15 @@ def variant_stats(rows: list[dict]) -> list[dict]:
 
 
 def batch_view(ws: Workspace, batch_id: str) -> dict:
+    # The job before the files: a finished job then implies finished files, since Finalize pushes batch.json before
+    # it finishes the job. Read the other way round, a Finalize landing in between paired a finished job with
+    # stale files, and the batch read as "stopped" (found live, aws-deploy slice 10).
+    job = jobs.of_run(ws, "batch", batch_id)
     cloud_state.pull_batches(ws)
     cloud_state.pull_runs(ws)  # rows link to their runs when those exist here
     path = data_batches.batch_path(ws.batches_dir, batch_id)
     if path is None:
         raise ServiceError(404, "Batch not found")
-    job = jobs.of_run(ws, "batch", batch_id)
     meta = data_batches.read_meta(path)
     rows = data_batches.batch_rows(path, ws.runs_dir)
     running = (job is not None and job.alive) or (job is None and meta.get("status") == "running"

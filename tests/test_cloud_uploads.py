@@ -117,3 +117,19 @@ def test_the_cli_download_is_public_and_only_that_file(tmp_path):
     r = c.get("/cli/foundry-remote.pyz")
     assert r.status_code == 200 and r.content.startswith(b"#!/usr/bin/env python3\n")
     assert c.get("/cli/other.py").status_code == 404
+
+
+def test_the_same_trace_twice_is_a_409_locally_and_across_instances(tmp_path, cloud):
+    from test_cli_remote import TRACE
+
+    data = json.dumps(TRACE).encode()
+    c, h = local_client(tmp_path)
+    for want in (201, 409):
+        r = c.post("/api/import/by-upload", headers=h, json={"upload_id": upload_local(c, h, "trace", "t.json", data)})
+        assert r.status_code == want, r.text
+    assert r.json()["error"] == "Already imported: run otel-imported-0af7651916cd-a1 exists."
+    store, (a, ha), (b, hb) = cloud
+    for client, headers, want in ((a, ha, 201), (b, hb, 409)):
+        t = client.post("/api/uploads", headers=headers, json={"kind": "trace", "filename": "t.json", "size": len(data)}).json()
+        store.put_object(f"uploads/{t['upload_id']}", data, if_none_match=False)
+        assert client.post("/api/import/by-upload", headers=headers, json={"upload_id": t["upload_id"]}).status_code == want

@@ -9,7 +9,7 @@ from foundry.data.runs import is_valid_run_id
 from foundry.engine import importer
 from foundry.engine.importer import ImportError_, import_spans, spans_from_file
 from foundry.engine.receiver import Receiver
-from foundry.services import configs
+from foundry.services import cloud_state, configs
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -29,10 +29,13 @@ def _prices(ws: Workspace, config: str):
 
 
 def import_saved_trace(ws: Workspace, dest: Path, filename: str, task: str, prompt_id: str, config: str) -> list[Path]:
+    cloud_state.pull_runs(ws)  # a run another instance imported must exist here too, or it would be overwritten
     try:
         prices = _prices(ws, config)  # before reading the trace, so a bad config is reported first, as before
         return import_spans(spans_from_file(dest), ws.runs_dir, task, prompt_id,
                             f"upload:{Path(filename or 'trace').name}", prices)
+    except FileExistsError as exc:  # run ids come from the trace ids: the same trace imports to the same runs
+        raise ServiceError(409, f"Already imported: run {Path(exc.filename).name} exists.") from None
     except (ImportError_, ConfigError) as exc:
         detail = str(exc).replace(str(dest), Path(filename or "trace").name)  # never show the server's upload path
         raise ServiceError(400, f"Could not import {filename}: {detail}") from None
