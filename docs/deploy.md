@@ -49,7 +49,7 @@ The legacy `FoundryStack` (`ClayFoundryEvalSandbox`, `infra/app.py`) is separate
    scripts/cloud.sh token list
    scripts/cloud.sh token revoke ana      # stops working within 60 s
    ```
-   People sign in at the URL with their token.
+   People sign in at the URL with their token. Each server instance caches the token list for up to 60 s, so a new token can take up to a minute to start working, and a revoked one up to a minute to stop.
 7. **Optional: bring your local runs:**
    ```sh
    scripts/cloud.sh seed                  # runs/ and tasks/ from this checkout
