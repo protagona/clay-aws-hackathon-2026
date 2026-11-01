@@ -23,7 +23,7 @@ class NotFound(Exception):
 
 class Conflict(Exception):
     """A condition failed (a version moved, a slot is taken, a cap would be crossed). `reasons` holds one code per
-    transaction action: "ConditionalCheckFailed" or "None"."""
+    transaction action: "ConditionalCheckFailed", "None", or (once retries ran out) "TransactionConflict"."""
 
     def __init__(self, reasons: list[str] | None = None):
         super().__init__(", ".join(reasons or ["ConditionalCheckFailed"]))
@@ -323,15 +323,31 @@ class AwsStore:
         except self.ddb.exceptions.ConditionalCheckFailedException:
             raise Conflict() from None
 
+    TRANSACT_TRIES = 5
+
     def transact(self, actions: list, token: str | None = None) -> None:
-        """All-or-nothing; `token` (≤ 36 chars) makes a retried call idempotent for 10 minutes (spike S-5)."""
+        """All-or-nothing; `token` (≤ 36 chars) makes a retried call idempotent for 10 minutes (spike S-5).
+
+        A transaction cancelled only because another one was writing the same item (`TransactionConflict`: two
+        starts on the month's SPEND record, say) changed nothing, so it is tried again, up to TRANSACT_TRIES times
+        with jittered backoff and a fresh token per try (design ADR-8). A failed condition is never retried."""
+        import random
+        import time
+
         kinds = {Put: "Put", Update: "Update", Delete: "Delete", Check: "ConditionCheck"}
         items = [{kinds[type(a)]: self._action(a)} for a in actions]
-        kw = {"ClientRequestToken": token[:36]} if token else {}
-        try:
-            self.ddb.transact_write_items(TransactItems=items, **kw)
-        except self.ddb.exceptions.TransactionCanceledException as exc:
-            raise Conflict([r.get("Code", "None") for r in exc.response.get("CancellationReasons", [])]) from None
+        for attempt in range(self.TRANSACT_TRIES):
+            kw = {"ClientRequestToken": (token[:33] + (f"-{attempt}" if attempt else ""))[:36]} if token else {}
+            try:
+                self.ddb.transact_write_items(TransactItems=items, **kw)
+                return
+            except self.ddb.exceptions.TransactionCanceledException as exc:
+                reasons = [r.get("Code", "None") for r in exc.response.get("CancellationReasons", [])]
+            if "TransactionConflict" not in reasons or "ConditionalCheckFailed" in reasons:
+                break
+            if attempt + 1 < self.TRANSACT_TRIES:
+                time.sleep(random.uniform(0.05, 0.1) * 2 ** attempt)
+        raise Conflict(reasons)
 
 
 class BatchWorkflow:

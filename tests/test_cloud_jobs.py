@@ -167,3 +167,64 @@ def test_a_started_job_that_dies_frees_its_slot_17_minutes_after_it_started(clou
     clock.t += 2  # 17 minutes after it started: a start alone frees it (no job-list read first, as from the CLI)
     jobs.start(b, "run", "r-2", "Run", run_args(b, "r-2"), singleton=True, task="adb")
     assert jobs.find(b, job.id).status == "interrupted"  # the next job-list read marks the dead job
+
+
+class _Ddb:
+    """A DynamoDB client stand-in for AwsStore.transact: cancels with the given reasons, then succeeds."""
+
+    class exceptions:
+        class TransactionCanceledException(Exception):
+            def __init__(self, reasons):
+                super().__init__("cancelled")
+                self.response = {"CancellationReasons": [{"Code": r} for r in reasons]}
+
+    def __init__(self, *cancellations):
+        self.cancellations, self.tokens = list(cancellations), []
+
+    def transact_write_items(self, TransactItems, ClientRequestToken=None):
+        self.tokens.append(ClientRequestToken)
+        if self.cancellations:
+            raise self.exceptions.TransactionCanceledException(self.cancellations.pop(0))
+
+
+def _aws(ddb):
+    from foundry.data.store import AwsStore
+
+    store = AwsStore.__new__(AwsStore)
+    store.ddb, store.table = ddb, "t"
+    return store
+
+
+def test_a_transaction_conflict_is_retried_and_a_failed_condition_is_not(monkeypatch):  # Verify pass 3
+    import time
+
+    from foundry.data.store import Conflict, Put
+
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+    put = [Put({"pk": "JOB", "sk": "j"})]
+    ddb = _Ddb(["None", "TransactionConflict"], ["TransactionConflict", "None"])
+    _aws(ddb).transact(put, token="start-abc")
+    assert len(ddb.tokens) == 3 and len(set(ddb.tokens)) == 3  # retried twice, each with a fresh token
+    ddb = _Ddb(["ConditionalCheckFailed", "TransactionConflict"])
+    with pytest.raises(Conflict) as e:
+        _aws(ddb).transact(put, token="start-abc")
+    assert len(ddb.tokens) == 1 and e.value.reasons[0] == "ConditionalCheckFailed"  # a condition: no retry
+    ddb = _Ddb(*[["None", "TransactionConflict"]] * 5)
+    with pytest.raises(Conflict) as e:
+        _aws(ddb).transact(put, token="start-abc")
+    assert len(ddb.tokens) == 5 and "TransactionConflict" in e.value.reasons
+
+
+def test_finish_is_not_fooled_by_contention(cloud, monkeypatch):  # Verify pass 3: a conflict isn't "finished"
+    from foundry.data.store import Conflict
+
+    store, clock, invoked, a, b, w, wm = cloud
+    job = jobs.start(a, "run", "r-1", "Run", run_args(w, "r-1"), singleton=True, task="adb")
+    real = store.transact
+    monkeypatch.setattr(store, "transact", lambda *a, **k: (_ for _ in ()).throw(Conflict(["None", "TransactionConflict"])))
+    with pytest.raises(Conflict):
+        cloud_jobs.finish(store, job.id, "done", 0, None, clock.t)
+    monkeypatch.setattr(store, "transact", real)
+    assert store.get_item("JOB", job.id)["status"] == "queued"  # untouched: the caller sees the error
+    assert cloud_jobs.finish(store, job.id, "done", 0, None, clock.t) is True
+    assert cloud_jobs.finish(store, job.id, "done", 0, None, clock.t) is False  # now it really was finished

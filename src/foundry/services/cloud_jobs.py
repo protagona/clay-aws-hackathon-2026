@@ -101,8 +101,10 @@ def finish(store, job_id: str, status: str, exit_code: int | None, message: str 
         actions.append(Update("SPEND", item["month"], add={"committed": round(charge - reserved, 6)}))
     try:
         store.transact(actions, token=f"fin-{secrets.token_hex(8)}")  # unique per call: one call's retries share it
-    except Conflict:
-        return False
+    except Conflict as exc:
+        if exc.reasons[:1] == ["ConditionalCheckFailed"]:
+            return False  # the job's own condition: its worker or a sweep finished it first
+        raise  # contention that outlasted the store's retries: not "already finished" (Verify pass 3)
     for pk, sk, attr in (("SLOT", item.get("slot") or "", "job_id"), ("LOCK", item.get("eval_lock") or "", "owner")):
         if sk:
             try:

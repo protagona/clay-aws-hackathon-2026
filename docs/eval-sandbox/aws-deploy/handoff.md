@@ -48,8 +48,8 @@
 
 ## Verification
 
-**Suites (final run, before Verify pass 2):**
-- **Python:** 431 passed, plus 4 `network` tests deselected.
+**Suites (final run):**
+- **Python:** 433 passed, plus 4 `network` tests deselected.
 - **Vitest:** 37 passed.
 - **Local browser e2e:** both scripts pass. `ui_e2e.mjs` also imports a trace and drafts a rubric through the pages' two-step uploads.
 
@@ -97,6 +97,7 @@
 10. (Verify pass 2) The multipart import lost its runs in the cloud.
 11. (Verify pass 2) The sweep closed dead batch items at $0 before Finalize charged them.
 12. (Verify pass 2) A dead job's slot stayed blocked for 32 minutes for a start with no job-list read first.
+13. (Verify pass 3) Transaction conflicts weren't retried, and a conflicting finish looked like "already finished".
 
 ## Gates
 
@@ -120,7 +121,10 @@
   5. **The final build not smoke-tested:** every smoke and the browser drive ran on `a069d77`.
 
   Minor findings fixed: `spent_usd` includes the dead-item charge; authentication errors are logged; A6's concurrency limit is a deploy parameter.
-- **Verify, pass 3:** see the commit that follows this handoff.
+- **Verify, pass 3 (subagent): 1 blocker.** Transaction conflicts on the shared SPEND record were never retried, and `finish()` read one as "already finished" (a finished job left running, charged its full reservation, the slot blocked).
+  - It was the third pass, so it went to you; you chose to fix, re-verify and push.
+  - The fix: bounded jittered retries in `AwsStore.transact`, and `finish()` distinguishing its own condition from contention. Tested against a stubbed DynamoDB client and an injected conflict; both tests fail without the fix.
+  - Its minor findings are under Deferred.
 
 ## Deferred and follow-ups
 
@@ -128,7 +132,12 @@
 - **IAM, state-machine and alarm changes take effect at deploy,** whatever the alias. "The previous version keeps serving" covers code and environment only.
 - **Reserved concurrency** (`--concurrency`, default 20, plus 8 for the worker) and the alias moves are made by `cloud.sh`, outside the template. In an account with too little unreserved concurrency the deploy warns and the limit isn't set.
 - **Stale token cache:** if the table can't be read, `TokenStore` keeps serving its last good token list for up to 10 minutes, so a token revoked just before the outage can work past A1's 60 s.
-- **Header tokens and A6:** a correct header token is never rate-limited; only failures count.
+- **A6, header tokens:** a header token is checked before the rate limit, so past the limit a correct token still gets 200 and only wrong guesses get 429. That's harmless with 256-bit tokens, but it isn't A6's literal "beyond that, 429".
+- **A6, sign-ins:** successful sign-ins count toward the limit too. A room of people behind one NAT address (or one IPv6 /64) gets 429 after 10 sign-ins a minute; they can wait a minute and retry. Raise `ATTEMPTS_PER_MINUTE` in `services/access.py` for a demo room.
+- **The function URL's 6 MB response limit:** nothing guards it. A run imported from a very large trace could produce a run detail too big to return in the cloud (the 50 MB import wasn't tried live).
+- **Percent-encoded paths:** `lambda_api` passes `rawPath` undecoded. That's harmless while ids are `[A-Za-z0-9._-]`.
+- **Dashboard cold load:** 2.4 s at 96 runs against a 3 s limit, with little headroom as runs grow.
+- **The hackathon account** is untried: the fresh-account success signal and AS5 (an SCP blocking public URLs). A dry run before the event is advised.
 - **Not driven:** the cap's refusal in the UI (the CLI path was) and revoking a browser session (unit-tested).
 - **Bucket CORS** allows any origin for POST. Uploads need a presigned policy, but it could be narrowed to the URL.
 - **The supply chain:** the base image isn't pinned by digest, and RODA's dependencies below the top level aren't locked. gitleaks ran on every commit with no leaks; no dependency or IaC scanner ran.
