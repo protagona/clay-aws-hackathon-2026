@@ -164,6 +164,45 @@ def cards(ws: Workspace) -> list[dict]:
     return sorted((card_for(ws, d) for d in data_runs.run_dirs(ws.runs_dir)), key=lambda c: c["started_at"], reverse=True)
 
 
+INTERRUPTED_REASON = "Its worker stopped before finishing"
+_LIMITS = (("max_model_calls (", "Hit the model-call limit ({})"), ("max_input_tokens (", "Hit the input-token limit ({})"),
+           ("max_seconds (", "Hit the time limit ({} s)"))
+
+
+def _exc_name(error) -> str:
+    return str(error or "").split(":", 1)[0].strip()[:60] or "unknown"
+
+
+def failure_reason(status, steps: list[dict]) -> str | None:
+    """Why a run failed, in a few plain words, for its board card (board-attention spec B1); None unless it failed,
+    timed out or was interrupted. Only the trace's note names, limit texts and exception names are used, never
+    prompt or model text. The first matching rule wins."""
+    if status == "interrupted":
+        return INTERRUPTED_REASON
+    if status not in ("failed", "timeout"):
+        return None
+    notes = [(s.get("name"), str(s.get("text") or "")) for s in steps if s.get("type") == "note"]
+    for name, text in notes:
+        if name == "limit":
+            for prefix, phrase in _LIMITS:
+                if text.startswith(prefix):
+                    return phrase.format(text[len(prefix):].split(")", 1)[0])
+            if text.startswith("hard timeout"):
+                return "Timed out, and the agent didn't stop"
+    if status == "timeout":
+        return "Hit the time limit"
+    if any(name == "mcp_start" for name, _ in notes):
+        return "A tool server didn't start"
+    errors = [s for s in steps if s.get("status") == "error" and s.get("type") in ("note", "llm_call")
+              and (s.get("type") == "llm_call" or s.get("name") == "agent_error")]
+    if any("MaxTokensReachedException" in str(s.get("error") or "") for s in errors):
+        return "Hit the output-token limit; the answer was cut off"
+    if errors:
+        last = errors[-1]
+        return f"{'Model call failed' if last.get('type') == 'llm_call' else 'Agent error'}: {_exc_name(last.get('error'))}"
+    return "No final answer"
+
+
 def card_extras(ws: Workspace, run_id: str) -> dict:
     """Numbers a board card shows beyond the card basics (all from the run's own files)."""
     path = ws.runs_dir / run_id
@@ -176,10 +215,13 @@ def card_extras(ws: Workspace, run_id: str) -> dict:
         cost = wf["cost_usd"]
     mode = agents.get("mode") if isinstance(agents.get("mode"), str) else None
     started: list[str] = []
-    live_pipeline = mode == "pipeline" and run.get("status") == "running"
+    status = run.get("status")
+    live_pipeline = mode == "pipeline" and status == "running"
+    failed = status in ("failed", "timeout", "interrupted")
+    trace = data_runs.read_trace_lenient(path) if live_pipeline or cost is None or failed else []
     if live_pipeline or cost is None:  # unscored runs: cost from the trace; live pipeline runs: agents started so far
         total, seen_cost = 0.0, False
-        for s in data_runs.read_trace_lenient(path):
+        for s in trace:
             if live_pipeline and s.get("type") == "agent_step" and isinstance(s.get("name"), str):
                 started.append(s["name"])
             c = s.get("cost_usd")
@@ -189,7 +231,8 @@ def card_extras(ws: Workspace, run_id: str) -> dict:
             cost = round(total, 6)
     return {"overall": sc.get("overall"), "workflow": wf.get("score"),
             "output": (sc.get("output") or {}).get("score") if isinstance(sc.get("output"), dict) else None,
-            "cost": cost, "agents_mode": mode, "agents_started": started[:8]}
+            "cost": cost, "agents_mode": mode, "agents_started": started[:8],
+            **({"reason": failure_reason(status, trace)} if failed else {})}
 
 
 def entry_for(d: Path) -> dict | None:
@@ -263,6 +306,7 @@ def board_from_index(ws: Workspace) -> tuple[list[dict], dict]:
                 card["headline"] = "evaluating"
             elif card.get("headline") == "running" and it["run_id"] in interrupted:
                 card["headline"] = card["status"] = "interrupted"
+                card["reason"] = INTERRUPTED_REASON
         out.append(card)
     k = {"spent": spent, "mean": sum(scored) / len(scored) if scored else None, "scored": len(scored), "shares": shares}
     return sorted(out, key=lambda c: c.get("started_at") or "", reverse=True), k

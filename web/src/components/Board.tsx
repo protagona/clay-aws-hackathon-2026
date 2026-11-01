@@ -32,12 +32,14 @@ function RunCard({ c, selected, onEvaluate }: { c: Card; selected: boolean; onEv
         )}
         {c.column === "running" && <div className="working mt-3 h-1.5 rounded-full" aria-hidden="true" />}
         {c.column === "evaluating" && <div className="mt-3 h-1.5 animate-pulse rounded-full bg-amber-300 dark:bg-amber-500/50" aria-hidden="true" />}
+        {c.column === "attention" && c.reason && <p className="mt-2 text-xs text-rose-700 dark:text-rose-300">{c.reason}</p>}
         <div className="mt-3 flex justify-between text-xs text-slate-500">
           <span>{c.column === "scored" ? `Workflow ${c.workflow?.toFixed(2) ?? "—"} · Output ${c.output?.toFixed(2) ?? "—"}` : c.when}</span>
           <span>{c.agents_mode === "pipeline" ? "pipeline · " : ""}{money(c.cost)}</span>
         </div>
       </Link>
-      {c.column === "attention" && c.status !== "running" && !c.unreadable && (
+      {/* Only a run with no overall score can gain from scoring; a scored failure would cost the same result again. */}
+      {c.column === "attention" && c.status !== "running" && !c.unreadable && c.overall == null && (
         <div className="border-t border-slate-100 px-4 py-2 dark:border-slate-800">
           <button className="text-xs font-medium text-sky-600 hover:underline" onClick={() => onEvaluate(c.run_id)}>Score it →</button>
         </div>

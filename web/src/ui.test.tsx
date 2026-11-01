@@ -35,6 +35,18 @@ describe("Board", () => {  // T2: columns come from the API's `column`, never co
     buttons[0].click();
     expect(onEvaluate).toHaveBeenCalledWith("c");
   });
+
+  it("says why a run failed, and offers no rescoring once it has a score (board-attention B1, B2)", () => {
+    render(<MemoryRouter><Board runs={[
+      card("f", "attention", { status: "failed", headline: "0.33", overall: 0.325, reason: "Hit the output-token limit; the answer was cut off" }),
+      card("g", "attention", { status: "failed", headline: "not evaluated", reason: "Hit the model-call limit (12)" })]} onEvaluate={() => {}} /></MemoryRouter>);
+    const attention = screen.getByRole("region", { name: "Needs attention" });
+    expect(within(attention).getByText("Hit the output-token limit; the answer was cut off")).toBeTruthy();
+    expect(within(attention).getByText("Hit the model-call limit (12)")).toBeTruthy();
+    const buttons = within(attention).getAllByRole("button", { name: /Score it/ });
+    expect(buttons).toHaveLength(1);  // only the unscored one
+    expect(buttons[0].closest("li")?.textContent).toContain("g");
+  });
 });
 
 describe("polling cadence", () => {  // design: board 2 s live / 5 s idle; run 1 s live, then stop

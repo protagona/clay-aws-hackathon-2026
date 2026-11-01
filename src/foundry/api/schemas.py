@@ -95,6 +95,7 @@ class Card(Closed):
     cost: float | None = None
     agents_mode: str | None = None
     agents_started: list[str] | None = None  # live pipeline runs: agents started so far (from the trace)
+    reason: str | None = None  # failed, timed-out and interrupted runs: why, in a few words (board-attention B1)
 
 
 class Kpis(Closed):

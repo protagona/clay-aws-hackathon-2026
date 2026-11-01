@@ -273,3 +273,15 @@ def test_cloud_logging_lets_info_through_a_warning_root(monkeypatch):
     finally:
         root.removeHandler(handler)
     assert [r.getMessage() for r in seen] == ["after"]
+
+
+def test_a_failed_runs_index_card_says_why(cloud, monkeypatch):
+    """board-attention B3: the worker stores the failure reason with the card, so the cloud board shows it."""
+    from foundry.data.index import run_items
+
+    store, clock, invoked, a, b, w, wm = cloud
+    monkeypatch.setattr(jobs, "run_foundry", fake_runner("failed", code=1))
+    job = jobs.start(a, "run", "r-1", "Run", run_args(w, "r-1"), singleton=True, task="adb")
+    workers.run_job(w, store, wm, job.id, clock)
+    (item,) = run_items(store)
+    assert item["card"]["status"] == "failed" and item["card"]["reason"] == "Hit the model-call limit (3)"

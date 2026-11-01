@@ -64,6 +64,8 @@ def test_runs_kpis_and_columns(tmp_path):  # A5, U2
     assert (k["runs"], k["scored"], k["running"], k["live"]) == (4, 1, 1, 1) and abs(k["mean"] - 0.8333) < 0.01
     clean = next(r for r in body["runs"] if r["run_id"] == "fixture-clean")
     assert clean["overall"] == pytest.approx(0.8333, abs=0.01) and clean["workflow"] == 1.0
+    failed = next(r for r in body["runs"] if r["run_id"] == "fixture-failed")
+    assert failed["reason"] == "Hit the model-call limit (3)" and "reason" not in clean  # board-attention B1
 
 
 def test_run_detail_and_404(tmp_path):  # A1, A4
@@ -438,3 +440,39 @@ def test_logo_and_tab_icons_served(tmp_path):  # increment 14, L2/L3: TF mark, c
     assert 'href="/assets/brand/favicon-light-32-v1.png" media="(prefers-color-scheme: light)"' in html
     assert 'href="/assets/brand/favicon-dark-32-v1.png" media="(prefers-color-scheme: dark)"' in html
     assert "data:image" not in html
+
+
+@pytest.mark.parametrize("status, steps, reason", [  # board-attention B1, one row of its table each
+    ("succeeded", [], None),
+    ("running", [], None),
+    ("interrupted", [], "Its worker stopped before finishing"),
+    ("failed", [{"type": "note", "name": "limit", "text": "max_model_calls (12) reached"}], "Hit the model-call limit (12)"),
+    ("failed", [{"type": "note", "name": "limit", "text": "max_input_tokens (200000) reached"}],
+     "Hit the input-token limit (200000)"),
+    ("timeout", [{"type": "note", "name": "limit", "text": "max_seconds (300) reached"},
+                 {"type": "note", "name": "limit", "text": "hard timeout: agent did not stop after cancel"}],
+     "Hit the time limit (300 s)"),
+    ("timeout", [{"type": "note", "name": "limit", "text": "hard timeout: agent did not stop after cancel"}],
+     "Timed out, and the agent didn't stop"),
+    ("timeout", [], "Hit the time limit"),
+    ("failed", [{"type": "note", "name": "mcp_start", "text": "roda: exited"}], "A tool server didn't start"),
+    ("failed", [{"type": "llm_call", "status": "ok"}, {"type": "note", "name": "agent_error", "status": "error",
+      "error": "MaxTokensReachedException: Model stopped generating due to maximum token limit."}],
+     "Hit the output-token limit; the answer was cut off"),
+    ("failed", [{"type": "llm_call", "status": "error", "error": "ThrottlingException: Too many requests, SECRET PROMPT"}],
+     "Model call failed: ThrottlingException"),
+    ("failed", [{"type": "note", "name": "agent_error", "status": "error", "error": "ValueError: model said SECRET"}],
+     "Agent error: ValueError"),
+    ("failed", [{"type": "tool_call", "status": "error", "error": "Dataset not found"}], "No final answer"),
+])
+def test_failure_reason(status, steps, reason):
+    from foundry.services.runs import failure_reason
+
+    assert failure_reason(status, steps) == reason
+
+
+def test_a_failure_reason_never_carries_error_text():
+    from foundry.services.runs import failure_reason
+
+    reason = failure_reason("failed", [{"type": "llm_call", "status": "error", "error": "X" * 500 + ": the prompt"}])
+    assert reason == "Model call failed: " + "X" * 60

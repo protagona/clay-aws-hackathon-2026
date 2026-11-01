@@ -123,6 +123,7 @@ def test_a_run_whose_worker_died_reads_as_interrupted(cloud, monkeypatch):
     store.write(Update("JOB", invoked[0], set={"status": "interrupted"}))  # what the sweep writes past the deadline
     card = next(c for c in b.get("/api/runs").json()["runs"] if c["run_id"] == run_id)
     assert card["headline"] == card["status"] == "interrupted" and card["column"] == "attention"
+    assert card["reason"] == "Its worker stopped before finishing"  # board-attention B1
     d = b.get(f"/api/runs/{run_id}").json()
     assert d["run"]["status"] == "interrupted" and d["m"]["live"] is False
 

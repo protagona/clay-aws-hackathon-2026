@@ -114,6 +114,7 @@ export interface Card {
   cost?: number | null;
   agents_mode?: string | null;
   agents_started?: string[] | null;
+  reason?: string | null;
 }
 
 export interface CardKpi {
