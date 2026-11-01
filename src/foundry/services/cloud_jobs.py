@@ -82,6 +82,16 @@ def record(item: dict, store) -> JobRecord:
                      json.loads(item.get("prompt_ids") or "null"), item.get("message"), store)
 
 
+def unchanged(attr: str, seen) -> Cond:
+    """`attr` still holds the value read as `seen`. A number read back as a float can lose digits the table keeps (an
+    exact decimal sum of float costs), so a float matches within 1e-9; a real change (a cost booked) is far bigger."""
+    if seen in (0, None):
+        return Cond.any(Cond.missing(attr), Cond.eq(attr, seen))
+    if isinstance(seen, float):
+        return Cond.all(Cond.gt(attr, seen - 1e-9), Cond.lt(attr, seen + 1e-9))
+    return Cond.eq(attr, seen)
+
+
 def finish(store, job_id: str, status: str, exit_code: int | None, message: str | None, now: float,
            actual: float | None = None, expect: dict | None = None) -> bool:
     """Mark a job done/failed/interrupted exactly once, settling its spend in the same transaction (its reservation
@@ -93,8 +103,7 @@ def finish(store, job_id: str, status: str, exit_code: int | None, message: str 
     actions = [Update(PK, job_id, set={"status": status, "exit_code": exit_code, "message": (message or "")[:300],
                                        "finished_at": now, "charged": charge},
                       cond=Cond.all(Cond.isin("status", ["queued", "running"]),
-                                    *(Cond.any(Cond.missing(k), Cond.eq(k, v)) if v in (0, None) else Cond.eq(k, v)
-                                      for k, v in (expect or {}).items())))]
+                                    *(unchanged(k, v) for k, v in (expect or {}).items())))]
     if item.get("month") and (reserved or charge):
         # Settled on the month whose cap allowed the job (its start month), so a job crossing a month boundary
         # can't free headroom in the new month.

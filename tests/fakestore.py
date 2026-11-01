@@ -6,8 +6,17 @@ from __future__ import annotations
 
 import copy
 import itertools
+from decimal import Decimal
 
-from foundry.data.store import Check, Conflict, Delete, NotFound, Put, Update, apply_update, evaluate
+from foundry.data.store import (Check, Conflict, Delete, NotFound, Put, Update, apply_update, evaluate, from_ddb,
+                                to_ddb)
+
+
+def read(item: dict) -> dict:
+    """An item as AwsStore returns it: numbers through the DynamoDB codec, so an exact decimal sum reads back as a
+    float that may have lost digits, as it does in the real table."""
+    return {k: from_ddb(to_ddb(v)) if isinstance(v, (int, float, Decimal)) and not isinstance(v, bool) else copy.deepcopy(v)
+            for k, v in item.items()}
 
 
 class FakeStore:
@@ -60,10 +69,10 @@ class FakeStore:
     # items
     def get_item(self, pk: str, sk: str) -> dict | None:
         it = self.items.get((pk, sk))
-        return copy.deepcopy(it) if it is not None else None
+        return read(it) if it is not None else None
 
     def query(self, pk: str, prefix: str = "", attrs: tuple = ()) -> list[dict]:
-        out = [copy.deepcopy(v) for (p, s), v in sorted(self.items.items()) if p == pk and s.startswith(prefix)]
+        out = [read(v) for (p, s), v in sorted(self.items.items()) if p == pk and s.startswith(prefix)]
         if attrs:
             keep = {"pk", "sk", *attrs}
             out = [{k: v for k, v in it.items() if k in keep} for it in out]

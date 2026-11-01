@@ -99,11 +99,13 @@ def evaluate(cond: Cond | None, item: dict | None) -> bool:
         return False
     if cond.op == "in":
         return value in cond.value
+    if _is_num(value) and _is_num(cond.value):  # DynamoDB compares numbers as exact decimals, as `to_ddb` sends them
+        value, cond = _dec(value), Cond(cond.op, cond.attr, _dec(cond.value))
     if cond.op == "eq":
         return value == cond.value
     if cond.op == "ne":
         return value != cond.value
-    if type(value) is not type(cond.value) and not all(isinstance(x, (int, float)) for x in (value, cond.value)):
+    if type(value) is not type(cond.value):
         return False  # DynamoDB compares only like types
     return {"lt": value < cond.value, "le": value <= cond.value, "gt": value > cond.value}[cond.op]
 
@@ -140,10 +142,18 @@ def compile_cond(cond: Cond, n: _Names) -> str:
     return f"{n.name(cond.attr)} {sym} {n.value(cond.value)}"
 
 
+def _is_num(v) -> bool:
+    return isinstance(v, (int, float, Decimal)) and not isinstance(v, bool)
+
+
+def _dec(v) -> Decimal:
+    return Decimal(str(v))
+
+
 def to_ddb(v) -> dict:
     if isinstance(v, bool):
         return {"BOOL": v}
-    if isinstance(v, (int, float)):
+    if isinstance(v, (int, float, Decimal)):
         return {"N": str(Decimal(str(v)))}
     if v is None:
         return {"NULL": True}
@@ -197,8 +207,9 @@ class Check:
 def apply_update(item: dict | None, u: Update) -> dict:
     out = dict(item or {"pk": u.pk, "sk": u.sk})
     out.update(u.set)
-    for k, v in u.add.items():
-        out[k] = (out.get(k) or 0) + v
+    for k, v in u.add.items():  # DynamoDB adds exactly, in decimal: a sum of floats keeps every digit
+        old = out.get(k) or 0
+        out[k] = old + v if isinstance(old, int) and isinstance(v, int) else _dec(old) + _dec(v)
     for k in u.remove:
         out.pop(k, None)
     return out

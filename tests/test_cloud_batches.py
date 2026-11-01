@@ -168,3 +168,33 @@ def test_an_item_whose_worker_died_is_charged_its_worst_case(setup):  # A5, ADR-
     assert store.get_item("JOB", job_id)["exit_code"] == 1
     assert c.get(f"/api/batches/{plan['items'][0]['batch_id']}").json()["meta"]["spent_usd"] == pytest.approx(before + item_wc)
     assert cloud_jobs.finish(store, f"{job_id}#{item['n']}", "done", 0, None, 0) is False  # a late worker can't
+
+
+def test_a_batch_whose_total_has_more_digits_than_a_float_still_finishes(setup):
+    """Live, 2026-11-01: a 72-item batch's total was the exact decimal sum of float costs (13.277878000000000108). Read
+    back as a float it lost the tail, so Finalize's "the total hasn't moved" check never held and the batch stayed
+    running: its slot, its reservation and every deploy blocked."""
+    from decimal import Decimal
+
+    store, started, calls, c, h, w, wm = setup
+    start(c, h)
+    (job_id,) = started
+    plan = workers.batch_prepare(w, store, wm, job_id)
+    for item in plan["items"]:
+        workers.batch_item(w, store, wm, item)
+    store.items[("JOB", job_id)]["spent"] = Decimal("13.277878000000000108")  # as the table held it
+    out = workers.batch_finalize(w, store, wm, job_id)
+    job = store.get_item("JOB", job_id)
+    assert out["status"] == "done" and job["status"] == "done" and job["charged"] == pytest.approx(13.277878)
+    assert not c.get("/api/batches").json()["running"]
+
+
+def test_item_costs_are_booked_without_float_noise(setup):
+    store, started, calls, c, h, w, wm = setup
+    start(c, h)
+    (job_id,) = started
+    workers.batch_prepare(w, store, wm, job_id)
+    batch = store.get_item("JOB", job_id)
+    for cost in (0.1 + 0.2, 0.1 + 0.2, 0.000000_4):  # 0.30000000000000004 twice; a sub-micro-dollar cost
+        workers._book_item_cost(store, batch, job_id, cost)
+    assert str(store.items[("JOB", job_id)]["spent"]) == "0.6"  # exactly; the sub-micro-dollar cost books nothing

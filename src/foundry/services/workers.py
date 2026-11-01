@@ -253,6 +253,7 @@ def batch_item(ws: Workspace, store, mirror, item: dict, clock=time.time) -> dic
 def _book_item_cost(store, batch: dict, batch_job_id: str, cost: float) -> None:
     """Into the batch's running total while it runs; straight onto its start month once it has been finalized, so
     no late cost escapes the cap (design ADR-7)."""
+    cost = round(cost, 6)  # to the micro-dollar, as spend is settled: no float noise in the running total
     if not cost:
         return
     try:
