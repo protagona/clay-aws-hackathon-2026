@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 
 KERNEL = {"foundry", "foundry.config", "foundry.contract"}
-ENTRY = {"foundry.cli", "foundry.cli_rubric", "foundry.__main__", "foundry.server"}
+ENTRY = {"foundry.cli", "foundry.cli_rubric", "foundry.__main__", "foundry.server", "foundry.lambda_api", "foundry.cloud_boot"}
 LAYERS = ("data", "engine", "services", "api", "ui")
 ALLOWED = {  # importer layer -> layers it may import (besides itself)
     "kernel": {"kernel"},

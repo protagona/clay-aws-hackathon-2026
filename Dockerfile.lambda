@@ -1,0 +1,28 @@
+# One ARM64 image for every Foundry Lambda function (api, worker, probe); each sets its own handler (CMD).
+# aws-deploy design ADR-11. Build: CDK ContainerImage.from_asset (CDK_DOCKER = docker | finch | podman).
+FROM public.ecr.aws/lambda/python:3.12-arm64
+
+# uv, pinned like .tool-versions; used only at build time.
+RUN pip install --no-cache-dir uv==0.13.6
+
+# Dependencies first (cached layer), straight into the runtime's site-packages; then the package itself.
+COPY pyproject.toml uv.lock README.md LICENSE ${LAMBDA_TASK_ROOT}/
+RUN cd ${LAMBDA_TASK_ROOT} && uv export --frozen --no-dev --no-emit-project --format requirements-txt > /tmp/req.txt \
+    && uv pip install --system --no-cache -r /tmp/req.txt
+COPY src ${LAMBDA_TASK_ROOT}/src
+RUN cd ${LAMBDA_TASK_ROOT} && uv pip install --system --no-cache --no-deps .
+
+# The RODA MCP server, pinned, installed once so no run downloads it (spec I5).
+ENV UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/opt/uv-tools/bin
+RUN uv tool install --no-cache awslabs.roda-mcp-server==0.1.7
+
+# Project files the app and engine read (configs, fixtures, default tasks seeded on first deploy).
+COPY config /app/config
+COPY fixtures /app/fixtures
+COPY tasks /app/tasks
+
+# Lambda's filesystem is read-only except /tmp: everything that writes points there.
+ENV HOME=/tmp UV_CACHE_DIR=/tmp/uv-cache TMPDIR=/tmp FOUNDRY_RUNS_DIR=/tmp/state/runs FOUNDRY_HOME=/tmp/state/project \
+    FOUNDRY_APP_DIR=/app FOUNDRY_S3_URI="" FOUNDRY_MCP_RODA_CMD=/opt/uv-tools/bin/awslabs.roda-mcp-server PYTHONDONTWRITEBYTECODE=1
+
+CMD ["foundry.lambda_api.handler"]

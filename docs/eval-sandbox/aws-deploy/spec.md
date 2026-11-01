@@ -39,7 +39,7 @@ The sandbox only works on the laptop it was cloned to.
 | User | Job | Has |
 |---|---|---|
 | Builder | deploy, change code, redeploy, use it daily | the repo, AWS credentials for **deploying** |
-| Operator in another account (the hackathon deploy) | deploy from the repo into a fresh account with nothing hand-edited | AWS credentials, Docker or Finch, Node, uv |
+| Operator in another account (the hackathon deploy) | deploy from the repo into a fresh account with nothing hand-edited | AWS credentials, Docker, Finch or Podman, Node, uv |
 | User (Clay engineer, judge, teammate) | open the UI, start and compare runs, script it from a terminal | a browser, or a shell with Python 3.10+ (the CLI is downloaded from the deployment), and an **access token** from the operator. No AWS account, no repo access. |
 
 ## Acceptance criteria
@@ -192,7 +192,7 @@ None blocking. Owners and defaults for the rest:
 
 - **AS1:** Bedrock model access and quotas are granted per account, by hand. One live run after deploy proves them (verify by calling).
 - **AS2:** traffic is a handful of people, and a run is bounded at 300 s and 12 model calls.
-- **AS3:** the deploying machine can build an `arm64` image (Docker or Finch), checked by `cloud.sh`.
+- **AS3:** the deploying machine can build an `arm64` image with Docker, Finch or Podman (CDK's `CDK_DOCKER`), checked by `cloud.sh`.
 - **AS4:** these come from official AWS docs, 2026-10-31, and are proved by spikes before Build depends on them:
   - Lambda allows subprocesses and a read-only image with a writable `/tmp`, and freezes after the response.
   - Function URLs give HTTPS on `*.lambda-url.<region>.on.aws`, with 6 MB buffered request and response bodies.

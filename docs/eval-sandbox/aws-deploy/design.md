@@ -237,9 +237,7 @@ browser / foundry-remote.pyz / curl
   3. **First deploy:** if `project#<task>` has no `TREE` item, upload `/app/tasks/<task>` as version 1. So a fresh deployment has prompts (pass 1 question 2).
   4. Point `HOME`, `UV_CACHE_DIR` and `TMPDIR` under `/tmp`.
 - **`FOUNDRY_S3_URI` is unset in the cloud** (pass 1 question 1). The engine's own `storage.mirror` doesn't run, and the manifest push is the only writer of `runs/<id>/`. `FoundryStack`'s runs bucket isn't part of a cloud deploy.
-- **RODA's credentials** (pass 1 question 3):
-  - `mcp.server_env` strips `AWS_*`, and Lambda has no `~/.aws` or IMDS.
-  - Spike S-2 checks whether RODA's tools work anonymously (public Open Data) or need credentials. If they need them, a config flag `pass_aws_env = true` on that server passes the worker's environment credentials through.
+- **RODA's credentials** (pass 1 question 3): spike S-2 showed RODA's tools work **without** AWS credentials. `mcp.server_env` strips `AWS_*` and Lambda has no `~/.aws`, yet a live run made 10 tool calls with 0 errors. So there's no `pass_aws_env` flag.
 
 **ADR-12: stacks and limits.**
 
@@ -256,7 +254,7 @@ browser / foundry-remote.pyz / curl
 - **The kill switch:** `cloud.sh stop` sets the api function's reserved concurrency to 0, which is always allowed, and disables the probe.
 - **Roles:**
   - **api role:** table, bucket read/write/presign, `lambda:InvokeFunction` on the worker, `states:StartExecution`/`DescribeExecution`/`StopExecution` on the state machine
-  - **worker role:** Bedrock (the existing `bedrock_models()` statements), the bucket (`GetObject`, `GetObjectVersion`, `PutObject`, `DeleteObject`), and the table restricted with `dynamodb:LeadingKeys` to `TREE`, `JOB`, `LOCK`, `SLOT`, `SPEND` and `UPLOAD`. Workers read `UPLOAD` items for imports and drafts, and never query the GSI. Never `TOKEN`, `CONFIG` or `RATE`, so neither a worker nor RODA (if `pass_aws_env` passes the worker's credentials) can read the token hashes or the session key (pass 2 minor).
+  - **worker role:** Bedrock (the existing `bedrock_models()` statements), the bucket (`GetObject`, `GetObjectVersion`, `PutObject`, `DeleteObject`), and the table restricted with `dynamodb:LeadingKeys` to `TREE`, `JOB`, `LOCK`, `SLOT`, `SPEND` and `UPLOAD`. Workers read `UPLOAD` items for imports and drafts, and never query the GSI. Never `TOKEN`, `CONFIG` or `RATE`, so a worker can't read the token hashes or the session key (pass 2 minor). MCP servers get no AWS credentials at all (`server_env` strips them; spike S-2).
   - **state machine role:** invoke the worker
   - **probe role:** `PutMetricData` only
 
@@ -264,7 +262,7 @@ browser / foundry-remote.pyz / curl
 
 | Layer | Change |
 |---|---|
-| kernel | `config.load_config`: `FOUNDRY_MCP_<NAME>_CMD` command override; `pass_aws_env` on MCP servers |
+| kernel | `config.load_config`: `FOUNDRY_MCP_<NAME>_CMD` command override and `FOUNDRY_S3_URI` (built in slice 0) |
 | data | `store.py` (S3, DynamoDB, Lambda and Step Functions clients, with conditional and transaction helpers), `mirror.py` (manifests, pull, push, fencing), `index.py` (cards and summaries), `tokens.py`, `spend.py` (local JSONL and DynamoDB), `locks.py` (file and DynamoDB backends, selected by `Workspace`; the engine's subprocesses always use files in their private `/tmp`), `uploads.py`, `batches.py` (reads a mirrored `runs/.batches/<id>`) |
 | engine | **no change** |
 | services | `jobs.py`: `Backend` interface, `LocalBackend` (today), `CloudBackend` (ADR-6), plus `jobs.live(kind=…, prompt_id=…)`, so nothing reads `ws.jobs` directly. `runs.board`: index-based in the cloud (cards from `TREE` items; KPIs and shares computed from `summary` plus the current active rubric's sha, so an activation updates them at once, pass 1 #12). `runs.cards`: the evaluating headline from `jobs.live(kind="evaluate")`. `prompts` and `rubrics`: lease, `base_version` checks, drafts as jobs. `batches.batch_view` and `tools.tool_menu` through `jobs`. New: `access.py`, `spend.py`. |
@@ -440,3 +438,67 @@ browser / foundry-remote.pyz / curl
 - **Accepted:**
   - Orphan current objects from crashed pushes, with `cloud.sh gc`.
   - Presigned POSTs bounded by the signing role's session.
+
+## Implementation plan
+
+**How to read it:** each slice names the design sections that specify it. The mechanisms are defined there, not here:
+- ADR-4: key schema
+- ADR-5: mirror protocol (manifest by `VersionId`, unique-key push, `ClientRequestToken` commit, delete after commit, nonce check, lease `ConditionCheck`; `base_version`)
+- ADR-6: jobs, `SLOT`, `LOCK`, sweep, sync thread, worker kinds
+- ADR-7: batches
+- ADR-8: spend
+- ADR-9: auth (tokens, the cookie format, stateless CSRF, the rate-limit item, guard order and public paths)
+- ADR-10: uploads
+- ADR-11: image and bootstrap
+- ADR-12: stacks and limits
+
+Each slice ends green (full suite, Vitest, ruff, `tsc`, gitleaks) and is its own commit. Everything is pushed after Verify.
+
+**Where code goes** (the layer rules in `tests/test_architecture.py`):
+- The Lambda entry modules (`lambda_api.py`, `lambda_worker.py`, `lambda_probe.py`, `cloud_boot.py`, `cli_remote.py`) are top-level `src/foundry/*.py`, added to `ENTRY`.
+- Backends live in `data/`, job and worker logic in `services/`, the HTTP surface in `api/`.
+- **Infrastructure:**
+  - New stacks live in `infra/foundry_cloud/`: `data_stack.py`, `app_stack.py`, `batch_sm.py` (the state-machine definition as a function returning the CDK chain, unit-testable by synth).
+  - The existing `infra/stack.py` (`FoundryStack`: runs bucket and `HarnessRole`) is kept for the laptop's S3 mirror. Its `bedrock_models()` is reused by the worker role.
+  - `infra/app.py` synthesizes all three stacks; `cloud.sh` deploys only the two new ones.
+
+**Prices for reservations (A5):** the config's own `[prices]` table, input and output per million tokens, which every Bedrock config already has. A model missing from `[prices]` while a cap is set makes `services/spend.reservation()` raise a 409: "No price for <model> in <config>; add it to [prices]".
+
+| # | Slice | Delivers (per the design section named) | Done when | Depends on |
+|---|---|---|---|---|
+| 0 | **Spikes:** `infra/spike/`, a throwaway `FoundrySpikeStack` (one image, an api function with URL, a worker function, a small state machine, a bucket, a table), deployed and then destroyed | S-1, S-2, S-3, S-5 (the spike table). **What each gates:** S-1's adapter and host trust → slice 1 (fallback: API Gateway HTTP API). S-2's RODA credentials and the offline start → slices 1 and 3 (`pass_aws_env` or not). S-3's Map shape → slice 5. S-5's presign config and transaction shapes → slices 2, 4 and 6. | each finding recorded in its ADR; the spike stack destroyed | sign-off |
+| 1 | **Image and edge** | `Dockerfile.lambda`, `.dockerignore` (ADR-11); `lambda_api.py` adapter (ADR-3); `cloud_boot.py`; `/healthz`; the guard trusting `requestContext.domainName` as the host (ADR-3, ADR-9 step 2) | adapter tests with payload 2.0 fixtures; the image builds through `CDK_DOCKER` (Docker, Finch or Podman; this laptop has Podman, so `cloud.sh` accepts all three) | 0 |
+| 2 | **State store and mirror** | `data/store.py` (clients and condition and transaction helpers, the presign config from S-5), `tests/fakestore.py`, `data/mirror.py` (ADR-5 in full), `data/index.py` (ADR-4 `TREE`) | FakeStore tests: manifest pull deletes, a losing push leaves the winner intact, nonce check after an ambiguous commit, lease fencing, reading by `VersionId` | 1 |
+| 3 | **Jobs, locks, slots, sweep, workers** | `services/jobs.py` (`Backend`, `LocalBackend` = today, `CloudBackend`), `services/workers.py` (kinds run, evaluate, tools, import, draft), the sync thread (ADR-6), `lambda_worker.py`; `data/locks.py` backends; `jobs.live`; the readers switched to jobs and index (pending, detail evaluating, `batch_view`, `tool_menu`, the index board, prompt views); **I7:** `Workspace.receiver_enabled` plus the 409 in `services/imports.receiver_start` | two Workspaces on one FakeStore: slot exclusivity, a duplicate delivery exits, the sweep books once, interrupted overlay; local e2e unchanged | 2 |
+| 4 | **Spend** | `data/spend.py` (JSONL and DynamoDB), `services/spend.py` (ADR-8: reservations from `[prices]`, threshold condition, start-month settle) | reserve and settle across a month boundary; refusal message; no cap locally | 3 |
+| 5 | **Batches** | worker kinds `batch_prepare`, `batch_item`, `batch_finalize` (ADR-7); `infra/foundry_cloud/batch_sm.py` (per-item Catch, throttle-only Retry, `MaxConcurrencyPath`); the summary row rewrite | synth tests on the state-machine JSON; FakeStore item booking (running vs finalized routing); Finalize on Catch | 3, 4 |
+| 6 | **Auth and API surface** | ADR-9 (`data/tokens.py`, `services/access.py`, `api/auth.py`; public paths `/`, `/assets/*`, `/cli/foundry-remote.pyz`, login); ADR-10 `/api/uploads` plus the local route; import and draft by `upload_id`; `base_version` bodies (ADR-5); async drafts; schemas plus `types.ts` | the 401 sweep, rate limit (IPv6 /64), cookie binding, stateless CSRF across two instances, fail closed, presign host and field assertions; contract tests | 2, 3 |
+| 7 | **Web** | sign-in, 401 handling, "Signed in as"; POST upload flow; drafts polling; `base_version` with the 409 reload; interrupted note; receiver hidden when off | Vitest; local e2e (updated for I6 only) | 6 |
+| 8 | **CLI** | `cli_remote.py` (standard library only), `scripts/build_cli.py` (zipapp, fixed timestamps) → `web_dist/cli/foundry-remote.pyz`; `cli.py` gains `foundry remote …`, delegating to `cli_remote.main` (I3's builder path) | the `.pyz` run against a real local server: login, runs, run start `--wait`, batch, import, `--json`, exit codes | 6 |
+| 9 | **Infrastructure and operations** | `FoundryDataStack` (bucket: versioning, lifecycle, POST CORS; table: PITR 35 days, GSI, TTL; SNS; all RETAIN) and `FoundryAppStack` (functions with log retention 30 days, URL with both permissions, the state machine from `batch_sm.py`, alarms, the probe, concurrency settings per preflight); `tests/test_infra.py`; `scripts/cloud.sh`: preflight; `deploy --email <addr> [--budget <usd>] [--cap <usd>]` (CDK parameters: the SNS email subscription in the data stack; the optional account budget; the cap), always naming its two stacks (`FoundryDataStack`, `FoundryAppStack`) so the legacy `FoundryStack` is never touched; **O4 safe rollout**: the function URL targets alias `live`, and `cloud.sh` publishes the new version, invokes it with a synthetic `/healthz` and `/api/session` event, and only then moves `live` (a failed check leaves `live` on the previous version); D5 timing; writing the URL into the operator's `remote.json` (D4), the session key create, `token`, `seed` (refused when any `TREE run#` exists, S4), `gc`, `logs`, `stop`/`start`, `destroy`; `docs/deploy.md` (fresh account, restore drill, SCP note) | synth tests (X1, RETAIN, permissions, no data → app refs) | 1–8 |
+| 10 | **Deploy and Verify** | deploy to the sandbox; seed the 77 runs; **D3**: a second `cloud.sh deploy` with no change shows an empty `cdk diff` and no new version; **O4**: deploy a version whose `/healthz` fails, and show `live` stays on the previous version and keeps serving; **S-4:** board p50 from the index under 300 ms, dashboard cold under 3 s and warm under 500 ms, measured with the real 77 runs; `cloud_smoke.sh` (sign-in, L1 under 10 s, scoring, a 2-item batch, an import, a draft, an interrupted run, two concurrent edits → 409, CLI from `curl`); restore drill; pricing (C1); the handoff. **The pentest runs only with the user's OK** on its scope, and isn't required for the other ACs. **The fresh-account success signal** is exercised at the hackathon account deploy: this slice runs the same `docs/deploy.md` steps in the sandbox and records the time. | every AC proven and recorded | 9 |
+
+**Local parity rule:** after every slice, `foundry ui` on the laptop and the existing e2e scripts pass unchanged, apart from I6's two contract changes, which slices 6 and 7 bring with their tests (I4).
+
+**Plan gate:** 3 passes (2026-10-31). Pass 3 found no blockers. Its notes are folded in here:
+- **Slices 7 and 8:** the cap's 409 (spend, cap, reset date) shown in the UI banner and as CLI stderr.
+- **Slice 9:**
+  - Workers and the state machine invoke the worker's alias `live`, so an in-flight invocation finishes on its version.
+  - `cloud.sh` publishes a new version only when the image digest changed (D3).
+  - The pre-switch check calls `/healthz` and `/api/session`, an existing route.
+- **Slice 10:**
+  - a run in flight across a deploy (S5)
+  - `cloud_smoke.sh` checks 13 tools and that the RODA command is `/opt/uv-tools/bin/...` (I5)
+  - D5's time recorded in the handoff
+  - X2 checked from CloudWatch: zero invocations and zero cost in an idle hour, apart from the probe
+
+## Spike results (slice 0, 2026-10-31, the sandbox account, stack `FoundrySpikeStack`, since destroyed)
+
+| Spike | Result | Evidence | Consequence |
+|---|---|---|---|
+| S-1 function URL + adapter | **pass**, with one adapter bug found and fixed | `/healthz` 5.5 s cold, 0.25 s warm; `/api/session` 200 through the real app; a foreign Origin gets 403; the domain's own `https://` origin passes the guard; the SPA HTML is 200. **JS assets came back as 0 bytes:** the adapter answered `http.disconnect` after the body, and Starlette's `FileResponse` listens for disconnects, so it aborted. Fixed (`receive` now waits, as a real server does); `test_streamed_file_responses_arrive_whole`. | ADR-3 holds. The 55 s request wasn't needed (drafting is async). CDK 2.275 adds **both** function-URL permissions (`InvokeFunctionUrl` and `InvokeFunction`) on its own. |
+| S-2 worker | **pass** | An offline run in real Lambda: succeeded, 24 s cold, 2 tool calls through RODA (`/opt/uv-tools/bin`, via `FOUNDRY_MCP_RODA_CMD`) and STAC, on a read-only filesystem. **A live Bedrock run (`config/bedrock.toml`):** succeeded, 32 s, **10 tool calls, 0 tool errors**, $0.158. `foundry tools` in the image: 13 tools, 0 server errors. | RODA works **without** AWS credentials (`server_env` strips them), so `pass_aws_env` is **dropped** from the design. ADR-11 holds as built. |
+| S-3 Step Functions Map | **pass**, with one fix | `MaxConcurrencyPath` = 2 respected (two waves); a deliberately failing item → `{status: failed, error}` via the task `Catch`; the execution SUCCEEDED. | The `Catch` must keep the item's input (`result_path: "$.error"`), so the failed item's `n` survives; the spike's Pass replaced it. Recorded for `batch_sm.py`. |
+| S-5 transactions + upload | **pass** | **Spend reserve:** the threshold condition refuses past the cap (`ConditionalCheckFailed`). **Idempotency:** a retry with the same `ClientRequestToken` doesn't double the reservation (total 8.1, not 12.1). **SLOT:** a second taker is refused while the slot is held; an expired slot can be taken. **Browser presigned POST** (pinned SigV4, regional virtual host) under a CSP naming the bucket: 1 KB cap, 100 B → 204, 5 KB → 400 (S3 enforces `content-length-range`). | ADR-8, ADR-10 and ADR-6 hold. **The `protagona-sandbox-1` profile's default region is us-east-1**, so every boto3 client in `cloud.sh` and the scripts passes `region_name="us-west-2"` explicitly. |
+
+**Container tooling:** Podman 6.1.4 (arm64) built and pushed the image through `CDK_DOCKER=podman`. The first deploy took 7 minutes, mostly the initial image push.

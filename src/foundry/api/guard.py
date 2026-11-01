@@ -30,10 +30,16 @@ def install(app: FastAPI, port: int) -> None:
         def refuse(status: int, message: str) -> Response:
             return JSONResponse({"error": message}, status_code=status) if api else PlainTextResponse(message, status_code=status)
 
-        if request.headers.get("host", "") not in allowed_hosts:
+        # Behind a Lambda function URL, AWS states the public host (requestContext.domainName; never the client's
+        # choice): it is the one allowed Host, and https://<it> the one allowed Origin (aws-deploy design ADR-3).
+        domain = request.scope.get("extensions", {}).get("foundry_lambda", {}).get("domain")
+        host = request.headers.get("host", "")
+        origin = f"https://{domain}" if domain else f"http://{host}"
+        if request.method == "GET" and request.url.path == "/healthz":
+            response = PlainTextResponse("ok")  # before every check: health probes don't send our Host
+        elif not (host == domain if domain else host in allowed_hosts):
             response = refuse(400, "Bad Host header")
-        elif request.method in ("POST", "PUT", "PATCH", "DELETE") and (
-                request.headers.get("origin") or f"http://{request.headers['host']}") != f"http://{request.headers['host']}":
+        elif request.method in ("POST", "PUT", "PATCH", "DELETE") and (request.headers.get("origin") or origin) != origin:
             response = refuse(403, "Cross-origin request refused")
         else:
             try:

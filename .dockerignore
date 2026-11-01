@@ -1,0 +1,13 @@
+# The Lambda image (Dockerfile.lambda) needs only the package, configs, fixtures, default tasks and the lockfile.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src/
+!config/
+!fixtures/
+!tasks/
+src/**/__pycache__
+tasks/**/rubrics/drafts
+tasks/**/rubrics/sources

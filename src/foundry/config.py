@@ -169,11 +169,29 @@ def _read(path: str | Path) -> dict:
         p = project_root() / p
     try:
         with open(p, "rb") as f:
-            return tomllib.load(f)
+            return _environment_overlay(tomllib.load(f))
     except FileNotFoundError:
         raise ConfigError(path, "(file)", "not found; pass an existing file such as config/offline.toml") from None
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(path, "(file)", f"not valid TOML: {exc}") from None
+
+
+def _environment_overlay(data: dict) -> dict:
+    """Deployment overrides from the environment (aws-deploy design ADR-11), applied to every config read, so the
+    UI, its subprocesses and a batch's children all see them:
+
+    FOUNDRY_S3_URI           replaces [storage] s3_uri (set to "" in the cloud: the state store syncs runs instead)
+    FOUNDRY_MCP_<NAME>_CMD   runs MCP server <name> from that pre-installed command instead of `uvx <package>`
+                             (the cloud image installs RODA at build time, so no run downloads a package)
+    """
+    if "FOUNDRY_S3_URI" in os.environ and isinstance(data.get("storage", {}), dict):
+        data.setdefault("storage", {})["s3_uri"] = os.environ["FOUNDRY_S3_URI"]
+    servers = (data.get("mcp") or {}).get("servers") if isinstance(data.get("mcp"), dict) else None
+    for name, server in (servers or {}).items():
+        cmd = os.environ.get(f"FOUNDRY_MCP_{name.upper().replace('-', '_')}_CMD")
+        if cmd and isinstance(server, dict) and server.get("command") == "uvx":
+            server["command"], server["args"] = cmd, []
+    return data
 
 
 def _key(loc: tuple) -> str:
