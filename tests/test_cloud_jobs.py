@@ -228,3 +228,48 @@ def test_finish_is_not_fooled_by_contention(cloud, monkeypatch):  # Verify pass 
     assert store.get_item("JOB", job.id)["status"] == "queued"  # untouched: the caller sees the error
     assert cloud_jobs.finish(store, job.id, "done", 0, None, clock.t) is True
     assert cloud_jobs.finish(store, job.id, "done", 0, None, clock.t) is False  # now it really was finished
+
+
+def test_a_job_logs_its_start_end_and_output(cloud, monkeypatch, caplog):
+    """Spec O1: a job's start and end reach the log (CloudWatch in the cloud); a failed job's output at WARNING."""
+    import logging
+
+    store, clock, invoked, a, b, w, wm = cloud
+    caplog.set_level(logging.INFO, logger="foundry")
+    monkeypatch.setattr(jobs, "run_foundry", fake_runner(err="step 1\nall good\n"))
+    ok = jobs.start(a, "run", "r-1", "Run", run_args(w, "r-1"), singleton=True, task="adb")
+    workers.run_job(w, store, wm, ok.id, clock)
+    lines = [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "foundry.worker"]
+    assert lines[0] == ("INFO", f"job {ok.id} start: kind=run run=r-1")
+    assert lines[1][0] == "INFO" and lines[1][1].startswith(f"job {ok.id} end: kind=run run=r-1 status=done exit=0 cost=$")
+    assert lines[2] == ("INFO", f"job {ok.id} output:\nstep 1\nall good\n")
+
+    caplog.clear()
+    monkeypatch.setattr(jobs, "run_foundry", fake_runner(code=1, err="x" * (workers.OUTPUT_LOG_CHARS + 5) + "Boom"))
+    bad = jobs.start(a, "evaluate", "r-1", "Score", ["evaluate", "runs/r-1"], task="adb")
+    workers.run_job(w, store, wm, bad.id, clock)
+    end, out = [r for r in caplog.records if r.name == "foundry.worker"][1:]
+    assert "status=failed exit=1" in end.getMessage()
+    assert out.levelname == "WARNING" and out.getMessage().endswith("Boom")
+    assert f"(last {workers.OUTPUT_LOG_CHARS} of {workers.OUTPUT_LOG_CHARS + 9} chars)" in out.getMessage()
+
+
+def test_cloud_logging_lets_info_through_a_warning_root(monkeypatch):
+    """Lambda's runtime: a handler on the root logger, the root at WARNING. The foundry loggers' INFO still reaches it."""
+    import logging
+
+    from foundry import cloud_boot
+
+    seen, root, foundry_log = [], logging.getLogger(), logging.getLogger("foundry")
+    handler = logging.Handler()
+    handler.emit = seen.append
+    monkeypatch.setattr(root, "level", logging.WARNING)
+    monkeypatch.setattr(foundry_log, "level", logging.NOTSET)
+    root.addHandler(handler)
+    try:
+        logging.getLogger("foundry.worker").info("before")
+        cloud_boot.configure_logging()
+        logging.getLogger("foundry.worker").info("after")
+    finally:
+        root.removeHandler(handler)
+    assert [r.getMessage() for r in seen] == ["after"]

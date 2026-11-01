@@ -1,6 +1,7 @@
 """What a cloud worker does with one job (aws-deploy design ADR-6): claim it, pull what it needs, run the same
 `foundry` command a laptop would (the engine is unchanged), push the results with the run index's card and summary
-every few seconds while it runs and at the end, then finish the job exactly once.
+every few seconds while it runs and at the end, then finish the job exactly once. Each job's start and end, and
+its output, go to the `foundry.worker` log, which reaches CloudWatch (spec O1); the output is also kept in the bucket.
 
 Processes and files are reached only through `jobs.run_foundry` and `foundry.data` (the layer rule in
 tests/test_architecture.py), so this module is plain orchestration.
@@ -9,6 +10,7 @@ tests/test_architecture.py), so this module is plain orchestration.
 from __future__ import annotations
 
 import json
+import logging
 import time
 
 from foundry.data import index
@@ -19,6 +21,17 @@ from foundry.services import cloud_jobs, jobs, runs
 from foundry.services.workspace import Workspace
 
 SYNC_EVERY_S = 5.0
+OUTPUT_LOG_CHARS = 32_000  # the tail of a job's output that goes to the log (CloudWatch takes 256 KB an event)
+
+log = logging.getLogger("foundry.worker")
+
+
+def log_output(job_id: str, output: str, failed: bool) -> None:
+    """The job's output (its tail when long): WARNING when the job failed, so it shows at any log level."""
+    if output.strip():
+        tail = output[-OUTPUT_LOG_CHARS:]
+        cut = f" (last {OUTPUT_LOG_CHARS} of {len(output)} chars)" if len(output) > OUTPUT_LOG_CHARS else ""
+        log.log(logging.WARNING if failed else logging.INFO, "job %s output%s:\n%s", job_id, cut, tail)
 
 
 def claim(store, job_id: str, now: float, deadline: float | None = None) -> dict | None:
@@ -93,6 +106,7 @@ def run_job(ws: Workspace, store, mirror, job_id: str, clock=time.time) -> str:
     if job is None:
         return "duplicate"
     kind, run_id = job["kind"], job["run_id"]
+    log.info("job %s start: kind=%s run=%s", job_id, kind, run_id)
     args = local_args(ws, kind, run_id, json.loads(job["args"]))
     pull_projects(store, mirror)
     tick = None
@@ -113,8 +127,11 @@ def run_job(ws: Workspace, store, mirror, job_id: str, clock=time.time) -> str:
     store.put_object(f"jobs/{job_id}.log", err.encode(), if_none_match=False)
     lines = [ln for ln in err.splitlines() if ln.strip()]
     status = "done" if code == 0 else "failed"
-    cloud_jobs.finish(store, job_id, status, code, lines[-1][:300] if lines and code else None, clock(),
-                      actual=actual_cost(ws, kind, run_id, code))
+    cost = actual_cost(ws, kind, run_id, code)
+    cloud_jobs.finish(store, job_id, status, code, lines[-1][:300] if lines and code else None, clock(), actual=cost)
+    log.info("job %s end: kind=%s run=%s status=%s exit=%s cost=%s duration=%.1fs", job_id, kind, run_id, status, code,
+             "unknown" if cost is None else f"${cost:.4f}", clock() - now)
+    log_output(job_id, err, failed=code != 0)
     if kind in ("run", "evaluate") and present():
         index_run(ws, mirror, run_id)  # the card without "evaluating" now the lock is released
     return status
@@ -154,6 +171,7 @@ def batch_prepare(ws: Workspace, store, mirror, batch_job_id: str, clock=time.ti
                                                   "prompt": j.prompt, "repeat": j.repeat, "status": "pending"},
                                          SUMMARY_FIELDS)
     mirror.push_dir(f"batch#{batch_id}")
+    log.info("batch %s start: job=%s items=%d", batch_id, batch_job_id, len(planned))
     items = [{"n": n, "batch_job_id": batch_job_id, "batch_id": batch_id, "variant": j.variant.name,
               "model": j.variant.model, "prompt": j.prompt, "repeat": j.repeat, "run_id": j.run_id,
               "config": _relative_config(ws, j.variant.config, batch_id), "evaluate": meta["evaluate"],
@@ -198,6 +216,7 @@ def batch_item(ws: Workspace, store, mirror, item: dict, clock=time.time) -> dic
     job = Job(variant, item["prompt"], item["repeat"], "")
     job.run_dir = None
     status, cost = "skipped (budget)", 0.0
+    log.info("job %s start: kind=batch_item run=%s", key, item["run_id"])
     if not (max_cost and float(batch.get("spent") or 0) >= max_cost):
         pull_projects(store, mirror)
         mirror.pull(f"batch#{item['batch_id']}")
@@ -207,8 +226,9 @@ def batch_item(ws: Workspace, store, mirror, item: dict, clock=time.time) -> dic
             if data_runs.safe_run_path(ws.runs_dir, run_id) is not None:
                 index_run(ws, mirror, run_id)
 
-        code, _ = jobs.run_foundry(["run", "--config", str(variant.config), "--prompt", item["prompt"],
+        code, output = jobs.run_foundry(["run", "--config", str(variant.config), "--prompt", item["prompt"],
                                     "--runs-dir", str(ws.runs_dir), "--run-id", run_id], cwd=ws.root, tick=tick)
+        log_output(key, output, failed=code != 0)
         d = data_runs.safe_run_path(ws.runs_dir, run_id)
         if code == 2 or d is None:
             status = "error"
@@ -225,6 +245,8 @@ def batch_item(ws: Workspace, store, mirror, item: dict, clock=time.time) -> dic
         data_batches.replace_summary_row(ws.batches_dir / item["batch_id"], item["n"], summary_row(job), SUMMARY_FIELDS)
         mirror.push_dir(f"batch#{item['batch_id']}", lease=(f"lease#batch#{item['batch_id']}", owner))
     cloud_jobs.finish(store, key, "done", 0 if status == "ran" else 1, status, clock())
+    log.info("job %s end: kind=batch_item run=%s status=%s cost=$%.4f duration=%.1fs", key, item["run_id"], status, cost,
+             clock() - now)
     return {"n": item["n"], "status": status}
 
 
@@ -277,4 +299,6 @@ def batch_finalize(ws: Workspace, store, mirror, batch_job_id: str, error: str |
             break
         if (store.get_item(cloud_jobs.PK, batch_job_id) or {}).get("status") not in ("queued", "running"):
             break  # already finished (a redelivered Finalize, or the sweep)
+    log.info("batch %s end: job=%s status=%s failures=%s interrupted=%d spent=$%.4f%s", batch_id, batch_job_id, status,
+             "yes" if bad else "no", dead, spent, f" error={error}" if error else "")
     return {"batch_job_id": batch_job_id, "status": status, "spent": spent}

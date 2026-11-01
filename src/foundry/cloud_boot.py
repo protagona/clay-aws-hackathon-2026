@@ -7,6 +7,7 @@ project (config/, fixtures/) are symlinks into the image (FOUNDRY_APP_DIR, defau
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 from pathlib import Path
@@ -51,8 +52,15 @@ def seed_projects(store, mirror, app: Path | None = None) -> None:
             pass
 
 
+def configure_logging() -> None:
+    """The `foundry` loggers at INFO (job starts and ends, spec O1). Lambda's Python runtime leaves the root logger at
+    WARNING, which would drop them; its handler on the root logger still writes them to CloudWatch."""
+    logging.getLogger("foundry").setLevel(logging.INFO)
+
+
 def cloud_context():
     """(store, mirror, job backend) from the function's environment, with the project files seeded and pulled."""
+    configure_logging()
     from foundry.data.mirror import Mirror
     from foundry.data.store import AwsStore, BatchWorkflow, LambdaInvoker
     from foundry.services.cloud_jobs import CloudBackend
