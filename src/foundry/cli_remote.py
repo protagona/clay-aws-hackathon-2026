@@ -1,6 +1,6 @@
 """foundry-remote: the Foundry API from a terminal, for a deployment or a laptop's `foundry ui` (aws-deploy spec I3).
 
-Standard library only and Python 3.10+, so a deployment can serve it as one file (`GET /cli/foundry-remote.pyz`) to
+Standard library only and Python 3.9+ (macOS's own python3), so a deployment can serve it as one file (`GET /cli/foundry-remote.pyz`) to
 people with no clone and no AWS account. A token is all it needs:
 
     python3 foundry-remote.pyz login https://<id>.lambda-url.us-west-2.on.aws/ fdy_...
@@ -375,65 +375,72 @@ def out(a, data, text: str) -> int:
 
 
 def parser(prog: str = "foundry-remote") -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog=prog, description="The Foundry eval sandbox API from a terminal.")
+    p = argparse.ArgumentParser(prog=prog, description="The Foundry eval sandbox API from a terminal. Reference: "
+                                "docs/cli.md in the repo.")
     p.add_argument("--json", action="store_true", help="print the API's JSON instead of text")
+    # --json also works after the command (`runs --json`); SUPPRESS keeps a command from resetting a leading --json
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="print the API's JSON instead of text")
     sub = p.add_subparsers(dest="command", required=True)
 
-    s = sub.add_parser("login", help="save a deployment's URL and your access token")
-    s.add_argument("url")
-    s.add_argument("token")
-    s.set_defaults(fn=cmd_login, needs_login=False)
-    sub.add_parser("logout", help="forget the saved login").set_defaults(fn=cmd_logout, needs_login=False)
-    sub.add_parser("whoami", help="who the saved token belongs to").set_defaults(fn=cmd_whoami)
+    def command(subs, name: str, help: str) -> argparse.ArgumentParser:
+        return subs.add_parser(name, help=help, description=help[:1].upper() + help[1:] + ".", parents=[common])
 
-    s = sub.add_parser("runs", help="list runs, newest first")
-    s.add_argument("--limit", type=int, default=0)
+    s = command(sub, "login", "check a deployment's URL and your access token, then save both")
+    s.add_argument("url", help="the deployment's URL (https://), or http://127.0.0.1:<port> for a laptop's `foundry ui`")
+    s.add_argument("token", help="your access token (fdy_…), from the deployment's operator")
+    s.set_defaults(fn=cmd_login, needs_login=False)
+    command(sub, "logout", "forget the saved login").set_defaults(fn=cmd_logout, needs_login=False)
+    command(sub, "whoami", "who the saved token belongs to").set_defaults(fn=cmd_whoami)
+
+    s = command(sub, "runs", "list runs, newest first")
+    s.add_argument("--limit", type=int, default=0, help="show only the newest N (default: all)")
     s.set_defaults(fn=cmd_runs)
 
     run = sub.add_parser("run", help="show or start a run").add_subparsers(dest="run_command", required=True)
-    s = run.add_parser("show", help="one run's status, cost and scores")
-    s.add_argument("run_id")
+    s = command(run, "show", "one run's status, cost and scores")
+    s.add_argument("run_id", help="a run id, as `runs` lists it")
     s.set_defaults(fn=cmd_run_show)
-    s = run.add_parser("start", help="start a run of one prompt")
+    s = command(run, "start", "start a run of one prompt")
     s.add_argument("--prompt", required=True, help="prompt id, like adb-001")
     s.add_argument("--config", required=True, help="config name, like bedrock")
     s.add_argument("--wait", action="store_true", help="wait for it to finish (exit 1 unless it succeeds)")
     s.set_defaults(fn=cmd_run_start)
 
-    s = sub.add_parser("evaluate", help="score a run")
-    s.add_argument("run_id")
+    s = command(sub, "evaluate", "score a run")
+    s.add_argument("run_id", help="a run id, as `runs` lists it")
     s.add_argument("--wait", action="store_true", help="wait for the scores (exit 1 if scoring fails)")
     s.set_defaults(fn=cmd_evaluate)
 
     batch = sub.add_parser("batch", help="start or show a batch").add_subparsers(dest="batch_command", required=True)
-    s = batch.add_parser("start", help="run prompts × models × repeats")
-    s.add_argument("--config", required=True)
+    s = command(batch, "start", "run prompts × models × repeats")
+    s.add_argument("--config", required=True, help="config name, like bedrock")
     s.add_argument("--prompts", required=True, help="comma-separated prompt ids")
     s.add_argument("--models", default="", help="comma-separated model ids (default: the config's)")
-    s.add_argument("--repeats", type=int, default=1)
-    s.add_argument("--concurrency", type=int, default=2)
+    s.add_argument("--repeats", type=int, default=1, help="runs per model and prompt (default: 1)")
+    s.add_argument("--concurrency", type=int, default=2, help="runs at once (default: 2)")
     s.add_argument("--evaluate", action="store_true", help="score each run")
     s.add_argument("--max-cost", type=float, default=2.0, help="stop starting jobs past this many USD (default 2)")
     s.add_argument("--wait", action="store_true", help="wait for it to finish (exit 1 unless it completes)")
     s.set_defaults(fn=cmd_batch_start)
-    s = batch.add_parser("show", help="one batch's progress and rows")
-    s.add_argument("batch_id")
+    s = command(batch, "show", "one batch's progress and rows")
+    s.add_argument("batch_id", help="a batch id, as `batches` lists it")
     s.set_defaults(fn=cmd_batch_show)
-    sub.add_parser("batches", help="list batches").set_defaults(fn=cmd_batches)
+    command(sub, "batches", "list batches").set_defaults(fn=cmd_batches)
 
-    s = sub.add_parser("compare", help="two runs side by side")
-    s.add_argument("a")
-    s.add_argument("b")
+    s = command(sub, "compare", "two runs side by side")
+    s.add_argument("a", help="run id A")
+    s.add_argument("b", help="run id B (B − A is the difference)")
     s.set_defaults(fn=cmd_compare)
 
-    s = sub.add_parser("import", help="import an OTLP/JSON trace file; each agent run in it becomes a run")
-    s.add_argument("file")
-    s.add_argument("--task", default="adb")
-    s.add_argument("--prompt-id", default="imported")
+    s = command(sub, "import", "import an OTLP/JSON trace file; each agent run in it becomes a run")
+    s.add_argument("file", help="OTLP/JSON: one ExportTraceServiceRequest, or JSON Lines of them")
+    s.add_argument("--task", default="adb", help="task id the runs belong to (default: adb)")
+    s.add_argument("--prompt-id", default="imported", help="prompt id recorded on the runs (default: imported)")
     s.add_argument("--config", default="", help="a config whose prices work out the cost (default: none)")
     s.set_defaults(fn=cmd_import)
 
-    sub.add_parser("jobs", help="list jobs").set_defaults(fn=cmd_jobs)
+    command(sub, "jobs", "list jobs").set_defaults(fn=cmd_jobs)
     return p
 
 

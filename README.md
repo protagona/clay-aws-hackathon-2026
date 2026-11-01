@@ -41,7 +41,7 @@ Open `runs/<run id>/report.md` or the UI to read the report:
 - agent output
 - provenance
 
-The prompts are `adb-001` to `adb-006` (see `tasks/adb/prompts.jsonl`). Run `foundry --help` for every command.
+The prompts are `adb-001` to `adb-006` (see `tasks/adb/prompts.jsonl`). Every command, option, output and exit code, plus recipes for scripts and CI, is in the [CLI reference](docs/cli.md); `foundry --help` gives the short version.
 
 ## The UI: everything without the command line
 
@@ -349,7 +349,7 @@ scripts/cloud.sh deploy --email you@example.com   # prints the URL
 scripts/cloud.sh token add <name>                 # prints the token once; send it privately
 ```
 
-Anyone with a token can also use the API from a terminal without a clone: the deployment serves a one-file client at `/cli/foundry-remote.pyz` (from a clone: `uv run foundry remote`).
+Anyone with a token can also use the API from a terminal without a clone: the deployment serves a one-file client at `/cli/foundry-remote.pyz` (from a clone: `uv run foundry remote`). Its commands are in the [CLI reference](docs/cli.md#foundry-remote-reference).
 
 The runbook covers first deploys, day-to-day commands, alerts, restoring data and troubleshooting: [docs/deploy.md](docs/deploy.md). The spec, design and verification record are in [docs/eval-sandbox/aws-deploy/](docs/eval-sandbox/aws-deploy/handoff.md).
 
@@ -432,7 +432,8 @@ The reasons are in [the design](docs/eval-sandbox/design.md#decisions).
 3. [Trace contract](docs/trace-contract.md): the shared file format.
 4. [Backlog](docs/backlog.md): work streams and "done when" criteria.
 5. [Spec](docs/eval-sandbox/spec.md) and [design](docs/eval-sandbox/design.md) for this build.
-6. [AWS deployment](docs/eval-sandbox/aws-deploy/spec.md): its spec, [design](docs/eval-sandbox/aws-deploy/design.md) and [handoff](docs/eval-sandbox/aws-deploy/handoff.md); the runbook is [docs/deploy.md](docs/deploy.md).
+6. [CLI reference](docs/cli.md): both command-line tools, and how to use them from scripts and CI.
+7. [AWS deployment](docs/eval-sandbox/aws-deploy/spec.md): its spec, [design](docs/eval-sandbox/aws-deploy/design.md) and [handoff](docs/eval-sandbox/aws-deploy/handoff.md); the runbook is [docs/deploy.md](docs/deploy.md).
 
 Source material from the organizers:
 

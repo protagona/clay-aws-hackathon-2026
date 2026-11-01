@@ -1,0 +1,27 @@
+# Recipe 4 as written in docs/cli.md (AWS_PROFILE=protagona-sandbox-1), from the repo root, 2026-11-01T18:52:45Z. stdout and stderr are kept apart:
+$ AWS_PROFILE=<profile> uv run foundry external --task adb --prompt adb-001 --config config/bedrock.toml --evaluate -- uv run python examples/external_strands_agent.py 2>stderr.txt; echo "exit $?"
+## stdout
+runs/otel-adb-001-43fd98154a00-602346
+runs/otel-adb-001-43fd98154a00-602346/report.md
+overall 0.82 | workflow 0.65 | output 1.00
+exit 1
+## stderr (last 8 lines)
+    async for event in events:
+  File "/Users/mpereira/Extra/repos/protagona/clay-aws-hackathon-2026/.venv/lib/python3.12/site-packages/strands/event_loop/event_loop.py", line 466, in recurse_event_loop
+    async for event in events:
+  File "/Users/mpereira/Extra/repos/protagona/clay-aws-hackathon-2026/.venv/lib/python3.12/site-packages/strands/event_loop/event_loop.py", line 319, in event_loop_cycle
+    raise MaxTokensReachedException(
+strands.types.exceptions.MaxTokensReachedException: Model stopped generating due to maximum token limit. The partial message has been added to the conversation history. You can continue by calling the agent again. For mo
+run written: runs/otel-adb-001-43fd98154a00-602346
+Command exited 1
+
+# Second attempt, same command, 2026-11-01T18:55:17Z:
+## stdout
+runs/otel-adb-001-2fdebc088a9f-5968a4
+runs/otel-adb-001-2fdebc088a9f-5968a4/report.md
+overall 1.00 | workflow 1.00 | output 1.00
+exit 0
+## stderr (last 3 lines)
+
+Build per-year cropland masks from **Sentinel-2 L2A seasonal composites** (2020 and 2022), then d
+run written: runs/otel-adb-001-2fdebc088a9f-5968a4

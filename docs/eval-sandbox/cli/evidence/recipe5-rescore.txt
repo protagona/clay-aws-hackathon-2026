@@ -1,0 +1,8 @@
+# Recipe 5 as written in docs/cli.md, with path/to/clay-rubric.json replaced by a real file (a copy of the active rubric), 2026-11-01T18:56:55Z
+$ for run in batches/kimi-vs-sonnet/runs/*/; do uv run foundry evaluate "$run" --config config/bedrock.toml --rubric <scratch>/clay-rubric.json | tail -n 1; done
+overall 1.00 | workflow 1.00 | output 1.00
+overall 1.00 | workflow 1.00 | output 1.00
+overall 0.96 | workflow 1.00 | output 0.92
+overall 1.00 | workflow 1.00 | output 1.00
+$ jq -r .rubric_id batches/kimi-vs-sonnet/runs/*/rubric.json | sort | uniq -c
+   4 adb-rubric-v0

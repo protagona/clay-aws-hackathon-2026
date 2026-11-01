@@ -13,11 +13,14 @@ from foundry.data.rubrics import Store, StoreError
 from foundry.data.tasks import RubricError, task_dir
 
 
+TASK_HELP = "task id under tasks/ (default: adb)"
+
+
 def add_parser(sub) -> None:
     rb = sub.add_parser("rubric", help="import, review and activate rubrics (any format) with history")
     rsub = rb.add_subparsers(dest="rubric_command", required=True)
     d = rsub.add_parser("draft", help="draft a rubric from a file, text, URL or MCP tool with the config's judge")
-    d.add_argument("--task", default="adb")
+    d.add_argument("--task", default="adb", help=TASK_HELP)
     d.add_argument("--config", default="config/bedrock.toml", help="its [judge] drafts the rubric (Bedrock)")
     src = d.add_mutually_exclusive_group(required=True)
     src.add_argument("--file", help="pdf, docx, xlsx, csv, md, txt, html or json")
@@ -26,14 +29,14 @@ def add_parser(sub) -> None:
     src.add_argument("--mcp", help="SERVER/TOOL from the config's [mcp.servers]")
     d.add_argument("--args", default="", help="JSON arguments for --mcp")
     ls = rsub.add_parser("list", help="the active rubric, its history and pending drafts")
-    ls.add_argument("--task", default="adb")
-    ls.add_argument("--runs-dir", default="runs")
+    ls.add_argument("--task", default="adb", help=TASK_HELP)
+    ls.add_argument("--runs-dir", default="runs", help="counts how many runs each version scored (default: runs)")
     a = rsub.add_parser("activate", help="activate a reviewed draft, or a version from the history")
-    a.add_argument("--task", default="adb")
+    a.add_argument("--task", default="adb", help=TASK_HELP)
     a.add_argument("target", help="a draft id, or a history file name such as adb-rubric-v0@0.1.json")
     x = rsub.add_parser("discard", help="delete a draft")
-    x.add_argument("--task", default="adb")
-    x.add_argument("draft_id")
+    x.add_argument("--task", default="adb", help=TASK_HELP)
+    x.add_argument("draft_id", help="the draft id `foundry rubric list` shows")
 
 
 def main(args) -> int:

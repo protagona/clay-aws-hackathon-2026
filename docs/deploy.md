@@ -67,8 +67,9 @@ python3 foundry-remote.pyz run start --prompt adb-001 --config bedrock --wait
 python3 foundry-remote.pyz runs
 ```
 
-- It needs Python 3.10 or later and nothing else.
+- It needs Python 3.9 or later and nothing else, so the `python3` that comes with macOS works.
 - From a clone, `uv run foundry remote …` is the same program.
+- Every command, and recipes for CI, are in the [CLI reference](cli.md#foundry-remote-reference).
 - `--json` gives the raw API output.
 - Exit codes:
   - `0`: success

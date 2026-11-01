@@ -1,0 +1,9 @@
+# Recipe 1 as written in docs/cli.md, from the repo root, 2026-11-01T18:48:42Z, build 7626475+working tree
+$ bash recipe1.sh; echo "gate exit $?"
+overall 0.9584 (run runs/2026-11-01T18-48-43Z_adb-001_e34c, exit 0)
+gate exit 0
+
+# The gate's failing branch, same run, with a threshold it can't meet:
+$ jq -e --argjson min 0.99 '.overall != null and .overall >= $min' runs/2026-11-01T18-48-43Z_adb-001_e34c/scores.json; echo "gate exit $?"
+false
+gate exit 1

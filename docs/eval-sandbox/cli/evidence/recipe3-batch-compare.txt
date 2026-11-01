@@ -1,0 +1,31 @@
+# Recipe 3 as written in docs/cli.md, from the repo root, 2026-11-01T18:50:06Z
+$ uv run foundry batch --config config/bedrock.toml --models us.moonshotai.kimi-k3,us.anthropic.claude-sonnet-4-6 --prompts adb-001 --repeats 2 --evaluate --max-cost 2 --out batches/kimi-vs-sonnet; echo "exit $?"
+batch: 4 jobs (2 variants), concurrency 2, budget $2.00 -> batches/kimi-vs-sonnet
+[1/4] us.moonshotai.kimi-k3 adb-001 r2: succeeded overall 0.9584 $0.208
+[2/4] us.moonshotai.kimi-k3 adb-001 r1: succeeded overall 0.9584 $0.168
+[3/4] us.anthropic.claude-sonnet-4-6 adb-001 r1: succeeded overall 1.0 $0.273
+[4/4] us.anthropic.claude-sonnet-4-6 adb-001 r2: succeeded overall 1.0 $0.214
+summary: batches/kimi-vs-sonnet/summary.md  (spent $0.863 of $2.00)
+exit 0
+$ cat batches/kimi-vs-sonnet/summary.md
+# Batch summary
+
+Updated 2026-11-01 12:52:36. 4 of 4 jobs finished.
+
+## Per variant
+
+Overall score across the variant's scored runs (stdev: sample, needs 2 runs).
+
+| Variant | Model | Succeeded | Mean | Min | Max | Stdev | Mean cost/run | Mean model calls |
+|---|---|---|---|---|---|---|---|---|
+| us.moonshotai.kimi-k3 | us.moonshotai.kimi-k3 | 2/2 | 0.96 | 0.96 | 0.96 | 0.00 | $0.188 | 5.0 |
+| us.anthropic.claude-sonnet-4-6 | us.anthropic.claude-sonnet-4-6 | 2/2 | 1.00 | 1.00 | 1.00 | 0.00 | $0.243 | 4.5 |
+
+## Jobs
+
+| variant | model | prompt | repeat | status | model_calls | tool_calls | tool_errors | tokens_in | tokens_out | cost_usd | workflow | output | overall | duration_s |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| us.moonshotai.kimi-k3 | us.moonshotai.kimi-k3 | adb-001 | 1 | succeeded | 4 | 11 | 0 | 43721 | 4186 | 0.1684 | 1.0 | 0.9167 | 0.9584 | 84.0 |
+| us.moonshotai.kimi-k3 | us.moonshotai.kimi-k3 | adb-001 | 2 | succeeded | 6 | 15 | 0 | 91154 | 4658 | 0.2080 | 1.0 | 0.9167 | 0.9584 | 71.6 |
+| us.anthropic.claude-sonnet-4-6 | us.anthropic.claude-sonnet-4-6 | adb-001 | 1 | succeeded | 5 | 11 | 0 | 59164 | 2529 | 0.2730 | 1.0 | 1.0 | 1.0 | 32.9 |
+| us.anthropic.claude-sonnet-4-6 | us.anthropic.claude-sonnet-4-6 | adb-001 | 2 | succeeded | 4 | 10 | 0 | 40901 | 2627 | 0.2137 | 1.0 | 1.0 | 1.0 | 34.3 |

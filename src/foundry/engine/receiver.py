@@ -130,5 +130,8 @@ def main(args) -> int:
     try:
         rec.serve_forever()
     except KeyboardInterrupt:
-        pass
+        # The flush timers start on the server's daemon threads, so they're daemons too: wait for traces still in
+        # their grace period, or Ctrl-C right after an agent exports drops a trace we already answered 200 for.
+        rec.wait_idle(rec.grace_s + 30)
+    rec.server.server_close()
     return 0

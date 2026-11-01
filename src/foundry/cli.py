@@ -1,4 +1,4 @@
-"""Command-line entry point: foundry run | evaluate | validate | ui | batch | import | receive | external."""
+"""foundry: run an agent on a task, record its trace, score it, and serve the UI. Reference: docs/cli.md."""
 
 from __future__ import annotations
 
@@ -12,26 +12,27 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="run the agent on one prompt and record a trace")
-    run.add_argument("--config", required=True)
-    run.add_argument("--prompt", required=True)
-    run.add_argument("--runs-dir", default="runs")
-    run.add_argument("--run-id")
+    run.add_argument("--config", required=True, help="config file, e.g. config/offline.toml or config/bedrock.toml")
+    run.add_argument("--prompt", required=True, help="prompt id from tasks/<task>/prompts.jsonl, e.g. adb-001")
+    run.add_argument("--runs-dir", default="runs", help="where the run directory goes (default: runs)")
+    run.add_argument("--run-id", help="name the run directory yourself (default: <time>_<prompt>_<random>)")
     run.add_argument("--evaluate", action="store_true",
                      help="then summarize and score the run with the same config (one command: run, trace, report)")
 
     ev = sub.add_parser("evaluate", help="summarize and score a recorded run")
-    ev.add_argument("run_dir")
-    ev.add_argument("--config", default="config/offline.toml")
-    ev.add_argument("--rubric")
-    ev.add_argument("--force", action="store_true")
+    ev.add_argument("run_dir", help="a run directory, e.g. runs/<run id>")
+    ev.add_argument("--config", default="config/offline.toml",
+                    help="its [judge] and [summarizer] score the run (default: config/offline.toml, no AWS)")
+    ev.add_argument("--rubric", help="score against this rubric.json instead of the task's active one")
+    ev.add_argument("--force", action="store_true", help="score a run stuck at 'running' (a crashed run) as failed")
     ev.add_argument("--lock-held", help=argparse.SUPPRESS)
 
     ba = sub.add_parser("batch", help="run prompts x variants x repeats, then summarize")
     ba.add_argument("--config", action="append", required=True, help="a variant config (repeatable)")
     ba.add_argument("--models", help="comma-separated model ids: one variant each, derived from the single --config")
     ba.add_argument("--prompts", required=True, help='comma-separated prompt ids, or "all"')
-    ba.add_argument("--repeats", type=int, default=1)
-    ba.add_argument("--concurrency", type=int, default=2)
+    ba.add_argument("--repeats", type=int, default=1, help="runs per variant and prompt (default: 1)")
+    ba.add_argument("--concurrency", type=int, default=2, help="runs at once (default: 2)")
     ba.add_argument("--evaluate", action="store_true", help="also run foundry evaluate on each run")
     ba.add_argument("--eval-config", help="config for evaluation (default: the first variant's config)")
     ba.add_argument("--max-cost", type=float, help="stop launching runs once recorded cost (USD) reaches this")
@@ -42,29 +43,29 @@ def _build_parser() -> argparse.ArgumentParser:
     im = sub.add_parser("import", help="turn OpenTelemetry GenAI traces (OTLP/JSON) from any agent into run dirs")
     im.add_argument("file", help="OTLP/JSON: one ExportTraceServiceRequest, or JSON Lines of them")
     im.add_argument("--task", required=True, help="task id the runs belong to (selects the rubric for evaluate)")
-    im.add_argument("--prompt-id", default="imported")
-    im.add_argument("--runs-dir", default="runs")
+    im.add_argument("--prompt-id", default="imported", help="prompt id recorded on the runs (default: imported)")
+    im.add_argument("--runs-dir", default="runs", help="where the run directories go (default: runs)")
     im.add_argument("--config", help="config whose [prices] are used to compute cost_usd")
 
     rc = sub.add_parser("receive", help="OTLP/HTTP receiver on 127.0.0.1: incoming agent traces become run dirs")
-    rc.add_argument("--task", required=True)
-    rc.add_argument("--prompt-id", default="imported")
-    rc.add_argument("--runs-dir", default="runs")
-    rc.add_argument("--port", type=int, default=4318)
+    rc.add_argument("--task", required=True, help="task id the runs belong to (selects the rubric for evaluate)")
+    rc.add_argument("--prompt-id", default="imported", help="prompt id recorded on the runs (default: imported)")
+    rc.add_argument("--runs-dir", default="runs", help="where the run directories go (default: runs)")
+    rc.add_argument("--port", type=int, default=4318, help="port on 127.0.0.1 (default: 4318, the OTLP/HTTP port)")
     rc.add_argument("--config", help="config whose [prices] are used to compute cost_usd")
 
     ex = sub.add_parser("external", help="run any OpenTelemetry-instrumented agent command and record its runs",
                         usage="foundry external --task T --prompt P [options] -- <command> [args...]")
-    ex.add_argument("--task", required=True)
+    ex.add_argument("--task", required=True, help="task id: its prompts and rubric")
     ex.add_argument("--prompt", required=True, help="prompt id; its text is passed to the command as FOUNDRY_PROMPT")
     ex.add_argument("--config", default="config/offline.toml", help="evaluation config; its [prices] give cost_usd")
-    ex.add_argument("--runs-dir", default="runs")
+    ex.add_argument("--runs-dir", default="runs", help="where the run directories go (default: runs)")
     ex.add_argument("--timeout", type=float, default=600, help="kill the command after this many seconds")
     ex.add_argument("--evaluate", action="store_true", help="also evaluate each received run with --config")
     ex.add_argument("cmd", nargs=argparse.REMAINDER, help="the agent command, after --")
 
     va = sub.add_parser("validate", help="check a run directory against the trace contract")
-    va.add_argument("run_dir")
+    va.add_argument("run_dir", help="a run directory, e.g. runs/<run id>")
 
     from foundry.cli_rubric import add_parser as add_rubric_parser
 
@@ -77,8 +78,8 @@ def _build_parser() -> argparse.ArgumentParser:
                         "`foundry remote --help` for its commands", add_help=False)
     rm.add_argument("rest", nargs=argparse.REMAINDER)  # listed for --help; main() hands `remote` off before parsing
     ui = sub.add_parser("ui", help="serve the local UI on 127.0.0.1")
-    ui.add_argument("--port", type=int, default=8765)
-    ui.add_argument("--runs-dir", default="runs")
+    ui.add_argument("--port", type=int, default=8765, help="port on 127.0.0.1 (default: 8765)")
+    ui.add_argument("--runs-dir", default="runs", help="the runs it shows and writes (default: runs)")
     return parser
 
 
