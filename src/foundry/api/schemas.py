@@ -532,6 +532,7 @@ class RubricOverview(Closed):
     versions: list[RubricVersionRow]
     drafts: list[DraftMeta]
     active_entry: RubricVersionRow | None
+    base_version: int | None = None  # send back with edits (cloud only)
 
 
 class DraftView(Closed):
@@ -540,6 +541,7 @@ class DraftView(Closed):
     meta: DraftMeta
     body: Rubric
     source_text: str | None
+    base_version: int | None = None  # send back with edits (cloud only)
 
 
 class CreateDraftResponse(Closed):
@@ -584,6 +586,7 @@ class PromptsResponse(Closed):
     prompts: list[PromptRow]
     next_id: str
     root_name: str
+    base_version: int | None = None  # send back with edits (cloud only)
 
 
 class PromptRecord(Closed):
@@ -610,6 +613,7 @@ class PromptDetail(Closed):
     scored: int
     mean: float | None
     runs: list[PromptRun]
+    base_version: int | None = None  # send back with edits (cloud only)
 
 
 class CreatePromptResponse(Closed):
@@ -691,31 +695,37 @@ class DraftBody(Closed):
     task: str = "adb"
     body: dict
     activate: bool = False
+    base_version: int | None = None  # the project version the page loaded (aws-deploy spec S2)
 
 
 class PromptBody(Closed):  # limits are checked by the store, so errors come back as 400 + field
     task: str = "adb"
     prompt_id: str | None = None
     prompt: str = ""
+    base_version: int | None = None  # the project version the page loaded (aws-deploy spec S2)
 
 
 class TaskBody(Closed):
     task: str = "adb"
+    base_version: int | None = None  # the project version the page loaded (aws-deploy spec S2)
 
 
 class ArchiveBody(Closed):
     task: str = "adb"
     archived: bool
+    base_version: int | None = None  # the project version the page loaded (aws-deploy spec S2)
 
 
 class StagesBody(Closed):
     task: str = "adb"
     stages: list[list[str]]
+    base_version: int | None = None  # the project version the page loaded (aws-deploy spec S2)
 
 
 class HistoryBody(Closed):
     task: str = "adb"
     file: str = Field(max_length=200)
+    base_version: int | None = None  # the project version the page loaded (aws-deploy spec S2)
 
 
 # --- sign-in (aws-deploy ADR-9) ----------------------------------------------------------------------------------
@@ -727,3 +737,36 @@ class LoginBody(Closed):
 
 class AuthMe(Closed):
     name: str
+
+
+# --- two-step uploads (aws-deploy ADR-10) -------------------------------------------------------------------------
+
+
+class UploadRequest(Closed):
+    kind: Literal["trace", "rubric_source"]
+    filename: str = Field(min_length=1, max_length=200)
+    size: int = Field(ge=1)
+
+
+class UploadTicket(Closed):
+    upload_id: str
+    url: str
+    fields: dict[str, str]
+
+
+class ImportByUpload(Closed):
+    upload_id: str = Field(max_length=32)
+    task: str = "adb"
+    prompt_id: str = "imported"
+    config: str = ""
+
+
+class DraftByUpload(Closed):
+    task: str = "adb"
+    kind: Literal["file", "text", "url", "mcp"] = "file"
+    config: str = "bedrock"
+    upload_id: str | None = Field(default=None, max_length=32)
+    text: str = Field(default="", max_length=200_000)
+    url: str = Field(default="", max_length=2000)
+    mcp: str = Field(default="", max_length=200)
+    args: str = Field(default="", max_length=20_000)

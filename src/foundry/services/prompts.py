@@ -30,6 +30,15 @@ def call(ws: Workspace, fn, *args):
         raise ServiceError(400, configs.relative_paths(ws, str(exc))) from None
 
 
+def version_of(ws: Workspace, task: str) -> dict:
+    v = cloud_state.project_version(ws, task)
+    return {} if v is None else {"base_version": v}
+
+
+def with_version(ws: Workspace, task: str, view: dict) -> dict:
+    return {**view, **version_of(ws, task)}
+
+
 def need_prompt_id(pid: str) -> None:
     if not PROMPT_ID_RE.match(pid) or ".." in pid:
         raise ServiceError(404, "No such prompt")
@@ -71,7 +80,8 @@ def prompts_view(ws: Workspace, task: str) -> dict:
         scored = [v for v in own if isinstance(v, (int, float))]
         out.append({**r, **run_count(ws, task, r["prompt_id"], index), "scored": len(scored),
                     "mean": sum(scored) / len(scored) if scored else None})
-    return {"prompts": out, "next_id": call(ws, store.next_id, set(index[0])), "root_name": ws.root.name}
+    view = {"prompts": out, "next_id": call(ws, store.next_id, set(index[0])), "root_name": ws.root.name}
+    return with_version(ws, task, view)
 
 
 def prompt_view(ws: Workspace, task: str, pid: str) -> dict:
@@ -91,7 +101,7 @@ def prompt_view(ws: Workspace, task: str, pid: str) -> dict:
     return {"prompt": row, "runs_total": count["runs"], "pending": count["pending"],
             "next_version_id": call(ws, store.next_version_id, pid, set(index[0])),
             "locked": count["runs"] > 0 or count["pending"], "scored": len(scored),
-            "mean": sum(scored) / len(scored) if scored else None, "runs": rows[:20]}
+            "mean": sum(scored) / len(scored) if scored else None, "runs": rows[:20]} | version_of(ws, task)
 
 
 def create(ws: Workspace, task: str, pid, text) -> str:

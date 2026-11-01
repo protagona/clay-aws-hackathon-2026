@@ -66,3 +66,15 @@ def batch_reservation(max_cost: float, concurrency: int, run_wc: float, eval_wc:
 def refusal(committed: float, cap: float, at: float | None = None) -> ServiceError:
     return ServiceError(409, f"This month's spend is ${committed:.2f} of the ${cap:.2f} cap; new runs are paused "
                              f"until {next_month_start(at)}.")
+
+
+DRAFT_INPUT_TOKENS = 200_000  # a rubric source can be a long document
+
+
+def draft_reservation(cfg, config_name: str) -> float:
+    from foundry.engine.rubrics.draft import MAX_TOKENS as DRAFT_MAX_TOKENS
+
+    if cfg.judge.provider != "bedrock":
+        return 0.0
+    p = _price(cfg.prices, cfg.judge.id, config_name)
+    return round((DRAFT_INPUT_TOKENS * p.input + max(cfg.judge.max_tokens, DRAFT_MAX_TOKENS) * p.output) / 1e6 * MARGIN, 4)

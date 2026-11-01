@@ -109,7 +109,8 @@ def write_check(csrf: str, access=None, check_csrf: bool = True):
         if expected is not None and not hmac.compare_digest(token.encode(), expected.encode()):
             raise ServiceError(403, "Missing or invalid CSRF token; reload the page")
         ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
-        multipart = request.url.path in MULTIPART_PATHS
+        multipart = request.url.path in MULTIPART_PATHS or (request.url.path.startswith("/api/uploads/")
+                                                            and request.url.path != "/api/uploads/")
         if request.headers.get("content-length", "0") not in ("", "0") or ctype:
             allowed = ("multipart/form-data", "application/x-www-form-urlencoded") if multipart else ("application/json",)
             if ctype not in allowed:  # the CSRF header above is what stops cross-site writes; this keeps bodies typed

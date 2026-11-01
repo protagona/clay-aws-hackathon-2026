@@ -20,8 +20,8 @@ from foundry.api.errors import error
 from foundry.api.guard import expected_csrf, write_check
 from foundry.api import schemas as S
 from foundry.api.render import render
-from foundry.api.uploads import read_rubric_upload, save_upload
-from foundry.services import batches, configs, dashboard, imports, jobs, prompts, rubrics, runs, tools
+from foundry.api.uploads import read_bytes, read_rubric_upload, save_upload, save_upload_to
+from foundry.services import batches, cloud_state, configs, dashboard, imports, jobs, prompts, rubrics, runs, tools, uploads
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -160,6 +160,33 @@ def make_router(ws: Workspace, csrf: str, access=None) -> APIRouter:
         paths = imports.import_saved_trace(ws, dest, file.filename or "", task, prompt_id, config)
         return {"runs": [p.name for p in paths]}
 
+    @route("POST", "/uploads", S.UploadTicket, dependencies=write, status_code=201)
+    def upload_ticket(body: S.UploadRequest):
+        return uploads.ticket(ws, body.kind, body.filename, body.size)
+
+    @route("POST", "/uploads/{upload_id}", S.Ok, dependencies=write, status_code=201)
+    async def upload_local(upload_id: str, file: UploadFile = File(...)):
+        dest, limit = uploads.local_target(ws, upload_id)  # 404 in the cloud: files go straight to S3 there
+        await save_upload_to(file, dest, limit)
+        return {"ok": True}
+
+    @route("POST", "/import/by-upload", S.ImportResponse, dependencies=write, status_code=201)
+    def import_by_upload(body: S.ImportByUpload):
+        imports.check_import_form(ws, body.task, body.prompt_id, body.config)
+        name, path = uploads.take(ws, body.upload_id, "trace")
+        return {"runs": [p.name for p in imports.import_upload(ws, name, path, body.task, body.prompt_id, body.config)]}
+
+    @route("POST", "/rubric/drafts/by-upload", S.CreateDraftResponse, dependencies=write, status_code=201)
+    async def create_draft_by_upload(body: S.DraftByUpload):
+        name, data = "", b""
+        if body.kind == "file" and body.upload_id:
+            name, path = uploads.take(ws, body.upload_id, "rubric_source")
+            data = await run_in_threadpool(read_bytes, path)
+        draft_id = await run_in_threadpool(rubrics.ui_create_draft, ws, body.task, body.kind, body.config,
+                                           file_name=name, file_data=data, text=body.text, url=body.url,
+                                           mcp=body.mcp, args=body.args)
+        return {"draft_id": draft_id}
+
     @route("GET", "/receiver", S.ReceiverStatus)
     def receiver():
         return imports.receiver_status(ws)
@@ -196,7 +223,8 @@ def make_router(ws: Workspace, csrf: str, access=None) -> APIRouter:
     @route("PUT", "/rubric/drafts/{draft_id}", S.DraftSaveResult, dependencies=write)
     def update_draft(draft_id: str, body: S.DraftBody):
         try:
-            err = rubrics.update_draft(ws, body.task, draft_id, body.body, activate=body.activate)
+            with cloud_state.expecting(body.base_version):
+                err = rubrics.update_draft(ws, body.task, draft_id, body.body, activate=body.activate)
         except ServiceError as exc:
             if exc.status == 400:  # not activated: say which field
                 return error(400, exc.message, field=field_of(exc.message))
@@ -228,7 +256,8 @@ def make_router(ws: Workspace, csrf: str, access=None) -> APIRouter:
 
     @route("POST", "/rubric/history/activate", S.Ok, dependencies=write)
     def activate_version(body: S.HistoryBody):
-        rubrics.activate_version(ws, body.task, body.file)
+        with cloud_state.expecting(body.base_version):
+            rubrics.activate_version(ws, body.task, body.file)
         return {"ok": True}
 
     # --- prompts (increment 13) ------------------------------------------------------------------------------
@@ -252,25 +281,30 @@ def make_router(ws: Workspace, csrf: str, access=None) -> APIRouter:
 
     @route("POST", "/prompts", S.CreatePromptResponse, dependencies=write, status_code=201)
     def create_prompt(body: S.PromptBody):
-        return {"prompt_id": prompts.create(ws, body.task, body.prompt_id, body.prompt)}
+        with cloud_state.expecting(body.base_version):
+            return {"prompt_id": prompts.create(ws, body.task, body.prompt_id, body.prompt)}
 
     @route("PUT", "/prompts/{prompt_id}", S.Ok, dependencies=write)
     def update_prompt(prompt_id: str, body: S.PromptBody):
-        prompts.set_text(ws, body.task, prompt_id, body.prompt)
+        with cloud_state.expecting(body.base_version):
+            prompts.set_text(ws, body.task, prompt_id, body.prompt)
         return {"ok": True}
 
     @route("POST", "/prompts/{prompt_id}/version", S.CreatePromptResponse, dependencies=write, status_code=201)
     def version_prompt(prompt_id: str, body: S.TaskBody):
-        return {"prompt_id": prompts.new_version(ws, body.task, prompt_id)}
+        with cloud_state.expecting(body.base_version):
+            return {"prompt_id": prompts.new_version(ws, body.task, prompt_id)}
 
     @route("POST", "/prompts/{prompt_id}/archive", S.Ok, dependencies=write)
     def archive_prompt(prompt_id: str, body: S.ArchiveBody):
-        prompts.archive(ws, body.task, prompt_id, body.archived)
+        with cloud_state.expecting(body.base_version):
+            prompts.archive(ws, body.task, prompt_id, body.archived)
         return {"ok": True}
 
     @route("PUT", "/prompts/{prompt_id}/stages", S.StagesSaved, dependencies=write)
     def prompt_stages(prompt_id: str, body: S.StagesBody):
-        return {"ok": True, "expected_sha256": prompts.set_stages(ws, body.task, prompt_id, body.stages)}
+        with cloud_state.expecting(body.base_version):
+            return {"ok": True, "expected_sha256": prompts.set_stages(ws, body.task, prompt_id, body.stages)}
 
     # --- jobs (toasts, failures) ------------------------------------------------------------------------------
 

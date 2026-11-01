@@ -17,7 +17,7 @@ from foundry.engine.rubrics import sources
 from foundry.engine.rubrics.draft import MAX_TOKENS as DRAFT_MAX_TOKENS
 from foundry.engine.rubrics.draft import draft
 from foundry.engine.rubrics.sources import BINARY, SourceError
-from foundry.services import cloud_state, configs
+from foundry.services import cloud_state, configs, jobs, spend
 from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
@@ -52,11 +52,19 @@ def acquire(kind: str, cfg, *, file_name: str = "", file_data: bytes = b"", text
     raise SourceError(f"Unknown source kind '{kind}'")
 
 
-def create_draft(task_dir, source: sources.Source, cfg) -> tuple[str, dict]:
-    """Draft with cfg.judge and save; returns (draft_id, meta). Provider errors propagate (ProviderError)."""
+def draft_with_model(task_id: str, source: sources.Source, cfg):
+    """The model call (up to a minute): no files are touched, so it runs outside any lease."""
     # Its own output budget: a big rubric (criteria x levels + notes) must not be cut at the judge's max_tokens.
     role = cfg.judge.model_copy(update={"max_tokens": max(cfg.judge.max_tokens, DRAFT_MAX_TOKENS)})
-    result = draft(source, task_dir.name, registry.build_provider(role))
+    return draft(source, task_id, registry.build_provider(role))
+
+
+def create_draft(task_dir, source: sources.Source, cfg) -> tuple[str, dict]:
+    """Draft with cfg.judge and save; returns (draft_id, meta). Provider errors propagate (ProviderError)."""
+    return save_draft(task_dir, source, draft_with_model(task_dir.name, source, cfg), cfg)
+
+
+def save_draft(task_dir, source: sources.Source, result, cfg) -> tuple[str, dict]:
     store = Store(task_dir)
     draft_id = store.save_draft(source, result)
     price = cfg.prices.get(result.model) if result.model else None
@@ -85,8 +93,9 @@ def overview(ws: Workspace, task: str) -> dict:
     except RubricError:
         active = None
     versions = store.versions(ws.runs_dir)
+    v = cloud_state.project_version(ws, task)
     return {"task": task, "active": active, "versions": versions, "drafts": store.drafts(),
-            "active_entry": next((v for v in versions if v["active"]), None)}
+            "active_entry": next((v for v in versions if v["active"]), None), **({} if v is None else {"base_version": v})}
 
 
 def active_label(ws: Workspace, task: str = "adb") -> dict | None:
@@ -100,24 +109,39 @@ def active_label(ws: Workspace, task: str = "adb") -> dict | None:
 
 def ui_create_draft(ws: Workspace, task: str, kind: str, config: str, *, file_name: str = "", file_data: bytes = b"",
                     text: str = "", url: str = "", mcp: str = "", args: str = "") -> str:
-    """Blocking (up to a minute): acquire the source and draft it. Call from a worker thread."""
-    with cloud_state.project_write(ws, task):
-        store = store_for(ws, task)
-        if kind == "file" and not file_name:  # filled another field without switching the source type
-            kind = "text" if text.strip() else "url" if url.strip() else "mcp" if mcp.strip() else kind
-        if config not in configs.config_names(ws) or kind not in ("file", "text", "url", "mcp"):
-            raise ServiceError(400, "Pick a task, a known config and a source.")
-        if kind == "file" and not file_name:
-            raise ServiceError(400, "Choose a file to upload.")
+    """Blocking (up to a minute): acquire the source and draft it. Call from a worker thread. The model call runs
+    outside the task's lease; only saving the draft holds it (aws-deploy build note, slice 6b). A draft counts
+    toward the spend cap (spec A5): its worst case is reserved first and settled with its recorded cost."""
+    store_for(ws, task)  # 404 for an unknown task, before anything is spent
+    if kind == "file" and not file_name:  # filled another field without switching the source type
+        kind = "text" if text.strip() else "url" if url.strip() else "mcp" if mcp.strip() else kind
+    if config not in configs.config_names(ws) or kind not in ("file", "text", "url", "mcp"):
+        raise ServiceError(400, "Pick a task, a known config and a source.")
+    if kind == "file" and not file_name:
+        raise ServiceError(400, "Choose a file to upload.")
+    try:
+        cfg = configs.load(ws, config)
+    except ConfigError as exc:
+        raise ServiceError(400, str(exc)) from None
+    reservation = spend.draft_reservation(cfg, config) if ws.cap_usd is not None else 0.0
+    handle = jobs.reserve(ws, "draft", f"Rubric draft for {task}", reservation)
+    cost = None
+    try:
         try:
-            cfg = configs.load(ws, config)
             source = acquire(kind, cfg, file_name=file_name, file_data=file_data, text=text, url=url, mcp=mcp, args=args)
-            draft_id, _ = create_draft(store.task, source, cfg)
+            result = draft_with_model(task, source, cfg)
         except (SourceError, ConfigError) as exc:
+            cost = 0.0
             raise ServiceError(400, str(exc)) from None
         except ProviderError as exc:
             raise ServiceError(502, f"The model could not draft the rubric: {exc}") from None
+        with cloud_state.project_write(ws, task):
+            store = store_for(ws, task)
+            draft_id, meta = save_draft(store.task, source, result, cfg)
+        cost = (meta.get("usage") or {}).get("cost_usd")
         return draft_id
+    finally:
+        jobs.settle(ws, handle, cost)
 
 
 def draft_view(ws: Workspace, task: str, draft_id: str) -> dict:
@@ -129,7 +153,9 @@ def draft_view(ws: Workspace, task: str, draft_id: str) -> dict:
     text = None
     if src is not None and meta["source"]["format"] not in BINARY:
         text = read_source(src, SOURCE_PREVIEW).decode("utf-8", "replace")
-    return {"task": task, "draft_id": draft_id, "meta": meta, "body": body, "source_text": text}
+    v = cloud_state.project_version(ws, task)
+    return {"task": task, "draft_id": draft_id, "meta": meta, "body": body, "source_text": text,
+            **({} if v is None else {"base_version": v})}
 
 
 def update_draft(ws: Workspace, task: str, draft_id: str, body: dict, activate: bool = False) -> str | None:

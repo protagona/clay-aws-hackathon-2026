@@ -24,6 +24,15 @@ def mount(app: FastAPI) -> None:
             return JSONResponse({"error": "Not found"}, status_code=404)
         return FileResponse(f, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
+    @app.get("/cli/{name}")
+    def cli(name: str):
+        """The remote CLI, one standard-library Python file built into web_dist/cli (aws-deploy spec I3). Public:
+        it holds no secrets; using it needs a token."""
+        f = DIST / "cli" / name
+        if name != "foundry-remote.pyz" or not f.is_file():
+            return JSONResponse({"error": "Not found"}, status_code=404)
+        return FileResponse(f, media_type="application/zip", filename=name, headers={"Cache-Control": "no-cache"})
+
     @app.get("/{rest:path}", response_class=HTMLResponse)
     def spa(rest: str):
         index = DIST / "index.html"

@@ -43,3 +43,21 @@ async def read_rubric_upload(file: UploadFile | None) -> tuple[str, bytes]:
             raise ServiceError(413, f"The file is over the {limit / 1e6:.1f} MB limit.")
         chunks.append(chunk)
     return file.filename, b"".join(chunks)
+
+
+async def save_upload_to(file: UploadFile, dest: Path, limit: int) -> None:
+    """A laptop's two-step upload: the file streamed to its ticket's path under the ticket's cap."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    size = 0
+    with open(dest, "wb") as out:
+        while chunk := await file.read(1 << 20):
+            size += len(chunk)
+            if size > limit:
+                out.close()
+                dest.unlink(missing_ok=True)
+                raise ServiceError(413, f"The file is over the {limit / (1 << 20):.0f} MB limit.")
+            out.write(chunk)
+
+
+def read_bytes(path: Path) -> bytes:
+    return Path(path).read_bytes()

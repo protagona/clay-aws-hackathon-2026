@@ -38,6 +38,20 @@ def import_saved_trace(ws: Workspace, dest: Path, filename: str, task: str, prom
         raise ServiceError(400, f"Could not import {filename}: {detail}") from None
 
 
+def import_upload(ws: Workspace, filename: str, path: Path, task: str, prompt_id: str, config: str) -> list[Path]:
+    """Import an uploaded trace (services.uploads.take gave its path); in the cloud the new runs are pushed to the
+    store with their board cards, so every instance sees them."""
+    check_import_form(ws, task, prompt_id, config)
+    made = import_saved_trace(ws, path, filename, task, prompt_id, config)
+    if ws.cloud is not None:
+        from foundry.services import workers
+
+        _, mirror = ws.cloud
+        for d in made:
+            workers.index_run(ws, mirror, d.name)
+    return made
+
+
 def receiver_start(ws: Workspace, task: str, prompt_id: str, config: str) -> None:
     check_import_form(ws, task, prompt_id, config)
     with ws.lock:

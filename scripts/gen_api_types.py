@@ -41,7 +41,9 @@ def api_routes() -> list[tuple[str, str, type | None, type | None]]:
         if not isinstance(r, APIRoute) or not r.path.startswith("/api/"):
             continue
         body = r.body_field.field_info.annotation if r.body_field is not None else None
-        body = body if isinstance(body, type) and hasattr(body, "model_json_schema") else None
+        # Only our declared bodies: FastAPI generates a model for each multipart form (File/Form), which isn't
+        # part of the JSON contract the web app types.
+        body = body if isinstance(body, type) and getattr(body, "__module__", "") == "foundry.api.schemas" else None
         for method in sorted(r.methods):
             out.append((method, r.path, r.response_model, body))
     return out

@@ -7,6 +7,7 @@ export type Column = "running" | "evaluating" | "scored" | "attention";
 export interface ArchiveBody {
   task?: string;
   archived: boolean;
+  base_version?: number | null;
 }
 
 export interface AuthMe {
@@ -92,24 +93,6 @@ export interface BatchSummary {
 export interface BatchesResponse {
   batches: BatchSummary[];
   running: boolean;
-}
-
-export interface Body_create_draft_api_rubric_drafts_post {
-  task?: string;
-  kind?: string;
-  text?: string;
-  url?: string;
-  mcp?: string;
-  args?: string;
-  config?: string;
-  file?: string | null;
-}
-
-export interface Body_do_import_api_import_post {
-  file: string;
-  task?: string;
-  prompt_id?: string;
-  config?: string;
 }
 
 export interface Card {
@@ -231,6 +214,18 @@ export interface DraftBody {
   task?: string;
   body: Record<string, unknown>;
   activate?: boolean;
+  base_version?: number | null;
+}
+
+export interface DraftByUpload {
+  task?: string;
+  kind?: "file" | "text" | "url" | "mcp";
+  config?: string;
+  upload_id?: string | null;
+  text?: string;
+  url?: string;
+  mcp?: string;
+  args?: string;
 }
 
 export interface DraftMeta {
@@ -276,6 +271,7 @@ export interface DraftView {
   meta: DraftMeta;
   body: Rubric;
   source_text: string | null;
+  base_version?: number | null;
 }
 
 export interface FeedItem {
@@ -296,6 +292,14 @@ export interface Gauge {
 export interface HistoryBody {
   task?: string;
   file: string;
+  base_version?: number | null;
+}
+
+export interface ImportByUpload {
+  upload_id: string;
+  task?: string;
+  prompt_id?: string;
+  config?: string;
 }
 
 export interface ImportResponse {
@@ -384,6 +388,7 @@ export interface PromptBody {
   task?: string;
   prompt_id?: string | null;
   prompt?: string;
+  base_version?: number | null;
 }
 
 export interface PromptDetail {
@@ -395,6 +400,7 @@ export interface PromptDetail {
   scored: number;
   mean: number | null;
   runs: PromptRun[];
+  base_version?: number | null;
 }
 
 export interface PromptRecord {
@@ -427,6 +433,7 @@ export interface PromptsResponse {
   prompts: PromptRow[];
   next_id: string;
   root_name: string;
+  base_version?: number | null;
 }
 
 export interface ReceiverBody {
@@ -501,6 +508,7 @@ export interface RubricOverview {
   versions: RubricVersionRow[];
   drafts: DraftMeta[];
   active_entry: RubricVersionRow | null;
+  base_version?: number | null;
 }
 
 export interface RubricVersion {
@@ -614,6 +622,7 @@ export interface Spread {
 export interface StagesBody {
   task?: string;
   stages: string[][];
+  base_version?: number | null;
 }
 
 export interface StagesSaved {
@@ -679,6 +688,7 @@ export interface StepView {
 
 export interface TaskBody {
   task?: string;
+  base_version?: number | null;
 }
 
 export interface ToolError {
@@ -698,6 +708,18 @@ export interface ToolMenu {
   listed_at: string | null;
   errors: ToolError[];
   refreshing: boolean;
+}
+
+export interface UploadRequest {
+  kind: "trace" | "rubric_source";
+  filename: string;
+  size: number;
+}
+
+export interface UploadTicket {
+  upload_id: string;
+  url: string;
+  fields: Record<string, string>;
 }
 
 export interface Variant {
@@ -747,6 +769,7 @@ export interface ApiRoutes {
   "GET /api/compare": Compare;
   "GET /api/dashboard": Dashboard;
   "POST /api/import": ImportResponse;
+  "POST /api/import/by-upload": ImportResponse;
   "GET /api/jobs": JobsResponse;
   "POST /api/jobs/{job_id}/dismiss": Ok;
   "GET /api/jobs/{job_id}/log": JobLog;
@@ -765,6 +788,7 @@ export interface ApiRoutes {
   "GET /api/rubric": RubricOverview;
   "GET /api/rubric/active": RubricWithMeta;
   "POST /api/rubric/drafts": CreateDraftResponse;
+  "POST /api/rubric/drafts/by-upload": CreateDraftResponse;
   "DELETE /api/rubric/drafts/{draft_id}": Ok;
   "GET /api/rubric/drafts/{draft_id}": DraftView;
   "PUT /api/rubric/drafts/{draft_id}": DraftSaveResult;
@@ -776,4 +800,6 @@ export interface ApiRoutes {
   "POST /api/runs/{run_id}/evaluate": Ok;
   "GET /api/runs/{run_id}/rubric": RubricWithMeta;
   "GET /api/session": Session;
+  "POST /api/uploads": UploadTicket;
+  "POST /api/uploads/{upload_id}": Ok;
 }

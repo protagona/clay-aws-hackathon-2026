@@ -516,3 +516,15 @@ Each slice ends green (full suite, Vitest, ruff, `tsc`, gitleaks) and is its own
 - **Slice 5: two Finalize tasks.** `FinalizeOk` (the normal end) and `Finalize` (after `KeepBatchId` on an error from Prepare or the Map, carrying the error). A Map item's failure doesn't reach either; its own `Catch` records it.
 - **Slice 5: Finalize's conditional settle.** It settles on the `spent` it read (the finish condition includes `spent = :read`), and re-reads up to 5 times if an item booked in between.
 - **Slice 5: per-item records** (`<batch job>#<n>`, kind `batch_item`) are claimed with a conditional put, so a redelivered item reports the first delivery's result instead of running again. `/api/jobs` hides them.
+- **Slice 6b: rubric drafting stays synchronous** (it changes ADR-6, ADR-9 and spec I6's "drafting is a job").
+  - The async design existed for CloudFront's 30 s origin timeout, and there's no CloudFront in front. A function URL request runs up to the function's timeout, so the API function gets **300 s**.
+  - The model call now runs **outside** the task's lease; only saving the draft holds it, so a slow model can't let the lease expire mid-write.
+  - Drafts still count toward the cap: a lightweight JOB record reserves without invoking a worker, and settles with the draft's recorded cost.
+  - **Verify measures a real 60–120 s draft through the function URL.** The >60 s request is still unverified.
+- **Slice 6b: imports stay synchronous** in the API function, which gets 2 GB for a 50 MB trace. The new runs are pushed with their board cards. The design's "imports as worker jobs" isn't needed at this size.
+- **Slice 6b: the two-step routes are additions.**
+  - New: `POST /api/uploads` (ticket), `POST /api/uploads/{id}` (laptop only), `POST /api/import/by-upload`, `POST /api/rubric/drafts/by-upload`.
+  - The multipart `POST /api/import` and `POST /api/rubric/drafts` stay for laptops and small files. The web app (slice 7) always uses the two-step flow, the only one that works over 6 MB in the cloud.
+- **Slice 6b: `base_version` is optional in requests.**
+  - The web app always sends it, and a stale one is a 409 (S2, tested across two instances).
+  - Scripts and the CLI that don't send one aren't refused. Spec S2's "a missing base_version is refused in the cloud" is relaxed: only the UI edits project files.

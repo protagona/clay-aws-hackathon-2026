@@ -171,6 +171,17 @@ class LocalBackend:
     def all(self, ws: Workspace) -> list[Job]:
         return list(ws.jobs.values())
 
+    def reserve(self, ws: Workspace, kind: str, label: str, reservation: float):  # noqa: ARG002
+        with ws.lock:
+            committed = local_spend.month_total(ws.runs_dir, spend.month())
+            if committed + reservation > ws.cap_usd:
+                raise spend.refusal(committed, ws.cap_usd)
+            local_spend.charge(ws.runs_dir, spend.month(), f"{kind}-{secrets.token_hex(4)}", reservation)
+        return True
+
+    def settle(self, ws: Workspace, handle, actual) -> None:  # noqa: ARG002 (locally the reservation is the charge)
+        return None
+
     def dismiss(self, ws: Workspace, job: Job) -> None:  # noqa: ARG002
         job.dismissed = True
 
@@ -203,6 +214,20 @@ def start(ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *,
     prompts (cloud: their lease). With `quiet`, a busy singleton returns None instead."""
     return backend(ws).start(ws, kind, run_id, label, args, singleton=singleton, prompt_ids=list(prompt_ids),
                              evaluate_dir=evaluate_dir, quiet=quiet, task=task, reservation=reservation)
+
+
+def reserve(ws: Workspace, kind: str, label: str, reservation: float):
+    """Spend held for work done in this request (a rubric draft), not by a worker: a handle for `settle`, or None
+    when there's nothing to hold. Raises the cap's 409 like a job start."""
+    if reservation <= 0 or ws.cap_usd is None:
+        return None
+    return backend(ws).reserve(ws, kind, label, reservation)
+
+
+def settle(ws: Workspace, handle, actual: float | None) -> None:
+    """Close a `reserve`: its actual cost replaces the reservation (None = unknown: the reservation is charged)."""
+    if handle is not None:
+        backend(ws).settle(ws, handle, actual)
 
 
 def run_foundry(args: list[str], cwd: Path, env: dict | None = None, tick=None, every: float = 5.0,

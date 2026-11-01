@@ -19,6 +19,28 @@ from foundry.services.errors import ServiceError
 from foundry.services.workspace import Workspace
 
 _held = threading.local()  # (ws id, task) -> lease owner, so a write inside a write doesn't wait on itself
+_expect = threading.local()  # the project version the editing page loaded (spec S2), for this request's thread
+
+
+@contextmanager
+def expecting(base_version: int | None):
+    """Writes inside this block refuse (409) if the task's project files moved past `base_version`, the version
+    the page was showing. None: no check (scripts and the CLI that don't send one)."""
+    prev = getattr(_expect, "version", None)
+    _expect.version = base_version
+    try:
+        yield
+    finally:
+        _expect.version = prev
+
+
+def project_version(ws: Workspace, task: str) -> int | None:
+    """The version of a task's project files this instance last pulled (cloud), for pages to send back as
+    `base_version`; None on a laptop."""
+    if not on(ws):
+        return None
+    _, mirror = ws.cloud
+    return mirror.seen.get(f"project#{task}", (None, None))[0]
 
 
 def on(ws: Workspace) -> bool:
@@ -88,7 +110,10 @@ def project_write(ws: Workspace, task: str, hold_starts: bool = False):
                 yield
                 return
             _, mirror = ws.cloud
-            mirror.pull(f"project#{task}")
+            version = mirror.pull(f"project#{task}")
+            expected = getattr(_expect, "version", None)
+            if expected is not None and expected != version:
+                raise ServiceError(409, "Changed by someone else; reload")
             yield
             try:
                 mirror.push_dir(f"project#{task}", lease=(f"lease#project#{task}", owner))

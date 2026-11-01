@@ -123,7 +123,7 @@ class CloudBackend:
 
     def start(self, ws: Workspace, kind: str, run_id: str, label: str, args: list[str], *, singleton: bool,
               prompt_ids: list[str], evaluate_dir: Path | None, quiet: bool, task: str | None,
-              reservation: float = 0.0):
+              reservation: float = 0.0, invoke: bool = True):
         now = self.clock()
         job_id = secrets.token_hex(8)
         deadline = now + EVENT_AGE_S + RUN_LIMIT_S + MARGIN_S if kind != "batch" else FAR
@@ -168,7 +168,9 @@ class CloudBackend:
                 raise spend.refusal(self._committed(now), ws.cap_usd, now) from None
             raise ServiceError(409, "Busy; try again") from None
         try:
-            if kind == "batch" and self.start_batch is not None:
+            if not invoke:
+                pass
+            elif kind == "batch" and self.start_batch is not None:
                 arn = self.start_batch(job_id)
                 self.store.write(Update(PK, job_id, set={"execution_arn": arn}))
             elif self.invoke is not None:
@@ -177,6 +179,17 @@ class CloudBackend:
             finish(self.store, job_id, "failed", 2, f"could not start the worker: {type(exc).__name__}", self.clock())
             raise ServiceError(500, "Could not start the job; try again") from None
         return record(item, self.store)
+
+    def reserve(self, ws: Workspace, kind: str, label: str, reservation: float) -> str:
+        """Hold spend for in-request work: a JOB item and the SPEND reservation in one transaction, no worker."""
+        job = self.start(ws, kind, kind, label, [], singleton=False, prompt_ids=[], evaluate_dir=None, quiet=False,
+                         task=None, reservation=reservation, invoke=False)
+        self.store.write(Update(PK, job.id, set={"status": "running"}))
+        return job.id
+
+    def settle(self, ws: Workspace, handle: str, actual: float | None) -> None:  # noqa: ARG002
+        finish(self.store, handle, "done" if actual is not None else "failed", 0 if actual is not None else 1, None,
+               self.clock(), actual=actual)
 
     def _committed(self, now: float) -> float:
         item = self.store.get_item("SPEND", spend.month(now)) or {}
