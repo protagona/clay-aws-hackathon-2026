@@ -7,7 +7,7 @@ import { useToast } from "../components/toasts";
 import { Empty, ErrorBanner, Kpi, PageHeader, Pill, ScoreRing, Section, Skeleton, Spinner, SubSection, Tabs } from "../components/ui";
 import { clock, money, shortModel, statusWord } from "../format";
 import { RubricView } from "../components/RubricView";
-import type { Card, Criterion, Kpis, RubricWithMeta, RunDetail, RunsResponse } from "../types";
+import type { Card, Criterion, JobsResponse, Kpis, RubricWithMeta, RunDetail, RunsResponse } from "../types";
 import { boardInterval, runInterval, usePoll } from "../usePoll";
 
 export default function Runs() {
@@ -114,6 +114,10 @@ export function RunDrawer({ id, onEvaluate, refresh = 0 }: { id: string; onEvalu
   const [tab, setTab] = useState<Tab>("overview");
   const run = usePoll<RunDetail>(`/api/runs/${encodeURIComponent(id)}`, (d) => runInterval(d?.m.live));
   const reloadRun = run.reload;
+  // In the cloud a run has no files until its worker starts (a few seconds): while its job is live, say so.
+  const missing = run.error === "Run not found" && !run.data;
+  const pending = usePoll<JobsResponse>(missing ? "/api/jobs" : null, () => 2000);
+  const starting = missing && !!pending.data?.jobs.some((j) => j.kind === "run" && j.run_id === id && j.alive);
   useEffect(() => { if (refresh) reloadRun(); }, [refresh, reloadRun]);
   const [, tick] = useState(0);
   useEffect(() => {
@@ -150,7 +154,8 @@ export function RunDrawer({ id, onEvaluate, refresh = 0 }: { id: string; onEvalu
         </div>
       </div>
       <div className="space-y-5 p-6">
-        {run.error && !d && <ErrorBanner message={run.error === "Run not found" ? "Run not found" : run.error} onRetry={run.reload} />}
+        {starting && <div className="space-y-3"><p className="flex items-center gap-2 text-sm text-sky-700 dark:text-sky-300"><Spinner label="Starting" /> Starting the run… it shows here as soon as it begins.</p><Skeleton className="h-48" /></div>}
+        {run.error && !d && !starting && (!missing || pending.data) && <ErrorBanner message={run.error === "Run not found" ? "Run not found" : run.error} onRetry={run.reload} />}
         {!d && !run.error && <Skeleton className="h-64" />}
         {d && tab === "overview" && (<div className="space-y-7">
           <SubSection title="Scores" caption="How the judge graded this run, from 0 to 1.">

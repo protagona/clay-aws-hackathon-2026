@@ -194,3 +194,21 @@ describe("the app before sign-in", () => {
     expect(fetchMock.mock.calls.map(([u]) => u)).toEqual(["/api/session"]);
   });
 });
+
+describe("a run that has just been started", () => {
+  it("says it is starting while its job is live, and not found otherwise", async () => {
+    const { RunDrawer } = await import("./pages/Runs");
+    const notFound = () => json({ error: "Run not found" }, 404);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url === "/api/jobs"
+      ? json({ jobs: [{ id: "j", kind: "run", run_id: "r9", label: "", alive: true, exit_code: null, failed: false, finished_at: null, message: null }] })
+      : notFound()));
+    render(<MemoryRouter><RunDrawer id="r9" onEvaluate={() => {}} /></MemoryRouter>);
+    expect(await screen.findByText(/Starting the run/)).toBeTruthy();
+    expect(screen.queryByText("✗ Run not found")).toBeNull();
+    cleanup();
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => url === "/api/jobs" ? json({ jobs: [] }) : notFound()));
+    render(<MemoryRouter><RunDrawer id="nope" onEvaluate={() => {}} /></MemoryRouter>);
+    expect(await screen.findByText(/Run not found/)).toBeTruthy();
+    expect(screen.queryByText(/Starting the run/)).toBeNull();
+  });
+});
