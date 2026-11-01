@@ -1,0 +1,4 @@
+# Re-indexed the one failed run on build 85f0f20 (board-attention B3), 2026-11-01
+before: {"status": "failed", "headline": "0.33", "overall": 0.325, "reason": null}
+after:  {"status": "failed", "headline": "0.33", "overall": 0.325, "reason": "Hit the output-token limit; the answer was cut off"}
+unchanged otherwise: True
