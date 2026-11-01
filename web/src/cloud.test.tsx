@@ -212,3 +212,16 @@ describe("a run that has just been started", () => {
     expect(screen.queryByText(/Starting the run/)).toBeNull();
   });
 });
+
+describe("tabs inside a form", () => {
+  it("switch the tab without submitting the form (the Rubric page's source tabs)", async () => {
+    const { Tabs } = await import("./components/ui");
+    const submit = vi.fn((e: Event) => e.preventDefault());
+    const onChange = vi.fn();
+    render(<form onSubmit={(e) => submit(e.nativeEvent)}><Tabs value="file" onChange={onChange}
+      tabs={[{ id: "file", label: "File" }, { id: "text", label: "Text" }]} /></form>);
+    fireEvent.click(screen.getByRole("tab", { name: "Text" }));
+    expect(onChange).toHaveBeenCalledWith("text");
+    expect(submit).not.toHaveBeenCalled();
+  });
+});

@@ -122,7 +122,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: 
   return (
     <div role="tablist" className="flex gap-5 overflow-x-auto text-sm">
       {tabs.map((t) => (
-        <button key={t.id} role="tab" aria-selected={value === t.id} onClick={() => onChange(t.id)}
+        <button type="button" key={t.id} role="tab" aria-selected={value === t.id} onClick={() => onChange(t.id)}
           className={`whitespace-nowrap border-b-2 pb-2 ${value === t.id ? "border-sky-500 font-medium" : "border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"}`}>
           {t.label}
         </button>
