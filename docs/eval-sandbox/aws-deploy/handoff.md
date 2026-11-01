@@ -28,9 +28,9 @@
    - `docs/deploy.md`
 7. **The sandbox deployment** (account 283171504459, us-west-2):
    - URL: **https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/** (`scripts/cloud.sh status` prints it).
-   - Build `354ecab`, both aliases on version 8.
-   - It holds the 77 seeded runs and 5 seeded batches. The test runs, batches and job records were removed on 2026-11-01; a few archived smoke prompts remain in the task's prompt list.
-   - It has no tokens: `smoke` (used for testing) is revoked. Add yours with `AWS_PROFILE=<profile> scripts/cloud.sh token add <name>`.
+   - Build `cdbd960`, both aliases on version 9.
+   - My test data (runs, batches, job records, six archived smoke prompts and a rubric draft) was removed on 2026-11-01. What's there now is the 77 seeded runs and 5 seeded batches, plus your own work.
+   - `smoke` (used for testing) is revoked. Add tokens with `AWS_PROFILE=<profile> scripts/cloud.sh token add <name>`.
 
 ## Decisions
 
@@ -57,7 +57,7 @@
 
 | AC | Result | Evidence |
 |---|---|---|
-| O1 | **partly met.** Log groups exist with 30-day retention and are kept after `destroy`; request errors and the `foundry.api` contract log reach CloudWatch; each job's output is kept in the bucket. **Missing:** job start and exit lines, and run output, in CloudWatch (the worker writes them only to the bucket), and INFO lines from the `foundry` loggers (Lambda's Python runtime drops them). Found in a log review after Verify; see Deferred | `cloud.sh logs` |
+| O1 | Log groups with 30-day retention, kept after `destroy`; request errors and the `foundry.api` contract log reach CloudWatch. A log review after Verify found no job lines there (Lambda's Python runtime drops INFO). On `cdbd960`: each job, batch item and batch logs its start and end (id, kind, run, status, exit, cost, duration) and its output's tail, WARNING when it failed; seen live for a tools job and a batch | o1-job-logs.txt, deploy-o1-logs.log |
 | D1, D2 | the first deploy from the checkout: 309 s, URL printed; names from stack outputs. The account has no default VPC in us-west-2 (`describe-vpcs`: 0) | deploy-first.log |
 | D3 | a second deploy with no change: both stacks "no changes", no version published (30 s) | deploy-d3-no-change.log |
 | D4 | `destroy`: the app stack is gone and the data stack intact; `deploy` reattached the data at a new URL: the same `smoke` token, 96 runs (77 of 77 seeded), every batch, the operator's CLI login updated | d4-destroy-redeploy.log, d4-s4-state.txt |
@@ -99,6 +99,7 @@
 11. (Verify pass 2) The sweep closed dead batch items at $0 before Finalize charged them.
 12. (Verify pass 2) A dead job's slot stayed blocked for 32 minutes for a start with no job-list read first.
 13. (Verify pass 3) Transaction conflicts weren't retried, and a conflicting finish looked like "already finished".
+14. (After handoff, live) A 72-item batch never finished: its cost total, an exact decimal sum of float costs (13.277878000000000108), lost digits when read back as a float, so Finalize's "total unchanged" check never held. The batch held its slot and $26.18 reservation and blocked deploys. Fixed (`cdbd960`): the check tolerates 1e-9, item costs are booked to the micro-dollar, and the test fake now does DynamoDB's decimal arithmetic. The stuck batch was settled by re-delivering its Finalize: done, charged $13.28, slot freed, the month's committed spend $28.59 → $15.69 (stuck-batch-finalize.txt).
 
 ## Gates
 
@@ -129,7 +130,6 @@
 
 ## Deferred and follow-ups
 
-- **O1, job lines in CloudWatch:** the worker should log one line per job start and end (job id, kind, run id, status, cost, duration; the output's tail on failure), and the api and worker should log the `foundry` loggers at INFO. Small; needs a deploy.
 - **A job whose invocation Lambda drops** (seen with the worker's reserved concurrency at 0) holds the run slot until its 32-minute deadline. The fix: an on-failure destination that finishes the job at once.
 - **IAM, state-machine and alarm changes take effect at deploy,** whatever the alias. "The previous version keeps serving" covers code and environment only.
 - **Reserved concurrency** (`--concurrency`, default 20, plus 8 for the worker) and the alias moves are made by `cloud.sh`, outside the template. In an account with too little unreserved concurrency the deploy warns and the limit isn't set.
@@ -151,4 +151,3 @@
   - `stop`/`start`
   - `--budget`
   - the pentest, which needs your OK on its scope
-- **Archived smoke prompts** remain in the sandbox's prompt list. They're out of the New run dialog but listed under Archived on the Prompts page; remove them for a fully clean demo.

@@ -1,0 +1,23 @@
+# The stuck batch b-20261101-141646-5e8e (job 91c55eff7f988caf): its workflow SUCCEEDED 14:52Z, the job stayed running.
+## before (job; month's committed spend; slots)
+{
+    "status": "running",
+    "spent": "13.277878000000000108",
+    "charged": null,
+    "reservation": "26.1812",
+    "month": "2026-11"
+}
+28.591062
+batch	91c55eff7f988caf
+## Finalize re-delivered to worker:live (build cdbd960)
+{"batch_job_id": "91c55eff7f988caf", "status": "done", "spent": 13.277878}200
+
+## after
+{
+    "status": "done",
+    "spent": "13.277878000000000108",
+    "charged": "13.277878",
+    "reservation": "26.1812",
+    "month": "2026-11"
+}
+15.68774

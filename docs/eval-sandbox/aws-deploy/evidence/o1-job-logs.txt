@@ -1,0 +1,4 @@
+# O1 live on cdbd960: the worker's own lines in CloudWatch (FoundryAppStack-WorkerLogsC1193B08-Co37455ZnYMX), 2026-11-01
+batch b-20261101-141646-5e8e end: job=91c55eff7f988caf status=done failures=no interrupted=0 spent=$13.2779
+job 5c86fb85f624c3e8 start: kind=tools run=tools
+job 5c86fb85f624c3e8 end: kind=tools run=tools status=done exit=0 cost=$0.0000 duration=10.1s
