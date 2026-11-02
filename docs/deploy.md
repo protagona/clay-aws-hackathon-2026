@@ -86,6 +86,7 @@ scripts/cloud.sh --name alice destroy --data                     # removes alice
 
 - **Names:** 1–24 lowercase letters, digits and single hyphens, starting with a letter. A bad name is refused before anything touches AWS.
 - **Main:** no name, or `--name main`, is the main deployment (`FoundryDataStack`, `FoundryAppStack`), exactly as before. Let one person deploy main. CloudFormation refuses a second update while one runs, but two people redeploying main one after the other still overwrite each other's build.
+  - **Upgrading main to this version, once:** its probe alarm switches to the new `Deployment=main` metric before the probe publishes it. Expect one "probe failed" alert email within a minute of the deploy, clearing by itself about 3 minutes later (seen in the sandbox on 2026-11-02).
 - **What a named deployment has of its own:**
   - its stacks, URL, data, tokens, spend cap and alert email
   - its own probe, whose metric carries `Deployment=<name>`, so its alarm watches only its own deployment
@@ -94,7 +95,7 @@ scripts/cloud.sh --name alice destroy --data                     # removes alice
   - no account budget (`--budget <usd>` adds one; the budget watches the whole account, so one is enough)
 - **Teardown:**
   - `destroy` removes the app and keeps the data, as for main, but a named deployment's log groups go with its app stack (main's are kept 30 days).
-  - `destroy --data` removes both stacks, the bucket with every object version, and the table. It asks you to type the deployment's name (`--yes` skips that).
+  - `destroy --data` removes both stacks, the bucket with every object version, the table and its leftover logs. It asks you to type the deployment's name (`--yes` skips that).
   - Main refuses `--data`: its data is kept on purpose.
 - **Still shared in the account:**
   - the CDK bootstrap

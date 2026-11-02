@@ -272,8 +272,9 @@ cmd_deploy() {
     sleep 2
   done
   [ "$(curl -s --max-time 10 "${url%/}/healthz" || true)" = "ok $build" ] || die "$url/healthz doesn't answer build $build"
-  # Run the probe once now: its metric gets a real data point at once, so a new deployment (or a new metric, as
-  # named-deployments N3 gave main) doesn't alarm on missing data before the probe's first scheduled run.
+  # Run the probe once now, so its metric has a real data point at once and the alarm settles on the next evaluation
+  # rather than after the probe's first scheduled run. (CloudFormation may update the alarm before the probe, so an
+  # alarm switched to a new metric can still fire once: named-deployments N8.)
   aws lambda invoke --function-name "$(probe_fn)" --cli-binary-format raw-in-base64-out --payload '{}' \
     "$TMP/probe.json" >/dev/null 2>&1 || echo "  note: couldn't run the probe now; it runs every 5 minutes"
   echo
@@ -347,7 +348,13 @@ cmd_destroy() {
     email=$(out $DATA AlertEmail)
     stack_exists $APP && cdk destroy $APP --force -c "deployment=$DEPLOYMENT" -c "email=${email:-x@example.com}"
     stack_exists $DATA && cdk destroy $DATA --force -c "deployment=$DEPLOYMENT" -c "email=${email:-x@example.com}"
-    say "destroyed deployment $DEPLOYMENT: $APP, $DATA, its bucket (every object version) and its table"
+    # Lambda recreates a function's log group when it logs during the stack's deletion (CDK's bucket-emptying
+    # function does): delete what's left. The capitalised -Data-/-App- can't match another (lowercase) name.
+    for g in $(aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/$DATA-" --query 'logGroups[].logGroupName' --output text) \
+             $(aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/$APP-" --query 'logGroups[].logGroupName' --output text); do
+      [ "$g" = None ] || aws logs delete-log-group --log-group-name "$g"
+    done
+    say "destroyed deployment $DEPLOYMENT: $APP, $DATA, its bucket (every object version), its table and its logs"
     return
   fi
   stack_exists $APP || die "no $APP to destroy"

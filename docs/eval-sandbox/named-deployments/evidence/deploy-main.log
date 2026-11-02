@@ -1,0 +1,76 @@
+✓ container engine: podman
+✓ credentials: account 283171504459, region us-west-2
+✓ CDK bootstrap
+  Lambda unreserved concurrency: 972
+▸ deploying main: build b5d1734 (cap $30)
+AI agent detected
+WARNING No cross-stack-reference strength configured, defaulting to "strong". We recommend you set feature flag "@aws-cdk/core:defaultCrossStackReferences" to "both", then deploy everywhere, then set it to "weak". Alternatively, set it to "strong" explicitly to lock in the current producer-protecting behavior. (See: https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/README.md#reference-strength) (Construct Annotations)
+   FoundryAppStack
+   Acknowledge with 'Annotation::@aws-cdk/core:crossStackReferencesDefaultStrong'
+
+✨  Synthesis time: 2.68s
+
+FoundryDataStack: start: Building FoundryDataStack Template
+FoundryDataStack: success: Built FoundryDataStack Template
+FoundryAppStack: start: Building FoundryAppStack Template
+FoundryAppStack: success: Built FoundryAppStack Template
+FoundryDataStack: start: Publishing FoundryDataStack Template (283171504459-us-west-2-4506ae45)
+FoundryDataStack: success: Published FoundryDataStack Template (283171504459-us-west-2-4506ae45)
+FoundryDataStack
+FoundryDataStack: creating CloudFormation changeset...
+FoundryDataStack: deploying... [1/2]
+
+✅  FoundryDataStack
+
+✨  Deployment time: 33.81s
+
+Outputs:
+FoundryDataStack.AlertEmail = miguel.pereira@protagona.com
+FoundryDataStack.ApiConcurrency = 20
+FoundryDataStack.Bucket = foundrydatastack-state1c20cc9a-fluejjxghams
+FoundryDataStack.BudgetUsd = 0
+FoundryDataStack.CapUsd = 30
+FoundryDataStack.Deployment = main
+FoundryDataStack.ExportsOutputFnGetAttState1C20CC9AArnF70626CA = arn:aws:s3:::foundrydatastack-state1c20cc9a-fluejjxghams
+FoundryDataStack.ExportsOutputFnGetAttTableCD117FA1ArnE2C8C204 = arn:aws:dynamodb:us-west-2:283171504459:table/FoundryDataStack-TableCD117FA1-7STI1BEWJ2V1
+FoundryDataStack.ExportsOutputRefAlerts91F83244F0271852 = arn:aws:sns:us-west-2:283171504459:FoundryDataStack-Alerts91F83244-wGZMeh1ddLbm
+FoundryDataStack.ExportsOutputRefState1C20CC9AB4E57B9B = foundrydatastack-state1c20cc9a-fluejjxghams
+FoundryDataStack.ExportsOutputRefTableCD117FA1D18A8047 = FoundryDataStack-TableCD117FA1-7STI1BEWJ2V1
+FoundryDataStack.TableName = FoundryDataStack-TableCD117FA1-7STI1BEWJ2V1
+Stack ARN:
+arn:aws:cloudformation:us-west-2:283171504459:stack/FoundryDataStack/79bf9520-d598-11f1-97d7-0adaaa5a1bc1
+FoundryAppStack: start: Publishing FoundryAppStack Template (283171504459-us-west-2-61fe6f64)
+FoundryAppStack: success: Published FoundryAppStack Template (283171504459-us-west-2-61fe6f64)
+FoundryAppStack
+FoundryAppStack: creating CloudFormation changeset...
+FoundryAppStack: deploying... [2/2]
+
+✅  FoundryAppStack
+
+✨  Deployment time: 124.14s
+
+Outputs:
+FoundryAppStack.ApiFunction = FoundryAppStack-ApiF70053CD-WiAQR6EYkgRP
+FoundryAppStack.BatchLogGroup = FoundryAppStack-BatchLogsA0B94732-W8xURCDifaVm
+FoundryAppStack.Build = b5d1734
+FoundryAppStack.Cap = 30
+FoundryAppStack.Deployment = main
+FoundryAppStack.ProbeAlarm = FoundryAppStack-ProbeFailed2697F706-NOPopwW8Lz9R
+FoundryAppStack.ProbeRule = FoundryAppStack-ProbeScheduleC3BDD144-NZvQBYvYpPJP
+FoundryAppStack.StateMachine = arn:aws:states:us-west-2:283171504459:stateMachine:BatchWorkflow7DE35971-st7QqR3D9p4h
+FoundryAppStack.Url = https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/
+FoundryAppStack.WorkerFunction = FoundryAppStack-Worker11F36D0F-UNbye19veOd0
+Stack ARN:
+arn:aws:cloudformation:us-west-2:283171504459:stack/FoundryAppStack/969c4600-d5ef-11f1-8a45-0affc45c4d45
+
+✨  Total time: 192.49s
+
+The session key exists.
+▸ worker: checking version 16
+▸ api: checking version 16
+▸ worker: live → version 16
+▸ api: live → version 16
+
+▸ main: serving build b5d1734 at https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/ (264 s)
+  first time? add a token: scripts/cloud.sh token add <your name>; then sign in at the URL
+  CLI: curl -O https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/cli/foundry-remote.pyz && python3 foundry-remote.pyz login https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/ <token>

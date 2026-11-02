@@ -1,0 +1,10 @@
+AI agent detected
+Foundry-trial-App: destroying... [1/1]
+✅  Foundry-trial-App: destroyed
+AI agent detected
+Including depending stacks: Foundry-trial-App
+Foundry-trial-App: destroying... [1/2]
+✅  Foundry-trial-App: destroyed
+Foundry-trial-Data: destroying... [2/2]
+✅  Foundry-trial-Data: destroyed
+▸ destroyed deployment trial: Foundry-trial-App, Foundry-trial-Data, its bucket (every object version) and its table

@@ -1,0 +1,23 @@
+# main's probe alarm after the redeploy
+2026-11-02T02:19:36Z main probe alarm: OK
+2026-11-01T20:19:12.524000-06:00	Alarm updated from ALARM to OK
+2026-11-01T20:16:12.525000-06:00	Alarm updated from OK to ALARM
+2026-11-01T07:09:29.810000-06:00	Alarm updated from ALARM to OK
+
+[exited with code 0]
+
+# 2026-11-02T02:21:35Z after scripts/cloud.sh --name trial destroy --data --yes
+Foundry-trial-Data: aws: [ERROR]: An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id Foundry-trial-Data does not exist
+Foundry-trial-App: aws: [ERROR]: An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id Foundry-trial-App does not exist
+bucket foundry-trial-data-state1c20cc9a-gwv1hvigphst: aws: [ERROR]: An error occurred (404) when calling the HeadBucket operation: Not Found
+table Foundry-trial-Data-TableCD117FA1-DCBNHMZZITBW: aws: [ERROR]: An error occurred (ResourceNotFoundException) when calling the DescribeTable operation: Requested resource not found: Table: Foundry-trial-Data-TableCD117FA1-DCBNHMZZITBW not found
+log groups /aws/lambda/Foundry-trial-*: 1
+resources tagged deployment=trial: 0
+
+$ scripts/cloud.sh list
+DEPLOYMENT                 URL                                                                      BUILD
+main                       https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/    b5d1734
+
+# leftover: /aws/lambda/Foundry-trial-Data-CustomS3AutoDeleteObjectsCustom-fOUU5ktfSJUp (0 bytes; recreated by
+# CDK's bucket-emptying function during deletion). Deleted; destroy --data now deletes such groups itself.
+log groups /aws/lambda/Foundry-trial-*: 0

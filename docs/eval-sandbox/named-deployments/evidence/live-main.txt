@@ -1,0 +1,19 @@
+# 2026-11-02T02:18:28Z after redeploying main
+FoundryAppStack probe alarm: ALARM	Deployment=main
+Foundry-trial-App probe alarm: OK	Deployment=trial
+
+$ list-metrics Foundry/Probe
+Healthy	
+Healthy	Deployment=trial
+
+main's data (names unchanged from list-before / earlier outputs):
+UPDATE_COMPLETE	main
+TableName	FoundryDataStack-TableCD117FA1-7STI1BEWJ2V1
+Bucket	foundrydatastack-state1c20cc9a-fluejjxghams
+
+resources deleted or replaced in main's stacks during this deploy (DELETE_* events since the deploy began):
+FoundryAppStack None
+(end)
+
+$ curl /healthz
+ok b5d1734

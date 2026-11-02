@@ -1,0 +1,32 @@
+# 2026-11-02T02:13:23Z after deploying trial
+$ scripts/cloud.sh list
+DEPLOYMENT                 URL                                                                      BUILD
+trial                      https://4amng4icimexzwt3kjyxktojam0tzigk.lambda-url.us-west-2.on.aws/    b5d1734
+main                       https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/    14e8c38
+
+$ curl https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/healthz
+ok 14e8c38
+$ curl https://4amng4icimexzwt3kjyxktojam0tzigk.lambda-url.us-west-2.on.aws/healthz
+ok b5d1734
+
+$ scripts/cloud.sh --name trial status
+deployment: trial (Foundry-trial-Data, Foundry-trial-App)
+URL:     https://4amng4icimexzwt3kjyxktojam0tzigk.lambda-url.us-west-2.on.aws/
+build:   ok b5d1734
+api:     live → version 1, reserved concurrency None
+worker:  live → version 1
+cap:     $30 a month · alerts to miguel.pereira@protagona.com
+
+$ scripts/cloud.sh status --name trial   # --name after the command
+deployment: trial (Foundry-trial-Data, Foundry-trial-App)
+scripts/cloud.sh: line 290: echo: write error: Broken pipe
+
+$ aws cloudwatch list-metrics --namespace Foundry/Probe
+Healthy	
+Healthy	Deployment=trial
+
+$ aws cloudformation describe-stacks (tags)
+Foundry-trial-Data CREATE_COMPLETE	trial
+Foundry-trial-App UPDATE_COMPLETE	trial
+FoundryDataStack UPDATE_COMPLETE	None
+FoundryAppStack UPDATE_COMPLETE	None

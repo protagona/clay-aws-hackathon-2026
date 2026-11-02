@@ -1,0 +1,314 @@
+✓ container engine: podman
+✓ credentials: account 283171504459, region us-west-2
+✓ CDK bootstrap
+  Lambda unreserved concurrency: 972
+▸ deploying trial: build b5d1734 (cap $30)
+AI agent detected
+WARNING No cross-stack-reference strength configured, defaulting to "strong". We recommend you set feature flag "@aws-cdk/core:defaultCrossStackReferences" to "both", then deploy everywhere, then set it to "weak". Alternatively, set it to "strong" explicitly to lock in the current producer-protecting behavior. (See: https://github.com/aws/aws-cdk/blob/main/packages/aws-cdk-lib/README.md#reference-strength) (Construct Annotations)
+   Foundry-trial-App
+   Acknowledge with 'Annotation::@aws-cdk/core:crossStackReferencesDefaultStrong'
+
+✨  Synthesis time: 2.75s
+
+Foundry-trial-Data
+Foundry-trial-App: start: Building Foundry-trial-App Template
+Foundry-trial-App: success: Built Foundry-trial-App Template
+Foundry-trial-App: start: Building Worker/AssetImage
+Foundry-trial-Data: creating CloudFormation changeset...
+STEP 1/13: FROM public.ecr.aws/lambda/python:3.12-arm64
+Trying to pull public.ecr.aws/lambda/python:3.12-arm64...
+Getting image source signatures
+Copying blob sha256:8071f258ed21a1eed33ad6fcbb17f8a0777ba0e8136f1ae10782368867bfc87c
+Copying blob sha256:3e21d1c9eeb0245117c02200b40594569fba9c24eee4756c3e5aa6caf3c15ce4
+Copying blob sha256:3ca82a91183dfeba3f4de3c8f842d6ac2328f6b8bcf4d78f9ca307e455abd358
+Copying blob sha256:716f539fcd1c0f0fac1baa9d79e864d5a02477c2fb29f7781c0f827f59cd0dc7
+Copying blob sha256:ad0fbac1928806aa1fd1fcaa1e05cbc587184eb646f17eb7435bb05c4ac6c97e
+Copying blob sha256:00cfa7784aa3c07ca1fdd0a1f5045cf9a4f01d56575c332307799b10aed0a8be
+Foundry-trial-Data: deploying... [1/2]
+Copying config sha256:ec9a61ca1ad4a58aa22f98ca0b1cc4e42f2a0c6e20aded6497bb46d6044be2b3
+Writing manifest to image destination
+STEP 2/13: RUN pip install --no-cache-dir uv==0.13.6
+Collecting uv==0.13.6
+  Downloading uv-0.13.6-py3-none-manylinux_2_28_aarch64.whl.metadata (11 kB)
+Downloading uv-0.13.6-py3-none-manylinux_2_28_aarch64.whl (16.5 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.5/16.5 MB 54.1 MB/s eta 0:00:00
+Installing collected packages: uv
+Successfully installed uv-0.13.6
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+
+[notice] A new release of pip is available: 25.0.1 -> 26.2.2
+[notice] To update, run: pip install --upgrade pip
+--> 9e46aeb2ada5
+STEP 3/13: COPY pyproject.toml uv.lock README.md LICENSE ${LAMBDA_TASK_ROOT}/
+--> dfd202cf342b
+STEP 4/13: RUN cd ${LAMBDA_TASK_ROOT} && uv export --frozen --no-dev --no-emit-project --format requirements-txt > /tmp/req.txt     && uv pip install --system --no-cache -r /tmp/req.txt
+Using Python 3.12.16 environment at: /var/lang
+Resolved 61 packages in 536ms
+Downloading botocore (15.4MiB)
+Downloading pydantic-core (2.0MiB)
+Downloading cryptography (4.5MiB)
+ Downloaded pydantic-core
+ Downloaded cryptography
+ Downloaded botocore
+Prepared 58 packages in 643ms
+Uninstalled 4 packages in 211ms
+Installed 58 packages in 99ms
+ + annotated-doc==0.0.5
+ + annotated-types==0.8.0
+ + anyio==4.15.1
+ + attrs==26.1.0
+ - boto3==1.42.97
+ + boto3==1.43.122
+ - botocore==1.42.97
+ + botocore==1.43.122
+ + certifi==2026.10.23
+ + cffi==2.1.1
+ + charset-normalizer==3.5.2
+ + click==8.5.0
+ + cryptography==50.0.2
+ + docstring-parser==0.18.0
+ + fastapi==0.162.0
+ + googleapis-common-protos==1.76.0
+ + h11==0.16.0
+ + httpcore==1.0.9
+ + httpcore2==2.16.0
+ + httpx==0.28.1
+ + httpx2==2.16.0
+ + idna==3.20
+ - jmespath==1.0.1
+ + jmespath==1.1.0
+ + jsonschema==4.26.0
+ + jsonschema-specifications==2025.9.1
+ + markdown-it-py==4.2.0
+ + mcp==2.1.1
+ + mcp-types==2.1.1
+ + mdurl==0.1.2
+ + opentelemetry-api==1.45.2
+ + opentelemetry-exporter-http-transport==0.66b2
+ + opentelemetry-exporter-otlp-common==0.66b2
+ + opentelemetry-exporter-otlp-proto-common==1.45.2
+ + opentelemetry-exporter-otlp-proto-http==1.45.2
+ + opentelemetry-instrumentation==0.66b2
+ + opentelemetry-instrumentation-threading==0.66b2
+ + opentelemetry-proto==1.45.2
+ + opentelemetry-sdk==1.45.2
+ + opentelemetry-semantic-conventions==0.66b2
+ + packaging==26.3
+ + protobuf==7.36.2
+ + pycparser==3.12
+ + pydantic==2.14.2
+ + pydantic-core==2.50.2
+ + pyjwt==2.15.1
+ + python-multipart==0.0.32
+ + pyyaml==6.0.3
+ + referencing==0.37.0
+ + requests==2.34.2
+ + rpds-py==2026.9.1
+ - s3transfer==0.16.0
+ + s3transfer==0.19.3
+ + sse-starlette==3.6.0
+ + starlette==1.10.0
+ + strands-agents==1.62.0
+ + truststore==0.10.5
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.4
+ + uvicorn==0.54.0
+ + watchdog==6.0.0
+ + wrapt==2.5.2
+--> fe94ac860325
+STEP 5/13: COPY src ${LAMBDA_TASK_ROOT}/src
+--> b22baa6ba20b
+STEP 6/13: RUN cd ${LAMBDA_TASK_ROOT} && uv pip install --system --no-cache --no-deps .
+Using Python 3.12.16 environment at: /var/lang
+Resolved 1 package in 0.69ms
+   Building clay-foundry-eval @ file:///var/task
+      Built clay-foundry-eval @ file:///var/task
+Prepared 1 package in 577ms
+Installed 1 package in 14ms
+ + clay-foundry-eval==0.1.0 (from file:///var/task)
+--> d1a7fbae3fd2
+STEP 7/13: ENV UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/opt/uv-tools/bin
+--> 63beddc752df
+STEP 8/13: RUN uv tool install --no-cache awslabs.roda-mcp-server==0.1.7
+Resolved 76 packages in 920ms
+Downloading pydantic-core (2.0MiB)
+Downloading botocore (15.4MiB)
+Downloading pygments (1.2MiB)
+Downloading beartype (1.5MiB)
+Downloading cryptography (4.5MiB)
+ Downloaded pygments
+ Downloaded beartype
+ Downloaded pydantic-core
+ Downloaded cryptography
+ Downloaded botocore
+Prepared 76 packages in 1.72s
+Installed 76 packages in 130ms
+ + aiofile==3.12.3
+ + annotated-types==0.8.0
+ + anyio==4.16.0
+ + attrs==26.1.0
+ + authlib==1.9.2
+ + awslabs-roda-mcp-server==0.1.7
+ + beartype==0.23.1
+ + boto3==1.43.123
+ + botocore==1.43.123
+ + cachetools==7.2.8
+ + caio==0.12.10
+ + certifi==2026.10.23
+ + cffi==2.1.1
+ + click==8.5.0
+ + cryptography==50.0.2
+ + cyclopts==5.3.2
+ + dnspython==2.9.1
+ + docstring-parser==0.18.0
+ + email-validator==2.3.0
+ + exceptiongroup==1.3.1
+ + fastmcp==4.1.5
+ + fastmcp-slim==4.1.5
+ + griffelib==2.4.1
+ + h11==0.16.0
+ + h2==4.4.1
+ + hpack==4.2.0
+ + httpcore==1.0.9
+ + httpcore2==2.16.0
+ + httpx==0.28.1
+ + httpx2==2.16.0
+ + hyperframe==6.1.0
+ + idna==3.20
+ + jmespath==1.1.0
+ + joserfc==1.7.7
+ + jsonref==1.1.0
+ + jsonschema==4.26.0
+ + jsonschema-path==0.5.0
+ + jsonschema-specifications==2025.9.1
+ + loguru==0.7.3
+ + markdown-it-py==4.2.0
+ + mcp==2.3.0
+ + mcp-types==2.3.0
+ + mdurl==0.1.2
+ + openapi-pydantic==0.6.0
+ + opentelemetry-api==1.45.2
+ + packaging==26.3
+ + pathable==0.6.0
+ + platformdirs==4.14.3
+ + py-key-value-aio==0.4.6
+ + pycparser==3.12
+ + pydantic==2.14.2
+ + pydantic-core==2.50.2
+ + pydantic-settings==2.16.2
+ + pygments==2.21.0
+ + pyjwt==2.15.1
+ + pyperclip==1.11.0
+ + python-dateutil==2.9.0.post0
+ + python-dotenv==1.2.4
+ + python-multipart==0.0.33
+ + pyyaml==6.0.3
+ + referencing==0.37.0
+ + rich==15.0.0
+ + rich-rst==2.2.0
+ + rpds-py==2026.9.1
+ + s3transfer==0.19.3
+ + six==1.17.0
+ + sse-starlette==3.6.0
+ + starlette==1.10.0
+ + truststore==0.10.5
+ + typing-extensions==4.16.0
+ + typing-inspection==0.4.4
+ + uncalled-for==0.4.1
+ + urllib3==2.8.0
+ + uvicorn==0.54.0
+ + watchfiles==1.3.0
+ + websockets==17.4
+Installed 1 executable: awslabs.roda-mcp-server
+warning: `/opt/uv-tools/bin` is not on your PATH. To use installed tools, add the directory to your PATH.
+--> c324959e2792
+STEP 9/13: COPY config /app/config
+--> 59786eb762c1
+STEP 10/13: COPY fixtures /app/fixtures
+--> 5e10ed7b3371
+STEP 11/13: COPY tasks /app/tasks
+--> 337fe6c0e29c
+STEP 12/13: ENV HOME=/tmp UV_CACHE_DIR=/tmp/uv-cache TMPDIR=/tmp FOUNDRY_RUNS_DIR=/tmp/state/runs FOUNDRY_HOME=/tmp/state/project     FOUNDRY_APP_DIR=/app FOUNDRY_S3_URI="" FOUNDRY_MCP_RODA_CMD=/opt/uv-tools/bin/awslabs.roda-mcp-server PYTHONDONTWRITEBYTECODE=1
+--> 505cb329cf11
+STEP 13/13: CMD ["foundry.lambda_api.handler"]
+COMMIT cdkasset-a27ad30ab783bde1a6a256c345288fd87923bc3d26b1aeff44c435b67607898a
+--> e67b266f1cd5
+Successfully tagged localhost/cdkasset-a27ad30ab783bde1a6a256c345288fd87923bc3d26b1aeff44c435b67607898a:latest
+e67b266f1cd5506cac2e6097d3f070572c7bd715e669acd05bdfa21032fa1754
+Foundry-trial-App: success: Built Worker/AssetImage
+
+✅  Foundry-trial-Data
+
+✨  Deployment time: 33.6s
+
+Outputs:
+Foundry-trial-Data.AlertEmail = miguel.pereira@protagona.com
+Foundry-trial-Data.ApiConcurrency = 0
+Foundry-trial-Data.Bucket = foundry-trial-data-state1c20cc9a-gwv1hvigphst
+Foundry-trial-Data.BudgetUsd = 0
+Foundry-trial-Data.CapUsd = 30
+Foundry-trial-Data.Deployment = trial
+Foundry-trial-Data.ExportsOutputFnGetAttState1C20CC9AArnF70626CA = arn:aws:s3:::foundry-trial-data-state1c20cc9a-gwv1hvigphst
+Foundry-trial-Data.ExportsOutputFnGetAttTableCD117FA1ArnE2C8C204 = arn:aws:dynamodb:us-west-2:283171504459:table/Foundry-trial-Data-TableCD117FA1-DCBNHMZZITBW
+Foundry-trial-Data.ExportsOutputRefAlerts91F83244F0271852 = arn:aws:sns:us-west-2:283171504459:Foundry-trial-Data-Alerts91F83244-Om8Xsn9GVfn2
+Foundry-trial-Data.ExportsOutputRefState1C20CC9AB4E57B9B = foundry-trial-data-state1c20cc9a-gwv1hvigphst
+Foundry-trial-Data.ExportsOutputRefTableCD117FA1D18A8047 = Foundry-trial-Data-TableCD117FA1-DCBNHMZZITBW
+Foundry-trial-Data.TableName = Foundry-trial-Data-TableCD117FA1-DCBNHMZZITBW
+Stack ARN:
+arn:aws:cloudformation:us-west-2:283171504459:stack/Foundry-trial-Data/3e58ebb0-d662-11f1-b81b-066797b282e3
+Foundry-trial-App: start: Publishing Worker/AssetImage (283171504459-us-west-2-f0c5e36e)
+Foundry-trial-App: start: Publishing Foundry-trial-App Template (283171504459-us-west-2-9ce12c3d)
+Getting image source signatures
+Copying blob sha256:a7e64d038dd302e1b3473c5bb007e3745c02996610f59a63138568d71ea27711
+Copying blob sha256:45fd01fd6398e918b20f2fdfbf7ef6f5e85cd89dc290151227cff8c0c980625d
+Copying blob sha256:3a099dd3a53f031f8ff27ef47c3eabb00050ba925ffe0f58a64c41786bf3bc71
+Copying blob sha256:e3d61d140f45d7f265cbd5272d92e565039fb2a5a1492f9ba46a78b62b2554d6
+Copying blob sha256:b4b6237569ebb677cdd1c4d331eb2f23ef28c9cdfcd27061d57d421987a5d0b7
+Copying blob sha256:289e8c0fecff443e5443bf080a05f8e4595bcfa45f35681c487ad9df056288c9
+Foundry-trial-App: success: Published Foundry-trial-App Template (283171504459-us-west-2-9ce12c3d)
+Copying blob sha256:8d461b9325ebf2bed655cd8f9c3405a8f47e0d440e4c77b46f6f6fd80efb30d2
+Copying blob sha256:5e722ec914434073807d2f679f93fa1cadf25541d0885b1268c422780a56ea5a
+Copying blob sha256:7a80bb5094ca30276446a7d2e68267dd966bec2b3bf81ab6d392ad6e2cae88bc
+Copying blob sha256:76ccfca99ec53a1a099e3cbca56c331f096fabc53e044472cd7665cd774e7a4e
+Copying blob sha256:5cdbfd64d38debe3e073eb7bce8af80791a609c08f1b3b54933f811b9983cbec
+Copying blob sha256:7fa3bf99ed864780719a37d3b4a943619d79751957d4916bf7ddeda6959aef8c
+Copying blob sha256:1a2baf3f7f9fc7325208e45aefed707e58fa80dcd99c3b0c191b59f3f4f3d646
+Copying blob sha256:086d329e013fc8d1812a024a5cca5fdb953af553cc109fd4dad8cdce73d51ce9
+Copying blob sha256:8dcad9be2767e638d3f788667b3b75c6931d57afaa976e66e9d85303cdb51157
+Copying config sha256:e67b266f1cd5506cac2e6097d3f070572c7bd715e669acd05bdfa21032fa1754
+Writing manifest to image destination
+Foundry-trial-App: success: Published Worker/AssetImage (283171504459-us-west-2-f0c5e36e)
+Foundry-trial-App
+Foundry-trial-App: creating CloudFormation changeset...
+Foundry-trial-App: deploying... [2/2]
+
+✅  Foundry-trial-App
+
+✨  Deployment time: 188.1s
+
+Outputs:
+Foundry-trial-App.ApiFunction = Foundry-trial-App-ApiF70053CD-RzqIeDmiphLu
+Foundry-trial-App.BatchLogGroup = Foundry-trial-App-BatchLogsA0B94732-tcSWAlJE8kyO
+Foundry-trial-App.Build = b5d1734
+Foundry-trial-App.Cap = 30
+Foundry-trial-App.Deployment = trial
+Foundry-trial-App.ProbeAlarm = Foundry-trial-App-ProbeFailed2697F706-EIzirhlzcwg1
+Foundry-trial-App.ProbeRule = Foundry-trial-App-ProbeScheduleC3BDD144-Djs0dilcuFnf
+Foundry-trial-App.StateMachine = arn:aws:states:us-west-2:283171504459:stateMachine:BatchWorkflow7DE35971-qd5AOy0WLUWb
+Foundry-trial-App.Url = https://4amng4icimexzwt3kjyxktojam0tzigk.lambda-url.us-west-2.on.aws/
+Foundry-trial-App.WorkerFunction = Foundry-trial-App-Worker11F36D0F-1WIwqvPGu1zt
+Stack ARN:
+arn:aws:cloudformation:us-west-2:283171504459:stack/Foundry-trial-App/5e8464f0-d662-11f1-93f9-02a0662d0c95
+
+✨  Total time: 253.67s
+
+Created the session key.
+▸ worker: checking version 1
+▸ api: checking version 1
+▸ worker: live → version 1
+▸ api: live → version 1
+▸ no concurrency limit (--concurrency 0)
+
+▸ trial: serving build b5d1734 at https://4amng4icimexzwt3kjyxktojam0tzigk.lambda-url.us-west-2.on.aws/ (319 s)
+  first time? add a token: scripts/cloud.sh token add <your name>; then sign in at the URL
+  CLI: curl -O https://4amng4icimexzwt3kjyxktojam0tzigk.lambda-url.us-west-2.on.aws/cli/foundry-remote.pyz && python3 foundry-remote.pyz login https://4amng4icimexzwt3kjyxktojam0tzigk.lambda-url.us-west-2.on.aws/ <token>
