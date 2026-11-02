@@ -38,7 +38,7 @@ Short on Python people? Merge C into B, and put the strongest generalist on D. G
 
 | ID | Item | Pri | Skill | Depends | Done when |
 |----|------|-----|-------|---------|-----------|
-| K-1 | Confirm the unknowns with Clay: rubric, ADB input data and harness(es), MCP shortlist, captions and retrieval set, NAIP, partner, repo, and the open-track pick if any. The full list is in requirements.md. Ask by email **before the event** where possible. **This blocks nothing:** the source says *"None of these block starting the ADB agentic eval on day 1"* | M | any | — | All questions asked; answers recorded in [requirements.md](requirements.md#confirm-with-clay-at-kickoff) as they arrive |
+| K-1 | Confirm the unknowns with Clay: rubric, ADB input data and harness(es), MCP shortlist, captions and retrieval set, NAIP, NAIP embeddings, partner, repo, and the open-track pick if any. The full list is in requirements.md. Ask by email **before the event** where possible. **This blocks nothing:** the source says *"None of these block starting the ADB agentic eval on day 1"* | M | any | — | All questions asked; answers recorded in [requirements.md](requirements.md#confirm-with-clay-at-kickoff) as they arrive |
 | K-2 | Repo skeleton: layout, Apache-2.0 LICENSE, Python project, lint and test in CI. Use the shared repo if it exists; otherwise start anywhere and push there later | M | py | K-5 | CI is green on an empty test. `main` is protected once the repo is in the shared org |
 | K-3 | Ratify the [trace contract](trace-contract.md). This runs in parallel with K-2 and doesn't wait on CI | M | all | — | Agreed by the team and merged once the repo exists; changes from here on are additive only |
 | K-4 | Hand-write 3 fixture runs: clean, recovered, failed | M | any | K-3 | `fixtures/runs/*` match the contract, checked by eye now and by C-1's validator later |
@@ -93,7 +93,7 @@ Short on Python people? Merge C into B, and put the strongest generalist on D. G
 | E-1 | 5–10 synthetic ADB-style prompts, ranging from easy to hard | M | dom | — | `tasks/adb/prompts.jsonl` committed |
 | E-2 | Rubric as data: criteria, scale and what a 1 vs. a 4 looks like. **Draft a stand-in now** and swap in Clay's when it arrives | M | dom | — | `tasks/adb/rubric.json` committed |
 | E-3 | Expected workflow per prompt: which tools *should* be called, roughly in what order | S | dom | E-1 | Used by the D-1 sequence check |
-| E-4 | Caption task pack: imagery sample, Clay's example captions, the retrieval eval set, and LGND embeddings. Needs its own output scorer (retrieval metrics) | C | dom+py | K-1, A-2 | `tasks/captions/` committed; a caption run is scored |
+| E-4 | Caption task pack: imagery sample, Clay's example captions, the retrieval eval set, and LGND embeddings. Needs its own output scorer (retrieval metrics). The public LGND embeddings cover Sentinel-2, not NAIP ([details](requirements.md#lgnd-embeddings)), so the imagery must match what Clay confirms in K-1 | C | dom+py | K-1, A-2 | `tasks/captions/` committed; a caption run is scored |
 
 ## F: UI
 
