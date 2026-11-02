@@ -15,7 +15,7 @@ This is an observability and evaluation sandbox. It shows that an agentic geospa
 
 Offline mode needs **no AWS credentials**. The agent's decisions come from a recorded script, and a deterministic stand-in plays the judge and summarizer. The tools are real: the agent calls the real RODA MCP server, which needs internet access but no AWS account.
 
-**Prerequisites**, all installed by asdf (see [Local setup](#local-setup)):
+**Prerequisites**, all installed by `make bootstrap` (see [Local setup](#local-setup)):
 
 - uv, which installs Python 3.12
 - Node 24, needed only for the CDK infra and its tests
@@ -445,13 +445,18 @@ Source material from the organizers:
 Tool versions are pinned in `.tool-versions` (uv, Node, AWS CLI) and `.python-version` (Python, installed by uv).
 
 1. Install [asdf](https://asdf-vm.com) 0.16+ and put its shims on your PATH: `export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"`.
-2. From the repo root:
+2. From the repo root, run `make bootstrap`. It:
+   - adds the asdf plugins and installs this repo's pinned uv, Node and AWS CLI, without touching tools pinned elsewhere
+   - installs Python with uv
+   - installs the Python, web and infra dependencies
+   - ends with `make doctor`, which checks each tool and version and says "Ready."
 
-   ```bash
-   asdf plugin add uv && asdf plugin add nodejs && asdf plugin add awscli
-   asdf install
-   uv python install
-   ```
+   It's safe to run again. `make doctor` alone re-checks a workstation; AWS credentials and podman are reported but optional (Bedrock configs and deploys only).
+
+`make` lists the day-to-day targets:
+- `make check` runs lint, the type check, the Python tests and the web tests.
+- `make test-all` adds the tests that need internet, as CI does.
+- `make ui`, `make types`, `make web-build`, and `make deploy` / `status` / `logs` pass through to `scripts/cloud.sh`.
 
 Python comes from uv rather than asdf, so nothing needs compiling. asdf would build CPython from source, and 3.12 doesn't build against Homebrew's OpenSSL 4.
 
