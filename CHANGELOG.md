@@ -11,7 +11,7 @@ Each increment's spec, design and verification record is under [docs/eval-sandbo
   - Each probe's metric is tagged with its deployment, so each alarm watches its own.
   - Named deployments reserve no concurrency and add no budget by default. `destroy --data` removes one completely.
   - `cloud.sh list` shows every deployment in the account.
-- **A Makefile:** `make bootstrap` sets up a workstation from the pinned versions and ends with `make doctor`'s readiness check. `make check` runs lint, types, the Python tests and the web tests; `make` lists everything.
+- **A Makefile:** `make bootstrap` sets up a workstation from the pinned versions and ends with `make doctor`'s readiness check. `make check` runs lint, types, the Python tests and the web tests; `make` lists everything. CI runs `make lint` (ruff over src, tests, scripts and infra) as its own job.
 - **`scripts/cloud.sh reindex`:** rebuilds the board cards stored in the cloud after a card field is added. It's safe beside live work, and safe to re-run.
 - **Batches:**
   - **Cloud batches** write `summary.md`, honour `--eval-config`, and don't re-score a run that's already scored.

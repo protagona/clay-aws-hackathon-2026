@@ -56,8 +56,8 @@ test: ## Python tests, without the ones that need internet (the real RODA server
 test-all: ## Every Python test, as CI runs them
 	uv run pytest -q
 
-lint: ## Ruff over src, tests and scripts
-	$(RUFF) check src tests scripts
+lint: ## Ruff over src, tests, scripts and infra (CI runs this too)
+	$(RUFF) check src tests scripts infra
 
 typecheck: ## TypeScript types of the web app
 	cd web && npx tsc --noEmit

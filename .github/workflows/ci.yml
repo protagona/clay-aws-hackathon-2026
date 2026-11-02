@@ -23,6 +23,16 @@ jobs:
       # Includes the `network` tests: they call the real RODA MCP server, which needs no AWS credentials.
       - run: uv run pytest
 
+  lint:  # ruff, at the version the Makefile pins (`make lint`); TypeScript types are checked by the web job's build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version-file: .tool-versions
+      - run: make lint
+
   web:  # the TypeScript UI (increment 9): unit tests, a build, and proof the committed bundle matches its source
     runs-on: ubuntu-latest
     timeout-minutes: 10

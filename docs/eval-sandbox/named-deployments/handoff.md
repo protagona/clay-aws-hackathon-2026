@@ -62,7 +62,7 @@
 - No lock between two people deploying the same deployment (a non-goal). "One person deploys main" is a team rule in the docs.
 - The old dimensionless `Foundry/Probe Healthy` metric gets no more data and expires from CloudWatch by itself (15 months, unbilled once idle).
 - `NAME` in the Makefile can be inherited from the environment. A bad value is refused safely.
-- CI still runs no lint step.
+- CI lint: added the same day, a `lint` job running `make lint`.
 
 **Risks to watch:**
 - Every participant can still touch every stack in the account (no per-name IAM, a non-goal).
