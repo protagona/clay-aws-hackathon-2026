@@ -294,7 +294,7 @@ def test_deployment_names():
     assert stack_names(None) == stack_names("") == stack_names("main") == ("FoundryDataStack", "FoundryAppStack")
     assert stack_names("alice") == ("Foundry-alice-Data", "Foundry-alice-App")
     assert stack_names("team-7") == ("Foundry-team-7-Data", "Foundry-team-7-App")
-    for bad in ("Alice", "7up", "a_b", "a.b", "-a", "a-", "a--b", "a" * 25, "a b", "../x"):
+    for bad in ("Alice", "7up", "a_b", "a.b", "-a", "a-", "a--b", "a" * 25, "a b", "../x", "alice\n"):
         with pytest.raises(ValueError):
             check(bad)
 
@@ -312,9 +312,10 @@ def test_two_named_deployments_share_no_name_and_watch_their_own_probe():  # N3
                         continue  # "live" is scoped to its function, not the account
                     v = r.get("Properties", {}).get(prop)
                     assert not isinstance(v, str), (name, r["Type"], prop, v)
-            assert {"Key": "deployment", "Value": name} in t.to_json()["Resources"][next(
-                k for k, r in t.to_json()["Resources"].items() if r["Type"] in ("AWS::S3::Bucket", "AWS::Lambda::Function"))
-            ]["Properties"]["Tags"], text[:0]
+            tagged = [r for r in t.to_json()["Resources"].values() if isinstance(r.get("Properties", {}).get("Tags"), list)]
+            assert len(tagged) >= 3, text[:0]
+            for r in tagged:  # every taggable resource carries its deployment
+                assert {"Key": "deployment", "Value": name} in r["Properties"]["Tags"], (name, r["Type"])
         app.has_resource_properties("AWS::CloudWatch::Alarm", {
             "Namespace": "Foundry/Probe", "MetricName": "Healthy", "Dimensions": [{"Name": "Deployment", "Value": name}]})
         app.has_resource_properties("AWS::Lambda::Function", {
@@ -375,6 +376,47 @@ def test_cloud_sh_refuses_a_bad_name_and_main_data_teardown_before_calling_aws()
     assert code == 1 and "refused for the main deployment" in err and not calls
     code, err, calls = _cloud_sh("--name", "alice", "status")  # a valid name goes on to AWS (the stub says no)
     assert code == 1 and "no Foundry-alice-App" in err and calls
+
+
+def test_cloud_sh_takes_the_name_anywhere_and_never_falls_back_to_main():  # N1 (Verify: a misplaced --name hit main)
+    for args in (("stop", "--name", "alice"), ("token", "add", "bob", "--name", "alice"), ("reindex", "--name=alice"),
+                 ("--name", "alice", "start")):
+        code, err, calls = _cloud_sh(*args)
+        assert code != 0 and "Foundry-alice-" in calls + err, args
+        assert "FoundryAppStack" not in calls + err and "FoundryDataStack" not in calls + err, args
+    for args in (("--name", "", "status"), ("status", "--name"), ("--name=", "stop")):
+        code, err, calls = _cloud_sh(*args)
+        assert code == 1 and "--name needs a deployment name" in err and not calls, args
+
+
+def test_cloud_sh_passes_the_deployment_to_every_cdk_call():  # N1
+    src = (Path(__file__).resolve().parents[1] / "scripts/cloud.sh").read_text()
+    calls = [line for line in src.splitlines() if line.strip().startswith(("cdk deploy", "cdk destroy"))
+             or " && cdk destroy" in line]
+    assert len(calls) >= 4
+    for line in calls:
+        assert '-c "deployment=$DEPLOYMENT"' in line, line
+
+
+def test_the_cdk_app_names_its_stacks_from_the_deployment_context(tmp_path):  # N1, N2
+    import os
+    import subprocess
+
+    infra = Path(__file__).resolve().parents[1] / "infra"
+
+    def synth(ctx: dict):
+        out = tmp_path / str(len(list(tmp_path.iterdir())))
+        env = {**os.environ, "CDK_CONTEXT_JSON": json.dumps({"email": "ops@example.com", **ctx}), "CDK_OUTDIR": str(out),
+               "CDK_DEFAULT_ACCOUNT": "111111111111"}
+        r = subprocess.run([sys.executable, "cloud_app.py"], cwd=infra, env=env, capture_output=True, text=True,
+                           timeout=300)
+        stacks = sorted(p.name.removesuffix(".template.json") for p in out.glob("*.template.json")) if out.exists() else []
+        return r.returncode, r.stderr, stacks
+
+    assert synth({"deployment": "alice"})[::2] == (0, ["Foundry-alice-App", "Foundry-alice-Data"])
+    assert synth({})[::2] == (0, ["FoundryAppStack", "FoundryDataStack"])
+    code, err, stacks = synth({"deployment": "Bad_Name"})
+    assert code != 0 and "Bad_Name" in err and not stacks
 
 
 def test_the_probe_reports_its_deployment(monkeypatch):  # N3

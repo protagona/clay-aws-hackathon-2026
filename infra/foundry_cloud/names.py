@@ -13,7 +13,7 @@ def check(name: str | None) -> str:
     """The deployment name to use: MAIN for none (or "main"), else a valid name; ValueError otherwise."""
     if not name or name == MAIN:
         return MAIN
-    if not NAME_RE.match(name) or name.endswith("-") or "--" in name:
+    if not NAME_RE.fullmatch(name) or name.endswith("-") or "--" in name:
         raise ValueError(f"deployment name {name!r}: 1-24 lowercase letters, digits and single '-', starting with a "
                          "letter")
     return name

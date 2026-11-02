@@ -33,11 +33,17 @@ die() { echo "cloud.sh: $*" >&2; exit 1; }
 say() { echo "▸ $*"; }
 
 # The deployment (named-deployments N1, N2): checked before anything touches AWS, as infra/foundry_cloud/names.py does.
+# --name is taken wherever it appears (a misplaced one must never fall back to main), and can't be empty.
 DEPLOYMENT=${FOUNDRY_DEPLOYMENT:-}
-if [ "${1:-}" = --name ]; then
-  [ $# -ge 2 ] || die "--name <deployment>"
-  DEPLOYMENT=$2; shift 2
-fi
+ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --name) [ $# -ge 2 ] && [ -n "$2" ] || die "--name needs a deployment name"; DEPLOYMENT=$2; shift 2 ;;
+    --name=*) [ -n "${1#--name=}" ] || die "--name needs a deployment name"; DEPLOYMENT=${1#--name=}; shift ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
 [ -n "$DEPLOYMENT" ] || DEPLOYMENT=main
 if [ "$DEPLOYMENT" = main ]; then
   DATA=FoundryDataStack; APP=FoundryAppStack
@@ -58,6 +64,10 @@ out() {  # out <stack> <output key>: a stack output, or empty
 }
 
 stack_exists() { aws cloudformation describe-stacks --stack-name "$1" >/dev/null 2>&1; }
+
+probe_fn() {  # the deployment's probe function
+  aws cloudformation describe-stack-resources --stack-name $APP --query "StackResources[?ResourceType=='AWS::Lambda::Function' && starts_with(LogicalResourceId, 'Probe')].PhysicalResourceId | [0]" --output text
+}
 
 ops() {  # the table and bucket side (scripts/cloud_ops.py)
   local bucket table
@@ -262,10 +272,10 @@ cmd_deploy() {
     sleep 2
   done
   [ "$(curl -s --max-time 10 "${url%/}/healthz" || true)" = "ok $build" ] || die "$url/healthz doesn't answer build $build"
-  # It just answered: its probe alarm is OK now, not "missing data" until the next probe (a deploy may have given
-  # the alarm a new metric, as named-deployments N3 did).
-  aws cloudwatch set-alarm-state --alarm-name "$(out $APP ProbeAlarm)" --state-value OK \
-    --state-reason "cloud.sh deploy: /healthz answered build $build" || true
+  # Run the probe once now: its metric gets a real data point at once, so a new deployment (or a new metric, as
+  # named-deployments N3 gave main) doesn't alarm on missing data before the probe's first scheduled run.
+  aws lambda invoke --function-name "$(probe_fn)" --cli-binary-format raw-in-base64-out --payload '{}' \
+    "$TMP/probe.json" >/dev/null 2>&1 || echo "  note: couldn't run the probe now; it runs every 5 minutes"
   echo
   say "$DEPLOYMENT: serving build $build at $url ($(( $(date +%s) - t0 )) s)"
   echo "  first time? add a token: scripts/cloud.sh token add <your name>; then sign in at the URL"
@@ -292,7 +302,7 @@ cmd_logs() {
   done
   case "$which" in
     api) fn=$(out $APP ApiFunction) ;; worker) fn=$(out $APP WorkerFunction) ;;
-    probe) fn=$(aws cloudformation describe-stack-resources --stack-name $APP --query "StackResources[?ResourceType=='AWS::Lambda::Function' && starts_with(LogicalResourceId, 'Probe')].PhysicalResourceId | [0]" --output text) ;;
+    probe) fn=$(probe_fn) ;;
     batch) group=$(out $APP BatchLogGroup) ;;
     *) die "logs: api, worker, probe or batch" ;;
   esac
@@ -353,10 +363,12 @@ cmd_destroy() {
 cmd_list() {  # every deployment in this account and region (named-deployments N6)
   local stacks name app url build
   stacks=$(aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
+             CREATE_IN_PROGRESS UPDATE_IN_PROGRESS UPDATE_COMPLETE_CLEANUP_IN_PROGRESS UPDATE_ROLLBACK_IN_PROGRESS \
+             UPDATE_ROLLBACK_FAILED ROLLBACK_COMPLETE DELETE_IN_PROGRESS DELETE_FAILED IMPORT_COMPLETE \
              --query "StackSummaries[?StackName=='FoundryDataStack' || (starts_with(StackName, 'Foundry-') && ends_with(StackName, '-Data'))].StackName" \
              --output text | tr '\t' '\n' | sort)
   [ -n "$stacks" ] || { echo "No deployments in this account ($REGION)."; return; }
-  printf "%-26s %-62s %s\n" DEPLOYMENT URL BUILD
+  printf "%-26s %-72s %s\n" DEPLOYMENT URL BUILD
   for s in $stacks; do
     if [ "$s" = FoundryDataStack ]; then name=main; app=FoundryAppStack; else name=${s#Foundry-}; name=${name%-Data}; app="Foundry-$name-App"; fi
     if stack_exists "$app"; then
@@ -364,7 +376,7 @@ cmd_list() {  # every deployment in this account and region (named-deployments N
     else
       url="(app stack destroyed; data kept)"; build=""
     fi
-    printf "%-26s %-62s %s\n" "$name" "$url" "${build:--}"
+    printf "%-26s %-72s %s\n" "$name" "$url" "${build:--}"
   done
 }
 
@@ -387,5 +399,5 @@ case "${1:-}" in
   stop) cmd_stop ;;
   start) cmd_start ;;
   destroy) shift; cmd_destroy "$@" ;;
-  *) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; exit 2 ;;
 esac

@@ -1,0 +1,2 @@
+DEPLOYMENT                 URL                                                                      BUILD
+main                       https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws/    14e8c38

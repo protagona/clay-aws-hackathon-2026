@@ -93,7 +93,7 @@ scripts/cloud.sh --name alice destroy --data                     # removes alice
   - no reserved Lambda concurrency (`--concurrency <n>` sets some), so several fit in one account
   - no account budget (`--budget <usd>` adds one; the budget watches the whole account, so one is enough)
 - **Teardown:**
-  - `destroy` removes the app and keeps the data, as for main.
+  - `destroy` removes the app and keeps the data, as for main, but a named deployment's log groups go with its app stack (main's are kept 30 days).
   - `destroy --data` removes both stacks, the bucket with every object version, and the table. It asks you to type the deployment's name (`--yes` skips that).
   - Main refuses `--data`: its data is kept on purpose.
 - **Still shared in the account:**

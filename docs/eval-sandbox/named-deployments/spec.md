@@ -16,7 +16,7 @@ Hackathon participants share one AWS sandbox account, but every `scripts/cloud.s
 - [ ] **N1. Named deployments.** `scripts/cloud.sh --name <name> <command>`, or `FOUNDRY_DEPLOYMENT=<name>`, runs every command against that deployment's own stacks, `Foundry-<name>-Data` and `Foundry-<name>-App`. A name is 1–24 characters: lowercase letters, digits and `-`, starting with a letter. Any other name is refused (exit 1) before AWS is called.
 - [ ] **N2. Main is bare.**
   - **No name** (or `--name main`) is the main deployment: `FoundryDataStack` and `FoundryAppStack`, exactly as before.
-  - **Deploying main changes only its probe metric**, which gains a `Deployment=main` dimension, along with its alarm (N3).
+  - **Deploying main changes only its probe metric**, which gains a `Deployment=main` dimension, along with its alarm and its stacks' new `deployment=main` tag (N3). These are no-interruption updates: no resource is replaced and no deletion policy changes (checked by diffing main's templates before and after).
 - [ ] **N3. Nothing shared by accident.**
   - **Resources:** each deployment's resources are in its own stacks, with generated names.
   - **The probe:** each probe publishes `Foundry/Probe Healthy` with the dimension `Deployment=<name>`, and each deployment's alarm watches only its own.
@@ -52,7 +52,7 @@ Hackathon participants share one AWS sandbox account, but every `scripts/cloud.s
 ## Assumptions and open questions
 
 - **Assumption:** an S3 bucket with `RemovalPolicy.DESTROY` and `autoDeleteObjects` is emptied, every object version included, when its stack is deleted. The CDK docs state it for `autoDeleteObjects`. N8 proves it live, and if it's wrong, the teardown empties the bucket itself before deleting.
-- **Assumption:** the CloudWatch alarm on the probe can filter by the new dimension, and main's alarm goes from missing data to OK once its probe publishes with it. The alarm treats missing data as breaching, so expect up to 10 minutes of ALARM, and an alert email, right after main's redeploy. To avoid it, the redeploy sets the alarm to OK, as `cloud.sh start` does.
+- **Assumption:** the CloudWatch alarm on the probe can filter by the new dimension, and main's alarm goes from missing data to OK once its probe publishes with it. The alarm treats missing data as breaching, so expect up to 10 minutes of ALARM, and an alert email, right after main's redeploy. To avoid it, every deploy runs the probe once after its checks pass, so the new metric has a data point at once. (Setting the alarm to OK alone wouldn't hold: the next evaluation would see missing data again.)
 
 ## Plan
 
@@ -65,7 +65,8 @@ Hackathon participants share one AWS sandbox account, but every `scripts/cloud.s
    - parse `--name` / `FOUNDRY_DEPLOYMENT` before the command, and validate it
    - set `DATA`/`APP` and pass `-c deployment` to every CDK call
    - named defaults for concurrency (0) and budget (none)
-   - `list`; `destroy --data` (named only, confirmed); main's alarm set to OK after a deploy that adds the dimension
+   - `list`; `destroy --data` (named only, confirmed); the probe run once after every deploy, so a new metric never alarms on missing data
+   - `--name` taken anywhere on the line, and an empty one refused
 4. **Tests:**
    - synthesized templates for main and two names (N1–N5)
    - name validation in Python and in `cloud.sh` (it refuses a bad name before any AWS call)
