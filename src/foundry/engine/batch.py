@@ -423,6 +423,12 @@ def spec_from_args(argv: list[str]):
     return p.parse_args(argv[1:] if argv[:1] == ["batch"] else argv)
 
 
+def _shown(config: str) -> str:
+    """A config as batch.json records it: relative to the project root when it's inside it (never a server's path)."""
+    p, root = Path(config), project_root()
+    return p.relative_to(root).as_posix() if p.is_absolute() and p.is_relative_to(root) else config
+
+
 def prepare(args, out: Path, runs_dir: Path) -> tuple[list[Job], dict, str]:
     """Plan the batch from its options: (jobs, batch.json at the start, the scoring config). Writes batch.json and
     a summary with every row pending. Raises BatchError or ConfigError for a usage problem."""
@@ -436,7 +442,7 @@ def prepare(args, out: Path, runs_dir: Path) -> tuple[list[Job], dict, str]:
     eval_config = args.eval_config or str(jobs[0].variant.config)
     if args.evaluate:
         load_eval_config(eval_config)
-    meta = {"id": out.name, "configs": args.config, "models": models, "prompts": args.prompts, "repeats": args.repeats,
+    meta = {"id": out.name, "configs": [_shown(c) for c in args.config], "models": models, "prompts": args.prompts, "repeats": args.repeats,
             "concurrency": args.concurrency, "evaluate": args.evaluate, "max_cost": args.max_cost}
     return jobs, start_meta(meta, jobs, out, runs_dir), eval_config
 

@@ -1,0 +1,10 @@
+# scripts/cloud.sh reindex against the sandbox (build 97f21c6), 2026-11-02T00:01:37Z
+$ scripts/cloud.sh reindex
+  151 runs checked
+Re-indexed in 38 s: 151 runs, 0 updated, 0 skipped (live), 0 changed meanwhile (run it again to retry them)
+exit 0
+
+$ scripts/cloud.sh reindex   # again: nothing should change
+  151 runs checked
+Re-indexed in 2 s: 151 runs, 0 updated, 0 skipped (live), 0 changed meanwhile (run it again to retry them)
+exit 0

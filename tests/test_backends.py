@@ -279,8 +279,9 @@ def test_the_same_batch_gives_the_same_results_on_both_setups(tmp_path, monkeypa
         h.drain(timeout=180)
         d = h.pull_batch(batch_id)
         meta = json.loads((d / "batch.json").read_text())
-        for k in ("id", "started_at", "finished_at", "spent_usd", "runs_dir", "configs"):
+        for k in ("id", "started_at", "finished_at", "spent_usd", "runs_dir"):
             meta.pop(k)
+        assert meta["configs"] == ["config/ok.toml"], meta["configs"]  # never a server's path
         rows = rows_from_csv(d / "summary.csv")
         for row in rows:
             for k in ("duration_s", "run_dir", "cost_usd"):

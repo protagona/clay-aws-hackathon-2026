@@ -1,0 +1,90 @@
+# backend-parity AC10 live check, 2026-11-01T23:59:27Z, https://beoklkhu5vjfk7cxa6si53lvle0ikrhm.lambda-url.us-west-2.on.aws
+# /healthz: ok 97f21c6
+
+$ foundry-remote --json runs
+  {
+    "runs": [
+      {
+        "run_id": "b-20261101-141646-5e8e_zai.glm-5_adb-006_r2",
+        "prompt_id": "adb-006",
+        "model": "zai.glm-5",
+        "status": "succeeded",
+        "headline": "0.88",
+        "column": "scored",
+        "unreadable": false,
+        "kpi": {
+          "spent": 0.045167,
+          "overall": 0.875
+        },
+  → exit 0 (1 s)
+
+# runs before: 149
+
+$ foundry-remote --json run start --prompt adb-001 --config offline --wait
+  {
+    "run": {
+      "run_id": "2026-11-01T23-59-33Z_adb-001_f1d0",
+      "prompt_id": "adb-001",
+      "status": "succeeded",
+      "model": {
+        "id": "scripted-a",
+        "provider": "scripted",
+        "params": {
+          "max_tokens": 1024
+        }
+      },
+      "prompt": "We want to map cropland change in California's Central Valley between 2020 and 2022 using free, open imagery. Find suitable open datasets and write a dataset-build plan: which data, how to access it, the processing steps, and the limitations.",
+      "task_id": "adb",
+  → exit 0 (24 s)
+
+$ foundry-remote evaluate 2026-11-01T23-59-33Z_adb-001_f1d0 --wait
+  2026-11-01T23-59-33Z_adb-001_f1d0
+    prompt   adb-001: We want to map cropland change in California's Central Valley between 2020 and 2022 using free, open
+    model    scripted-a
+    status   succeeded · 00:12 · —
+    steps    5 (2 tool calls ok, 0 failed)
+    scores   overall 0.83 · workflow 1.00 · output 0.67
+  → exit 0 (7 s)
+
+$ foundry-remote --json batch start --config offline --prompts adb-002 --evaluate --wait
+  {
+    "batch_id": "b-20261102-000001-f80e",
+    "meta": {
+      "status": "finished",
+      "jobs": 1,
+      "max_cost": 2.0,
+      "spent_usd": 0.0,
+      "models": [],
+      "configs": [
+        "/tmp/state/project/config/offline.toml"
+      ],
+      "id": "b-20261102-000001-f80e",
+      "prompts": "adb-002",
+      "repeats": 1,
+  → exit 0 (15 s)
+
+$ foundry-remote batch show b-20261102-000001-f80e
+  b-20261102-000001-f80e: finished · 1/1 done · spent $0.000 of $2.000
+  
+  VARIANT  PROMPT   REPEAT  STATUS     OVERALL  COST
+  offline  adb-002  1       succeeded  0.81     $0.000
+  → exit 0 (1 s)
+
+## A prompt edit through the API: adb-001's expected steps, changed, then restored exactly
+## A prompt edit through the API: adb-001's expected steps, changed, then restored exactly
+  original stages: [['search_datasets', 'list_datasets', 'discover_by_organization', 'find_related_datasets'], ['get_dataset_details', 'preview_dataset', 'sample_dataset']]  (project version 35)
+  PUT changed → 200 ok=True
+  read back: last stage ['search_items']  (version 36)
+  a write sent with the old version 35: 409 Changed by someone else; reload
+  PUT original → 200; restored: True  (version 37)
+
+## Board cards of what this check created
+  b-20261102-000001-f80e_offline_adb-002_r1: column=scored status=succeeded headline=0.81 overall=0.8083
+  2026-11-01T23-59-33Z_adb-001_f1d0: column=scored status=succeeded headline=0.83 overall=0.8334
+  board: 151 runs
+
+
+
+## After the configs fix (build 9fd8422, 2026-11-02T00:06:38Z): one more offline batch
+  exit 0
+  batch b-20261102-000643-fe8d status finished configs ['config/offline.toml'] rows [('adb-003', 'succeeded')]

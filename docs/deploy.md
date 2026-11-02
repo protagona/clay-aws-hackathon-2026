@@ -95,7 +95,7 @@ The cloud board reads a card stored with each run when it was last recorded. A d
   - It skips runs with a job queued or running (batch items too) or being scored.
   - It counts a run that changed while it looked as "changed meanwhile".
 - **Output:** the totals, e.g. `Re-indexed in 41 s: 149 runs, 1 updated, 0 skipped (live), 0 changed meanwhile`. Run it again to pick up skipped or changed ones.
-- **Duration:** it works in pages of at most 600 s each, which bounds every worker invoke. The 149 runs of the sandbox took the time recorded in the backend-parity handoff.
+- **Duration:** it works in pages of at most 600 s each, which bounds every worker invoke. On the sandbox's 151 runs it took 38 s on a cold worker and 2 s right after.
 - **If it times out or fails:** run it again. It starts from the first run, and unchanged runs cost one comparison each.
 
 ### Laptop vs AWS
