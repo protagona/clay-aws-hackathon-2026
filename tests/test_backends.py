@@ -88,11 +88,13 @@ def test_a_laptop_run_whose_process_died_shows_interrupted(tmp_path):  # spec AC
     add_config(h, "slow", [{"tool": "sleep", "input": {"seconds": 30}}, {"text": "done"}])
     run_id = h.client.post("/api/runs", headers=h.headers(), json={"prompt_id": "adb-001", "config": "slow"}).json()["run_id"]
     (job,) = jobs.live(h.ws)
-    for _ in range(200):  # until run.json exists and says running
+    for _ in range(400):  # until run.json exists and says running (a real process: bounded polling)
         f = h.runs_dir / run_id / "run.json"
         if f.is_file() and json.loads(f.read_text()).get("status") == "running":
             break
         __import__("time").sleep(0.05)
+    else:
+        raise AssertionError(f"run {run_id} never started")
     job.proc.kill()
     h.drain()
     card = next(c for c in h.client.get("/api/runs").json()["runs"] if c["run_id"] == run_id)
@@ -294,3 +296,89 @@ def test_the_same_batch_gives_the_same_results_on_both_setups(tmp_path, monkeypa
     laptop, cloud = results
     assert laptop[2] and all(col == "scored" for col, _, _ in laptop[2].values())
     assert laptop == cloud
+
+
+# --- every cloud read is reached by a test on the cloud setup (Verify pass 1: mutations that survived) -------------
+
+
+def test_a_prompt_with_runs_keeps_its_text_and_counts_them(backend):
+    """The text lock (increment 13) reads the task's runs: on the cloud they must be fetched first."""
+    h = backend
+    h.seed("clean")  # a run of adb-001
+    r = h.client.put("/api/prompts/adb-001", headers=h.headers(), json={"task": "adb", "prompt": "edited"})
+    assert r.status_code == 409, r.text
+    row = next(p for p in h.client.get("/api/prompts").json()["prompts"] if p["prompt_id"] == "adb-001")
+    assert row["runs"] == 1 and h.client.get("/api/prompts/adb-001").json()["runs_total"] == 1
+
+
+def test_the_tool_menu_shows_the_cached_listing_and_traced_tools(backend):
+    h = backend
+    h.seed("clean")  # calls roda/search_datasets
+    h.set_tool_cache({"listed_at": "2026-11-01T00:00:00Z", "servers": [], "skipped_configs": [],
+                      "tools": [{"server": "stac", "name": "search_items", "description": "Scenes for an area"}]})
+    tools = {(t["server"], t["name"]): t for t in h.client.get("/api/prompts/tools?task=adb").json()["tools"]}
+    assert tools[("stac", "search_items")]["description"] == "Scenes for an area"
+    assert tools[("roda", "search_datasets")]["runs"] == 1
+
+
+def test_the_rubric_versions_count_the_runs_each_scored(backend, tmp_path):
+    import json
+
+    from eval_helpers import eval_config, load
+    from test_api import RUBRIC
+
+    from foundry.engine.evaluate.evaluate import evaluate
+
+    h = backend
+    d = h.seed("clean")
+    evaluate(d, load(eval_config(tmp_path / "e")))  # scored by the original rubric
+    h.sync()
+    did = h.client.post("/api/rubric/drafts", headers=h.headers(), data={"task": "adb", "kind": "file", "config": "offline"},
+                        files={"file": ("clay.json", json.dumps(RUBRIC).encode())}).json()["draft_id"]
+    r = h.client.put(f"/api/rubric/drafts/{did}", headers=h.headers(), json={"task": "adb", "body": RUBRIC, "activate": True})
+    assert r.json()["activated"] is True
+    runs = {v["rubric_id"]: v["runs"] for v in h.client.get("/api/rubric?task=adb").json()["versions"]}
+    assert runs == {"clay-adb": 0, "adb-rubric-v0": 1}
+
+
+def test_importing_the_same_trace_twice_is_refused(backend):
+    from test_api_ports import _hand_otlp
+
+    h = backend
+    files = {"file": ("trace.json", __import__("json").dumps(_hand_otlp()), "application/json")}
+    form = {"task": "adb", "prompt_id": "ext-1", "config": ""}
+    assert h.client.post("/api/import", headers=h.headers(), data=form, files=files).status_code == 201
+    r = h.client.post("/api/import", headers=h.headers(), data=form, files=files)
+    assert r.status_code == 409 and "Already imported" in r.json()["error"]
+
+
+def test_a_run_finishing_while_the_board_is_read_is_not_a_crash(tmp_path, monkeypatch):  # Verify pass 1, race
+    import json
+    import subprocess
+
+    from backends import LaptopHarness
+
+    from foundry.services import jobs, state
+
+    h = LaptopHarness(tmp_path)
+    d = h.seed("clean", "2026-01-01T00-00-00Z_adb-001_aaaa")
+    run = json.loads((d / "run.json").read_text())
+    final, run["status"] = run["status"], "running"
+    (d / "run.json").write_text(json.dumps(run))
+    proc = subprocess.Popen(["sleep", "30"])
+    job = jobs.Job("abcdabcdabcdabcd", "run", d.name, "x", proc, tmp_path / "log")
+    h.ws.jobs[job.id] = job
+    real = state.LocalState.board_rows
+
+    def rows_then_finish(self, ws):  # run.json is read while running; then the run finishes normally
+        out = real(self, ws)
+        (d / "run.json").write_text(json.dumps({**run, "status": final}))
+        job.exit_code = 0
+        return out
+
+    monkeypatch.setattr(state.LocalState, "board_rows", rows_then_finish)
+    try:
+        card = next(c for c in h.client.get("/api/runs").json()["runs"] if c["run_id"] == d.name)
+        assert card["status"] == "running" and "reason" not in card
+    finally:
+        proc.kill()

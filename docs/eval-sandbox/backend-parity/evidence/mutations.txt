@@ -1,0 +1,19 @@
+exit 0
+batches.py:76 state.of(ws).fresh_batches(ws): CAUGHT ['FAILED tests/test_api_contract.py::test_hostile_files_never_500[cloud] - Asse...']
+batches.py:77 state.of(ws).fresh_runs(ws)  # rows link to their runs when those exis: CAUGHT ['FAILED tests/test_api_ports.py::test_batch_runs_end_to_end[cloud] - assert 
+batches.py:92 state.of(ws).fresh_batches(ws)  # the list needs no run files (only on: CAUGHT ['FAILED tests/test_api_contract.py::test_hostile_files_never_500[cloud] - In
+configs.py:22 state.of(ws).fresh_projects(ws): CAUGHT ['FAILED tests/test_api.py::test_compare_dashboard_batches_receiver[cloud] - as...']
+configs.py:47 state.of(ws).fresh_projects(ws): CAUGHT ["FAILED tests/test_api.py::test_session[cloud] - AssertionError: assert ('93AV..."]
+configs.py:73 state.of(ws).fresh_project(ws, task): CAUGHT ['FAILED tests/test_api.py::test_start_run_and_evaluate_through_api[cloud] - as...']
+imports.py:32 state.of(ws).fresh_runs(ws)  # a run another instance imported must ex: CAUGHT ['FAILED tests/test_backends.py::test_importing_the_same_trace_twice_is_refus
+imports.py:50 state.of(ws).record_run(ws, d.name): CAUGHT ['FAILED tests/test_api_ports.py::test_import_a_trace_end_to_end[cloud] - KeyEr...']
+prompts.py:19 state.of(ws).fresh_project(ws, task): SURVIVED []
+prompts.py:49 state.of(ws).fresh_runs(ws): CAUGHT ['FAILED tests/test_backends.py::test_a_prompt_with_runs_keeps_its_text_and_counts_them[cloud]']
+rubrics.py:84 state.of(ws).fresh_project(ws, task): SURVIVED []
+rubrics.py:90 state.of(ws).fresh_runs(ws)  # versions() counts the runs each version: CAUGHT ['FAILED tests/test_backends.py::test_the_rubric_versions_count_the_runs_each
+runs.py:28 state.of(ws).fresh_run(ws, run_id): CAUGHT ["FAILED tests/test_api.py::test_run_detail_and_404[cloud] - KeyError: 'run'"]
+runs.py:153 state.of(ws).fresh_runs(ws): CAUGHT ['FAILED tests/test_api.py::test_compare_dashboard_batches_receiver[cloud] - as...']
+runs.py:159 state.of(ws).fresh_projects(ws): SURVIVED []
+tools.py:19 state.of(ws).fresh_tools(ws): CAUGHT ['FAILED tests/test_backends.py::test_the_tool_menu_shows_the_cached_listing_and_traced_tools[cloud]']
+
+[exited with code 0]

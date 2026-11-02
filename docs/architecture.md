@@ -73,7 +73,7 @@ The same app runs on a laptop and in AWS (`server.create_app`; backend-parity, `
 | **Changing** how a batch runs | `engine/batch.py`: `prepare`, `run_item`, `finalize`, `write_rows`. `foundry batch` and the cloud's Step Functions steps both call them | Changing `Batch` or `workers.batch_*` alone |
 
 **Tests:** take the `backend` fixture (`tests/conftest.py`, `tests/backends.py`), and the test runs on both setups.
-- **Cold copy:** every cloud request starts from an empty copy of the data, so a missed `fresh_*` call fails there.
+- **Cold copy:** every cloud request starts from an empty copy of the data, so a missed `fresh_*` call fails any test that reaches that route on the cloud setup. A new route needs such a test.
 - **Staged files:** stage run files in `h.runs_dir` and project files in `h.project`, then call `h.sync()` / `h.sync_project()`.
 - **Jobs:** `h.drain()` runs queued jobs: a laptop's subprocesses, or the cloud worker's code.
 - **Setup-specific tests:** a test that can only hold on one setup carries `@pytest.mark.laptop_only("why")` or `cloud_only`. `test_single_setup_tests_are_few` keeps there to at most 10.

@@ -89,6 +89,5 @@ def batch_view(ws: Workspace, batch_id: str) -> dict:
 
 
 def batch_list(ws: Workspace) -> list[dict]:
-    state.of(ws).fresh_batches(ws)
-    state.of(ws).fresh_runs(ws)
+    state.of(ws).fresh_batches(ws)  # the list needs no run files (only one batch's rows link to runs)
     return data_batches.batch_list(ws.batches_dir, ws.runs_dir)

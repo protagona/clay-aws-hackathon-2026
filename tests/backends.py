@@ -67,6 +67,12 @@ class Harness:
     def pull(self, run_id: str) -> Path: return self.runs_dir / run_id
     def pull_project(self) -> None: ...
     def pull_batch(self, batch_id: str) -> Path: return self.runs_dir / ".batches" / batch_id
+
+    def set_tool_cache(self, listing: dict) -> None:
+        """The cached `foundry tools` listing, as a finished refresh leaves it."""
+        import json
+
+        (self.runs_dir / ".ui-tools.json").write_text(json.dumps(listing))
     def drain(self, timeout: float = 120) -> None: ...
 
 
@@ -122,6 +128,7 @@ class CloudHarness(Harness):
         # the API instance: config/ is the image's (here: the staging project's), tasks/ come from the store
         api = tmp / "api"
         _project(api / "project", config_from=self.project / "config")
+        (api / "runs").mkdir()  # as cloud_boot.runs_dir() makes it at a cold start
         self.amirror = Mirror(self.store, api)
         for it in self.store.query("TREE", prefix="project#"):  # a cold start pulls the projects (cloud_boot)
             self.amirror.pull(it["sk"], item=it)
@@ -167,6 +174,14 @@ class CloudHarness(Harness):
     def pull(self, run_id: str) -> Path:
         self.smirror.pull(f"run#{run_id}")
         return self.runs_dir / run_id
+
+    def set_tool_cache(self, listing: dict) -> None:
+        import json
+
+        f = self.stage / "ui-tools.json"
+        f.write_text(json.dumps(listing))
+        self._rebase(self.smirror, "file#tools")
+        self.smirror.push_file("file#tools", "ui-tools.json", f)  # as the worker publishes a refresh
 
     def pull_batch(self, batch_id: str) -> Path:
         self.smirror.pull(f"batch#{batch_id}")

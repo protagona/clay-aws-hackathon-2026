@@ -39,8 +39,9 @@ def need_run(ws: Workspace, run_id: str) -> Path:
 def detail(ws: Workspace, path: Path, seen: int | None = None) -> dict:
     """Everything the run drawer shows, from the run's own files. The report is Markdown (`report_md`); the API
     renders it, and model text, to safe HTML."""
+    snapshot = run_job_snapshot(ws, path.name)  # before run.json: see run_job_snapshot
     run = {**data_runs.read_run(path), "run_id": path.name}  # links use the directory name, never run.json's
-    if interrupted(ws, path.name, run.get("status")):  # its job ended; run.json will never say so
+    if interrupted(ws, path.name, run.get("status"), snapshot):  # its job ended; run.json will never say so
         run["status"] = "interrupted"
     scores = data_runs.read_scores(path)
     scoring_cut = scores is not None and evaluation_interrupted(path)
@@ -122,17 +123,29 @@ def board_column(card: dict) -> str:
     return "attention"
 
 
-def interrupted(ws: Workspace, run_id: str, status, cards_fresh: bool | None = None, job=None) -> bool:
-    """A run that says running but whose run job ended without saying so (backend-parity ADR-2). The laptop's card is
-    read from run.json now, so a dead job means a crash; a stored cloud card can lag a normal finish, so there the job
-    must say it was interrupted. A run with no job (the CLI, a batch, the receiver) is never overlaid."""
-    if status != "running":
+def run_job_snapshot(ws: Workspace, run_id: str | None = None) -> dict:
+    """{run id: (its latest run job, whether that job was alive at this moment)}, taken *before* the run's files are
+    read: a job that ends after the snapshot still counts as alive, so a normal finish between the snapshot and the
+    read is never mistaken for a crash."""
+    out = {}
+    for j in jobs.of_kind(ws, "run"):
+        if run_id is None or j.run_id == run_id:
+            out[j.run_id] = (j, j.alive, getattr(j, "status", None))
+    return out
+
+
+def interrupted(ws: Workspace, run_id: str, status, snapshot: dict, cards_fresh: bool | None = None) -> bool:
+    """A run that says running but whose run job had already ended when `snapshot` was taken (backend-parity ADR-2).
+    The laptop's card is read from run.json after the snapshot, so a dead job means a crash; a stored cloud card can
+    lag a normal finish, so there the job must say it was interrupted. A run with no job (the CLI, a batch, the
+    receiver) is never overlaid."""
+    if status != "running" or run_id not in snapshot:
         return False
-    job = job if job is not None else jobs.of_run(ws, "run", run_id)
-    if job is None or job.alive:
+    _, alive, job_status = snapshot[run_id]
+    if alive:
         return False
     fresh = state.of(ws).cards_fresh if cards_fresh is None else cards_fresh
-    return fresh or getattr(job, "status", None) == "interrupted"
+    return fresh or job_status == "interrupted"
 
 
 def entries(ws: Workspace) -> list[dict]:
@@ -175,8 +188,8 @@ def board(ws: Workspace) -> dict:
     """GET /api/runs: every card in its column, with its KPI share, plus the board's KPIs. The same assembly on a
     laptop and in AWS (backend-parity ADR-2): rows from the state, live state overlaid here."""
     st = state.of(ws)
-    run_jobs = {j.run_id: j for j in jobs.of_kind(ws, "run")}  # before the rows: a run finishing in between isn't
-    rows = st.board_rows(ws)                                    # mistaken for a crash
+    snapshot = run_job_snapshot(ws)  # before the rows: see run_job_snapshot
+    rows = st.board_rows(ws)
     evaluating = st.evaluating_runs(ws)
     k = kpi_shares(rows, active_rubrics(ws))
     out = []
@@ -189,7 +202,7 @@ def board(ws: Workspace) -> dict:
         c = {f: card[f] for f in cards.CARD_FIELDS if f in card}  # a stored card from other code: known fields only
         if row["run_id"] in evaluating:
             c["headline"], c["sub"] = "evaluating", ""
-        elif interrupted(ws, row["run_id"], c.get("status"), st.cards_fresh, run_jobs.get(row["run_id"])):
+        elif interrupted(ws, row["run_id"], c.get("status"), snapshot, st.cards_fresh):
             c["headline"] = c["status"] = "interrupted"
             c["reason"] = cards.INTERRUPTED_REASON
         out.append({**c, "run_id": row["run_id"], "column": board_column(c),

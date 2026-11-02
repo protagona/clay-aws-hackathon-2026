@@ -289,7 +289,7 @@ def summary_row(job: Job) -> dict:
                status=job.status)
     d = job.run_dir
     if job.status != "ran" or d is None:
-        return row
+        return _typed(row)
     run = _load(d / "run.json") or {}
     steps = []
     for line in (d / "trace.jsonl").read_text().splitlines() if (d / "trace.jsonl").exists() else []:

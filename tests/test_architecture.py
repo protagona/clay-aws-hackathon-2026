@@ -327,6 +327,15 @@ def backend_leaks(src: Path) -> list[str]:
         for node in ast.walk(ast.parse(path.read_text(), filename=str(path))):
             if isinstance(node, ast.Attribute) and node.attr == "cloud":
                 found.append(f"{rel}:{node.lineno} reads .cloud: only the backend modules may (use state.of(ws))")
+            if isinstance(node, ast.Call):  # the same, spelled dynamically
+                name = ast.unparse(node.func)
+                args = [a.value for a in node.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
+                if name in ("getattr", "hasattr", "setattr") and "cloud" in args:
+                    found.append(f"{rel}:{node.lineno} reads .cloud through {name}: only the backend modules may")
+                if name in ("importlib.import_module", "import_module", "__import__") and any(
+                        a == m or a.startswith(m + ".") for a in args for m in BACKEND_ONLY):
+                    found.append(f"{rel}:{node.lineno} imports a backend module through {name}: only the backend "
+                                 "modules may")
     return found
 
 
@@ -347,9 +356,13 @@ def test_the_backend_check_catches_a_leak(tmp_path):
                                                "def f(ws):\n    from foundry.services.cloud_state import X\n"
                                                "    return ws.cloud\n")
     (pkg / "api" / "fine.py").write_text("from foundry.services import state\n")
+    (pkg / "api" / "sneaky.py").write_text("import importlib\ndef f(ws):\n    getattr(ws, 'cloud')\n"
+                                           "    importlib.import_module('foundry.data.mirror')\n")
     (pkg / "services" / "cloud_state.py").write_text("from foundry.data import index\nY = lambda ws: ws.cloud\n")
     problems = backend_leaks(tmp_path)
     assert any("services/leaky.py:1 imports foundry.data.store" in p for p in problems), problems
     assert any("services/leaky.py:3 imports foundry.services.cloud_state" in p for p in problems), problems
     assert any("services/leaky.py:4 reads .cloud" in p for p in problems), problems
+    assert any("api/sneaky.py:3 reads .cloud through getattr" in p for p in problems), problems
+    assert any("api/sneaky.py:4 imports a backend module through importlib.import_module" in p for p in problems), problems
     assert not any("api/fine.py" in p or "cloud_state.py" in p for p in problems), problems

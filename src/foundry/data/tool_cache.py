@@ -20,6 +20,7 @@ def install(src: Path, runs_dir: Path) -> None:
         data = Path(src).read_bytes()
     except FileNotFoundError:
         return
+    runs_dir.mkdir(parents=True, exist_ok=True)
     tmp = runs_dir / f"{NAME}.tmp"
     tmp.write_bytes(data)
     tmp.replace(path(runs_dir))
