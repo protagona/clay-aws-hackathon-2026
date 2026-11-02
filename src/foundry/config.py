@@ -111,8 +111,10 @@ class StorageCfg(_Strict):
     @field_validator("s3_uri")
     @classmethod
     def _bucket_only(cls, uri: str) -> str:
-        if uri and not re.fullmatch(r"s3://[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]/?", uri):
-            raise ValueError('must be "s3://<bucket>" with no key prefix (runs go under runs/ at the bucket root)')
+        # "{account}" stands for the caller's AWS account (filled in when mirroring), as in the shipped configs.
+        if uri and not re.fullmatch(r"s3://[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]/?", uri.replace("{account}", "123456789012")):
+            raise ValueError('must be "s3://<bucket>" with no key prefix (runs go under runs/ at the bucket root); '
+                             '"{account}" in the name stands for your AWS account')
         return uri.rstrip("/")
 
 

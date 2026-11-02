@@ -37,6 +37,27 @@ def test_uploads_every_regular_file(tmp_path, fixture_run, monkeypatch):
         stub.assert_no_pending_responses()
 
 
+def test_an_account_bucket_is_the_callers_own_and_checked_as_such(fixture_run, monkeypatch):  # every sandbox
+    run_dir = fixture_run("clean")
+    client = boto3.client("s3", region_name="us-west-2")
+    stub = Stubber(client)
+    for name in ("output.json", "run.json", "trace.jsonl"):
+        stub.add_response("put_object", {}, {"Bucket": "foundry-runs-222233334444-us-west-2", "Body": ANY,
+                                              "Key": f"runs/{run_dir.name}/{name}", "ExpectedBucketOwner": "222233334444"})
+    monkeypatch.setattr(storage, "make_client", lambda t: client)
+    monkeypatch.setattr(storage, "caller_account", lambda t: "222233334444")
+    with stub:
+        storage.mirror(run_dir, StorageCfg(s3_uri="s3://foundry-runs-{account}-us-west-2"))
+        stub.assert_no_pending_responses()
+
+
+def test_the_account_placeholder_is_the_only_one_allowed():
+    assert StorageCfg(s3_uri="s3://foundry-runs-{account}-us-west-2").s3_uri == "s3://foundry-runs-{account}-us-west-2"
+    for bad in ("s3://foundry-{region}", "s3://{account}/runs", "s3://Foundry-{account}"):
+        with pytest.raises(ValueError):
+            StorageCfg(s3_uri=bad)
+
+
 def test_upload_failure_warns_and_keeps_files(tmp_path, fixture_run, monkeypatch, capsys):
     run_dir = fixture_run("clean")
     client = boto3.client("s3", region_name="us-west-2")

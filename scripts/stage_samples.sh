@@ -2,7 +2,7 @@
 # A-2: copy a tiny NAIP and Vantor sample into s3://<RunsBucket>/samples/, a cost-safe fallback to reading at the
 # source. Run after `cdk deploy`, with credentials for the same account:
 #
-#   AWS_PROFILE=<profile> scripts/stage_samples.sh
+#   AWS_PROFILE=<profile> scripts/stage_samples.sh [--if-missing]   # --if-missing: skip if already staged
 #
 # Server-side copies in us-west-2 (~85 MB in total): NAIP is Requester Pays, so this account pays a few requests;
 # the Vantor bucket is public. Sources and licenses are written to samples/README.txt next to the files.
@@ -13,6 +13,9 @@ REGION=${AWS_REGION:-us-west-2}
 BUCKET=$(aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" \
   --query "Stacks[0].Outputs[?OutputKey=='RunsBucketName'].OutputValue" --output text)
 [ -n "$BUCKET" ] && [ "$BUCKET" != "None" ] || { echo "No RunsBucketName output on stack $STACK; deploy first" >&2; exit 2; }
+if [ "${1:-}" = --if-missing ] && aws s3api head-object --bucket "$BUCKET" --key samples/README.txt --region "$REGION" >/dev/null 2>&1; then
+  echo "samples already staged in s3://$BUCKET/samples/"; exit 0
+fi
 
 # NAIP 2022, 60 cm RGB COG, north of Fresno, CA (54 MB). Same scene as Earth Search item ca_m_3611919_nw_11_060_20220702.
 NAIP_SRC=s3://naip-visualization/ca/2022/60cm/rgb/36119/m_3611919_nw_11_060_20220702.tif

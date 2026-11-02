@@ -355,9 +355,9 @@ Several people can deploy into one account: `scripts/cloud.sh --name <you> deplo
 
 The runbook covers first deploys, day-to-day commands, alerts, restoring data and troubleshooting: [docs/deploy.md](docs/deploy.md). The spec, design and verification record are in [docs/eval-sandbox/aws-deploy/](docs/eval-sandbox/aws-deploy/handoff.md).
 
-## Deploy (live checks, the legacy stack)
+## The account's laptop stack (live checks, `ClayFoundryEvalSandbox`)
 
-This is the earlier stack (`FoundryStack`, `infra/app.py`), separate from the one above: a bucket and a role for running live checks from a laptop. `cloud.sh` never touches it.
+This is the earlier stack (`FoundryStack`, `infra/app.py`), separate from the one above: a bucket and a role for running live checks from a laptop. `cloud.sh` never touches it; `make account-setup` creates it.
 
 `infra/` holds a CDK app for one sandbox account in **us-west-2**:
 
@@ -367,27 +367,28 @@ This is the earlier stack (`FoundryStack`, `infra/app.py`), separate from the on
   - read and write on `runs/*` in that bucket
   - read-only on `samples/*`
 
-The account comes from your credentials, so anyone can deploy into their own sandbox. The region is fixed at us-west-2.
+The account comes from your credentials, so it works the same in the team's shared account and in each person's own sandbox. The region is fixed at us-west-2.
 
 ```bash
-cd infra && npm ci                                    # pins the CDK CLI (2.1146.1)
-npx cdk synth                                         # no credentials or Docker needed
-export AWS_PROFILE=<profile>                          # credentials for the target account
-npx cdk bootstrap aws://<account id>/us-west-2        # once per account and region
-npx cdk deploy                                        # prints RunsBucketName and HarnessRoleArn
-cd ..
-scripts/stage_samples.sh      # A-2: copies a small NAIP tile and a Vantor tile to s3://<bucket>/samples/ (~85 MB)
+export AWS_PROFILE=<profile>  # credentials for the target account
+make account-setup            # once per account: CDK bootstrap if missing, this stack, the samples (A-2, ~85 MB)
 scripts/verify_deploy.sh      # as the deployed role: one live run --evaluate, mirrored to S3, then checked
 ```
 
-The `config/bedrock*.toml` configs mirror every run and evaluation to the team's deployed bucket, under `s3://<bucket>/runs/<run_id>/`. The offline configs don't mirror, so a fresh clone needs no AWS.
+- **Every `make deploy` runs it first** when the account has no bootstrap or no laptop stack, so the first person to deploy (main or `NAME=<you>`) in any account sets it up. Afterwards the check takes a second.
+- **Re-apply it** with `make account-setup` after adding a model to a config (the role allows only the configured models). The first run asks you to approve the IAM changes; `YES=1` skips the prompt.
+- **Synthesize without AWS:** `cd infra && npx cdk synth` needs no credentials or Docker.
 
-- **Your own deploy:** set `[storage] s3_uri = "s3://<RunsBucketName output>"` in those three configs.
-- **Turn mirroring off:** set it to `""`.
+The runs bucket is `foundry-runs-<account>-us-west-2`, one per account. The `config/bedrock*.toml` configs name it as `s3://foundry-runs-{account}-us-west-2`, and mirror every run and evaluation under `runs/<run_id>/`:
+- **No edits per account:** the mirror fills in `{account}` from the credentials the run uses, so each person's runs go to their own account's bucket.
+- **Ownership is checked:** the upload requires the bucket to belong to that account, so a bucket of that name owned by someone else is refused.
+- **Turn mirroring off:** set `s3_uri` to `""`. The offline configs don't mirror, so a fresh clone needs no AWS.
 
-Mirroring is best-effort. A failed upload, such as missing credentials or another account's bucket, prints a warning and keeps the local files. `verify_deploy.sh` checks the mirror on a temporary copy of the config.
+Mirroring is best-effort. A failed upload, such as missing credentials or an account with no laptop stack, prints a warning and keeps the local files. `verify_deploy.sh` checks the mirror on a temporary copy of the config.
 
-The role can call only the Bedrock models named in `config/bedrock*.toml`: `[model]`, `[judge]`, `[summarizer]` and the `[prices]` keys. If you add a model to a config, redeploy before using it from the role. The runs bucket's access logs go to a separate bucket and expire after 90 days.
+**Deleting it:** the stack keeps both buckets when deleted, so a later `make account-setup` in that account fails on the existing runs bucket name until you empty and delete the buckets (or deploy again before deleting the stack).
+
+The role can call only the Bedrock models named in `config/bedrock*.toml`: `[model]`, `[judge]`, `[summarizer]` and the `[prices]` keys. If you add a model to a config, run `make account-setup` before using it from the role. The runs bucket's access logs go to a separate bucket and expire after 90 days.
 
 **Pre-staged samples** (A-2): the agent reads data at the source through MCP. These copies are only a fallback, for when Requester Pays costs or latency matter.
 

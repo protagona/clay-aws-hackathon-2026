@@ -40,6 +40,16 @@ def test_bucket_is_private_encrypted_versioned_ssl_only():
         Match.object_like({"Effect": "Deny", "Condition": {"Bool": {"aws:SecureTransport": "false"}}})])}})
 
 
+def test_runs_bucket_is_named_for_its_account_so_configs_need_no_edit():  # every sandbox: s3_uri "{account}"
+    app = cdk.App()
+    t = Template.from_stack(FoundryStack(app, "Acct", env=cdk.Environment(account="111111111111", region="us-west-2")))
+    names = [r["Properties"].get("BucketName") for r in t.find_resources("AWS::S3::Bucket").values()]
+    assert "foundry-runs-111111111111-us-west-2" in names
+    for cfg in sorted((Path(__file__).resolve().parents[1] / "config").glob("*.toml")):
+        uri = re.search(r'^s3_uri = "([^"]*)"', cfg.read_text(), re.M)
+        assert uri and uri.group(1) in ("", "s3://foundry-runs-{account}-us-west-2"), (cfg.name, uri and uri.group(1))
+
+
 def test_role_policy_is_exact():
     t = _template()
     t.resource_count_is("AWS::IAM::Role", 1)

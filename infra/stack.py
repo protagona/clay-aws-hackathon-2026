@@ -35,6 +35,8 @@ def bedrock_models(config_dir: Path = CONFIG_DIR) -> tuple[list[str], list[str]]
     return sorted(i for i in ids if i.startswith("us.")), sorted(i for i in ids if not i.startswith("us."))
 
 
+RUNS_BUCKET_PREFIX = "foundry-runs-"  # + <account>-<region>: src/foundry/data/storage.py fills in {account}
+
 class FoundryStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -56,6 +58,9 @@ class FoundryStack(Stack):
 
         bucket = s3.Bucket(
             self, "RunsBucket",
+            # Predictable per account, so the configs name it without being edited: s3_uri = "s3://foundry-runs-
+            # {account}-us-west-2" (the mirror fills in the caller's account and checks it owns the bucket).
+            bucket_name=f"{RUNS_BUCKET_PREFIX}{self.account}-{self.region}",
             server_access_logs_bucket=logs,
             server_access_logs_prefix="runs-bucket/",  # F-010
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
