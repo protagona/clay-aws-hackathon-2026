@@ -1,6 +1,6 @@
 # One code path for the laptop and AWS — Handoff
 
-**Spec:** ./spec.md   **Design:** ./design.md   **Date:** 2026-11-01   **Track:** Standard   **Build:** `9fd8422`, live in the sandbox
+**Spec:** ./spec.md   **Design:** ./design.md   **Date:** 2026-11-01   **Track:** Standard   **Build:** `14e8c38` (HEAD), live in the sandbox
 
 **What shipped:** a feature is now written once for both setups. Services reach state through `state.of(ws)` and build board cards with one builder. Job kinds are declared once, and batches run on one engine orchestrator. Every API test runs on the laptop app and on the cloud app, where each request starts from an empty copy of the data, so a missed cloud step fails CI instead of a deploy.
 
@@ -9,7 +9,9 @@
 - [x] **AC1, the same API tests on both setups:** `tests/backends.py` and the `backend` fixture in `tests/conftest.py`.
   - `test_api.py`, `test_api_contract.py` and `test_api_ports.py` run on both setups: 153 tests in 48 s.
   - Four tests are laptop-only, each with its reason (symlinks, which the cloud's store can't hold; the receiver). `test_single_setup_tests_are_few` caps them at 10.
-  - **Evidence that the net catches a miss:** removing one fetch (`fresh_run` in `run_path`) failed 4 cloud tests, and every laptop test still passed.
+  - **Evidence that the net catches a miss** (`evidence/mutations.txt`): every `fresh_*` / `record_run` call in services was removed one at a time.
+    - Each removal fails a cloud test, except three that are redundant: in the same request, `configs.task_ids` already fetches the projects.
+    - Verify pass 1 found five calls no test reached. Each now has a test: the prompt text lock and run counts, the tool menu, the rubric versions' run counts, and re-importing a trace.
 - [x] **AC2, no cloud code in services:** `test_only_backend_modules_know_the_cloud` passes on the real code. `test_the_backend_check_catches_a_leak` shows each of its three checks reports: a module import, a function-local import of a name, and `.cloud`.
 - [x] **AC3, one state interface:**
   - **The seam:** `services/state.py` (`LocalState`, `of`, `expecting`) and `CloudState`. Every former `cloud_state.*` call, `on(ws)` branch and `ws.cloud` read in services and api goes through the state.
@@ -55,7 +57,7 @@
   - **Cleanup:** the token is revoked. The check's records still need deleting; see Follow-ups.
 
 **Suites:**
-- pytest: 551 passed, 4 skipped (the laptop-only tests on the cloud setup), 4 network tests deselected, in 3 m 33 s.
+- pytest: 560 passed, 4 skipped (the laptop-only tests on the cloud setup), 4 network tests deselected, in 3 m 27 s.
 - The parity tests passed three times in a row.
 - ruff and `tsc` are clean, and gitleaks found no leaks.
 
@@ -68,7 +70,19 @@
   - Pass 2 found 4: the cold hook deleting the project root, re-index versions, batch items not skipped, and the missing push after scoring.
   - Pass 3 found 2: project files in the harness, and config paths in a Lambda. You approved the resolutions on 2026-11-01.
 - **Plan:** self-review.
-- **Verify:** see below.
+- **Verify:** two subagent passes.
+  - **Pass 1** found 2 blockers:
+    1. **AC3 not met:** 5 cloud fetches no test reached. Removing the one in `runs_by_prompt` silently disabled the prompt text lock in AWS. Fixed with tests for each, and the mutation run is recorded.
+    2. **A laptop race:** a run finishing during the board read showed as "interrupted". Reproduced, fixed by snapshotting job liveness before reading, with a regression test.
+  - **Pass 1's minor findings:**
+    - **Fixed:**
+      - the architecture rule's blind spots (`getattr`, `importlib`, `__import__`)
+      - non-ran summary rows now typed
+      - the docs claim about the cold copy, now stating what it covers
+      - the polling test's silent exit
+      - `batch_list` fetching every run unnecessarily
+    - **Noted here:** the rest, under Follow-ups.
+  - **Pass 2:** see the gate record below.
 
 **Specialists consulted:**
 - QA Automation: the harness, mutation checks of the net and of the path fix, and the parity tests.
@@ -90,6 +104,18 @@
   ```
 - **Prompt adb-001's project version:** it moved from 35 to 37 (edit, then restore). Its content is unchanged.
 - **Other test files** (`test_dashboard.py`, `test_prompts.py`, `test_tools.py`) still build only the laptop app. Converting them follows the same pattern.
+
+- **Minor, from Verify pass 1, accepted:**
+  - **Laptop summaries:** they now type their numbers, so an integer score prints as `1.0`, and a missing score as an empty cell instead of `None`.
+  - **Laptop `batch.json` configs:** a config passed as an absolute path inside the project is now recorded relative to the project root.
+  - **Cloud "evaluating" cards:** their `sub` line is now blank, as on the laptop.
+  - **Cloud `batch.json` `runs_dir`:** it now holds the worker's `/tmp` path. The API never exposes it, and laptop batch files always held their own path.
+  - **The harness's worker:** its copy isn't emptied between jobs, and it runs batch items one at a time. So a missed pull inside `workers.*`, or a concurrency race between items, isn't tested.
+  - **`--eval-config` and "skip an already-scored run":** neither is reachable through the cloud API: the API never sends `--eval-config`, and cloud items always run fresh. Both are tested on the laptop engine path, which the cloud now shares.
+  - **Live re-indexing:** it updated 0 cards. A rewrite is shown only by the fake-store tests.
+  - **`CloudState`:** it exposes `store` and `mirror` as attributes. The architecture rule doesn't stop a service from reaching them through `state.of(ws)`; convention does.
+  - **`runs.interrupted`:** it reads `cards_fresh`, a state attribute, by design.
+- **Live after the Verify fixes:** `14e8c38` deployed with its health checks passing. The full live check (AC10) ran on `97f21c6` and `9fd8422`, whose run, scoring, batch and prompt code paths are unchanged by the fixes. (`9fd8422` was amended to `7827571` before pushing, to drop a stray binary, so the code is identical.)
 
 **Risks to watch:**
 - The cloud parameter roughly doubles the API tests' time (now 48 s for the four files).
