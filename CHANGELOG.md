@@ -6,6 +6,11 @@ Each increment's spec, design and verification record is under [docs/eval-sandbo
 
 ### Added
 
+- **Personal deployments in a shared account** ([named-deployments](docs/eval-sandbox/named-deployments/spec.md)):
+  - `scripts/cloud.sh --name <you> …` (or `make … NAME=<you>`) runs each command against your own stacks. No name is the main deployment, unchanged.
+  - Each probe's metric is tagged with its deployment, so each alarm watches its own.
+  - Named deployments reserve no concurrency and add no budget by default. `destroy --data` removes one completely.
+  - `cloud.sh list` shows every deployment in the account.
 - **A Makefile:** `make bootstrap` sets up a workstation from the pinned versions and ends with `make doctor`'s readiness check. `make check` runs lint, types, the Python tests and the web tests; `make` lists everything.
 - **`scripts/cloud.sh reindex`:** rebuilds the board cards stored in the cloud after a card field is added. It's safe beside live work, and safe to re-run.
 - **Batches:**

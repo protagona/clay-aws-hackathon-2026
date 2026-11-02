@@ -73,6 +73,35 @@ python3 foundry-remote.pyz runs
 - `--json` gives the raw API output. Exit codes are in the reference.
 - `cloud.sh deploy` points the operator's own saved login at the new URL. The token stays.
 
+## Personal deployments (several people, one account)
+
+Each participant can have their own deployment in the shared account, next to the team's main one.
+
+```sh
+scripts/cloud.sh --name alice deploy --email alice@example.com   # stacks Foundry-alice-Data and Foundry-alice-App
+scripts/cloud.sh --name alice token add alice                    # every command takes --name (or FOUNDRY_DEPLOYMENT=alice)
+scripts/cloud.sh list                                            # every deployment here: name, URL, build
+scripts/cloud.sh --name alice destroy --data                     # removes alice's deployment completely
+```
+
+- **Names:** 1–24 lowercase letters, digits and single hyphens, starting with a letter. A bad name is refused before anything touches AWS.
+- **Main:** no name, or `--name main`, is the main deployment (`FoundryDataStack`, `FoundryAppStack`), exactly as before. Let one person deploy main. CloudFormation refuses a second update while one runs, but two people redeploying main one after the other still overwrite each other's build.
+- **What a named deployment has of its own:**
+  - its stacks, URL, data, tokens, spend cap and alert email
+  - its own probe, whose metric carries `Deployment=<name>`, so its alarm watches only its own deployment
+- **Lighter defaults:**
+  - no reserved Lambda concurrency (`--concurrency <n>` sets some), so several fit in one account
+  - no account budget (`--budget <usd>` adds one; the budget watches the whole account, so one is enough)
+- **Teardown:**
+  - `destroy` removes the app and keeps the data, as for main.
+  - `destroy --data` removes both stacks, the bucket with every object version, and the table. It asks you to type the deployment's name (`--yes` skips that).
+  - Main refuses `--data`: its data is kept on purpose.
+- **Still shared in the account:**
+  - the CDK bootstrap
+  - the account's Lambda concurrency and other quotas
+  - your own saved CLI login, which each deploy points at the deployment it just deployed (`foundry-remote login` switches back)
+- **Make:** `make deploy NAME=alice`, `make status NAME=alice`, `make logs NAME=alice SERVICE=worker` and `make deployments`.
+
 ## Day to day
 
 | Command | What it does |

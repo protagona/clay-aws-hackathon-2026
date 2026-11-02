@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # The serverless deployment (aws-deploy): one command per operation, in the current credentials' account, us-west-2.
-# Only FoundryDataStack and FoundryAppStack are ever named; the legacy FoundryStack is never touched.
+# Several deployments can share an account: --name <you> (or FOUNDRY_DEPLOYMENT) picks one, with its own stacks
+# Foundry-<you>-Data and Foundry-<you>-App; no name is the main deployment, FoundryDataStack and FoundryAppStack. The
+# legacy FoundryStack is never touched.
 #
+#   scripts/cloud.sh [--name <you>] <command>   # every command below works on that deployment (default: main)
+#   scripts/cloud.sh list                       # every deployment in this account and region
 #   scripts/cloud.sh preflight
 #   scripts/cloud.sh deploy --email <alerts> [--budget <usd>|0] [--cap <usd>|0] [--concurrency <n>|0] [--force]
 #                                                                        (later deploys reuse them)
@@ -13,6 +17,7 @@
 #   scripts/cloud.sh logs api|worker|probe|batch [--since 1h] [--follow]
 #   scripts/cloud.sh stop | start               # the kill switch: no API requests are served while stopped
 #   scripts/cloud.sh destroy [--yes]            # the app stack only; the data stays (spec D4)
+#   scripts/cloud.sh --name <you> destroy --data [--yes]   # a named deployment, whole: its bucket and table too
 #
 # deploy (spec D1-D5, O4): builds the image (CDK_DOCKER: docker, finch or podman), deploys both stacks with the
 # aliases held where they are, then publishes a worker and an api version and checks both (the worker's health
@@ -23,13 +28,26 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 REGION=us-west-2
 export AWS_REGION=$REGION AWS_DEFAULT_REGION=$REGION
-DATA=FoundryDataStack
-APP=FoundryAppStack
-TMP="$(mktemp -d)"
-trap 'rm -rf "${TMP:?}"' EXIT
 
 die() { echo "cloud.sh: $*" >&2; exit 1; }
 say() { echo "▸ $*"; }
+
+# The deployment (named-deployments N1, N2): checked before anything touches AWS, as infra/foundry_cloud/names.py does.
+DEPLOYMENT=${FOUNDRY_DEPLOYMENT:-}
+if [ "${1:-}" = --name ]; then
+  [ $# -ge 2 ] || die "--name <deployment>"
+  DEPLOYMENT=$2; shift 2
+fi
+[ -n "$DEPLOYMENT" ] || DEPLOYMENT=main
+if [ "$DEPLOYMENT" = main ]; then
+  DATA=FoundryDataStack; APP=FoundryAppStack
+else
+  [[ "$DEPLOYMENT" =~ ^[a-z][a-z0-9-]{0,23}$ && "$DEPLOYMENT" != *- && "$DEPLOYMENT" != *--* ]] \
+    || die "deployment name '$DEPLOYMENT': 1-24 lowercase letters, digits and single '-', starting with a letter"
+  DATA="Foundry-$DEPLOYMENT-Data"; APP="Foundry-$DEPLOYMENT-App"
+fi
+TMP="$(mktemp -d)"
+trap 'rm -rf "${TMP:?}"' EXIT
 
 out() {  # out <stack> <output key>: a stack output, or empty
   local v
@@ -213,7 +231,7 @@ cmd_deploy() {
   [ -n "$cap" ] || cap=$(out $DATA CapUsd)
   [ -n "$cap" ] || cap=30
   [ -n "$limit" ] || limit=$(out $DATA ApiConcurrency)
-  [ -n "$limit" ] || limit=20
+  [ -n "$limit" ] || { [ "$DEPLOYMENT" = main ] && limit=20 || limit=0; }  # named: none reserved (N4)
   preflight
   build=$(build_id)
   if stack_exists $APP; then
@@ -224,8 +242,8 @@ cmd_deploy() {
       die "$n job(s) in flight; wait for them, or pass --force (in-flight work finishes on its version)"
     fi
   fi
-  say "deploying build $build (cap \$$cap${budget:+, budget \$$budget})"
-  cdk deploy $DATA $APP --require-approval never -c "email=$email" -c "build=$build" -c "cap=$cap" -c "concurrency=$limit" \
+  say "deploying $DEPLOYMENT: build $build (cap \$$cap${budget:+, budget \$$budget})"
+  cdk deploy $DATA $APP --require-approval never -c "deployment=$DEPLOYMENT" -c "email=$email" -c "build=$build" -c "cap=$cap" -c "concurrency=$limit" \
     ${budget:+-c "budget=$budget"} --parameters "$APP:ApiVersion=$av" --parameters "$APP:WorkerVersion=$wv"
   api=$(out $APP ApiFunction); worker=$(out $APP WorkerFunction); url=$(out $APP Url)
   ops session-key
@@ -244,8 +262,12 @@ cmd_deploy() {
     sleep 2
   done
   [ "$(curl -s --max-time 10 "${url%/}/healthz" || true)" = "ok $build" ] || die "$url/healthz doesn't answer build $build"
+  # It just answered: its probe alarm is OK now, not "missing data" until the next probe (a deploy may have given
+  # the alarm a new metric, as named-deployments N3 did).
+  aws cloudwatch set-alarm-state --alarm-name "$(out $APP ProbeAlarm)" --state-value OK \
+    --state-reason "cloud.sh deploy: /healthz answered build $build" || true
   echo
-  say "serving build $build at $url ($(( $(date +%s) - t0 )) s)"
+  say "$DEPLOYMENT: serving build $build at $url ($(( $(date +%s) - t0 )) s)"
   echo "  first time? add a token: scripts/cloud.sh token add <your name>; then sign in at the URL"
   echo "  CLI: curl -O ${url%/}/cli/foundry-remote.pyz && python3 foundry-remote.pyz login $url <token>"
 }
@@ -254,6 +276,7 @@ cmd_status() {
   local api worker
   stack_exists $APP || die "no $APP in this account/region"
   api=$(out $APP ApiFunction); worker=$(out $APP WorkerFunction)
+  echo "deployment: $DEPLOYMENT ($DATA, $APP)"
   echo "URL:     $(out $APP Url)"
   echo "build:   $(curl -s --max-time 10 "$(out $APP Url)healthz" || echo '(no answer)')"
   echo "api:     live → version $(alias_version "$api"), reserved concurrency $(aws lambda get-function-concurrency --function-name "$api" --query ReservedConcurrentExecutions --output text 2>/dev/null)"
@@ -298,20 +321,56 @@ cmd_start() {
 }
 
 cmd_destroy() {
-  local yes=0 email
-  [ "${1:-}" = --yes ] && yes=1
+  local yes=0 data=0 email
+  for a in "$@"; do
+    case "$a" in --yes) yes=1 ;; --data) data=1 ;; *) die "destroy: unknown option $a" ;; esac
+  done
+  if [ $data = 1 ] && [ "$DEPLOYMENT" = main ]; then  # before any AWS call (named-deployments N5)
+    die "destroy --data: refused for the main deployment, whose data is kept on purpose; name a personal one with --name"
+  fi
+  if [ $data = 1 ]; then
+    stack_exists $DATA || stack_exists $APP || die "no deployment named $DEPLOYMENT here"
+    if [ $yes = 0 ]; then
+      read -r -p "Destroy deployment $DEPLOYMENT completely: $APP and $DATA, with its runs, tokens and bucket? Type its name: " answer
+      [ "$answer" = "$DEPLOYMENT" ] || die "not destroyed"
+    fi
+    email=$(out $DATA AlertEmail)
+    stack_exists $APP && cdk destroy $APP --force -c "deployment=$DEPLOYMENT" -c "email=${email:-x@example.com}"
+    stack_exists $DATA && cdk destroy $DATA --force -c "deployment=$DEPLOYMENT" -c "email=${email:-x@example.com}"
+    say "destroyed deployment $DEPLOYMENT: $APP, $DATA, its bucket (every object version) and its table"
+    return
+  fi
   stack_exists $APP || die "no $APP to destroy"
   if [ $yes = 0 ]; then
     read -r -p "Destroy $APP (functions, URL, workflow, alarms)? The data stays. Type the stack name: " answer
     [ "$answer" = "$APP" ] || die "not destroyed"
   fi
   email=$(out $DATA AlertEmail)
-  cdk destroy $APP --force -c "email=$email"
+  cdk destroy $APP --force -c "deployment=$DEPLOYMENT" -c "email=$email"
   say "destroyed $APP; $DATA (bucket, table, tokens, alerts) is kept. A deploy reattaches it at a new URL."
+}
+
+cmd_list() {  # every deployment in this account and region (named-deployments N6)
+  local stacks name app url build
+  stacks=$(aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE \
+             --query "StackSummaries[?StackName=='FoundryDataStack' || (starts_with(StackName, 'Foundry-') && ends_with(StackName, '-Data'))].StackName" \
+             --output text | tr '\t' '\n' | sort)
+  [ -n "$stacks" ] || { echo "No deployments in this account ($REGION)."; return; }
+  printf "%-26s %-62s %s\n" DEPLOYMENT URL BUILD
+  for s in $stacks; do
+    if [ "$s" = FoundryDataStack ]; then name=main; app=FoundryAppStack; else name=${s#Foundry-}; name=${name%-Data}; app="Foundry-$name-App"; fi
+    if stack_exists "$app"; then
+      url=$(out "$app" Url); build=$(curl -s --max-time 10 "${url%/}/healthz" | sed 's/^ok //' || true)
+    else
+      url="(app stack destroyed; data kept)"; build=""
+    fi
+    printf "%-26s %-62s %s\n" "$name" "$url" "${build:--}"
+  done
 }
 
 case "${1:-}" in
   preflight) preflight ;;
+  list) cmd_list ;;
   deploy) shift; cmd_deploy "$@" ;;
   status) cmd_status ;;
   token)
@@ -328,5 +387,5 @@ case "${1:-}" in
   stop) cmd_stop ;;
   start) cmd_start ;;
   destroy) shift; cmd_destroy "$@" ;;
-  *) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

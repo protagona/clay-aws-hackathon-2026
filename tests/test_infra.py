@@ -264,3 +264,134 @@ def test_cloud_api_and_worker_may_call_the_configured_models_only():  # drafts r
     probe = next(p for p in fns.values() if p.get("ImageConfig", {}).get("Command") == ["foundry.lambda_probe.handler"])
     assert "bedrock" not in json.dumps([p for p in t.find_resources("AWS::IAM::Policy").values()
                                         if {"Ref": probe["Role"]["Fn::GetAtt"][0]} in p["Properties"]["Roles"]])
+
+
+# --- several deployments in one account (named-deployments N1-N5) ---------------------------------------------------
+
+_NAMED: dict = {}
+
+
+def _deployment(name: str) -> tuple[Template, Template]:
+    """The data and app templates of one deployment, synthesized with the CDK app's own naming (cloud_app.py)."""
+    if name not in _NAMED:
+        from foundry_cloud.names import stack_names
+        from foundry_cloud.stacks import FoundryAppStack, FoundryDataStack
+
+        app = cdk.App()
+        env = cdk.Environment(account="111111111111", region="us-west-2")
+        data_name, app_name = stack_names(name)
+        data = FoundryDataStack(app, data_name, email="ops@example.com", api_concurrency=0, deployment=name, env=env)
+        appstack = FoundryAppStack(app, app_name, data=data, build="abc1234", cap_usd=30, deployment=name, env=env)
+        assert (data.stack_name, appstack.stack_name) == (data_name, app_name)
+        _NAMED[name] = (Template.from_stack(data), Template.from_stack(appstack))
+    return _NAMED[name]
+
+
+def test_deployment_names():
+    import pytest
+    from foundry_cloud.names import check, stack_names
+
+    assert stack_names(None) == stack_names("") == stack_names("main") == ("FoundryDataStack", "FoundryAppStack")
+    assert stack_names("alice") == ("Foundry-alice-Data", "Foundry-alice-App")
+    assert stack_names("team-7") == ("Foundry-team-7-Data", "Foundry-team-7-App")
+    for bad in ("Alice", "7up", "a_b", "a.b", "-a", "a-", "a--b", "a" * 25, "a b", "../x"):
+        with pytest.raises(ValueError):
+            check(bad)
+
+
+def test_two_named_deployments_share_no_name_and_watch_their_own_probe():  # N3
+    seen = {}
+    for name in ("alice", "bob"):
+        data, app = _deployment(name)
+        for t in (data, app):
+            text = json.dumps(t.to_json())
+            for prop in ("BucketName", "TableName", "FunctionName", "StateMachineName", "TopicName", "AlarmName",
+                         "LogGroupName", "Name"):  # a fixed physical name would collide across deployments
+                for r in t.to_json()["Resources"].values():
+                    if r["Type"] == "AWS::Lambda::Alias":
+                        continue  # "live" is scoped to its function, not the account
+                    v = r.get("Properties", {}).get(prop)
+                    assert not isinstance(v, str), (name, r["Type"], prop, v)
+            assert {"Key": "deployment", "Value": name} in t.to_json()["Resources"][next(
+                k for k, r in t.to_json()["Resources"].items() if r["Type"] in ("AWS::S3::Bucket", "AWS::Lambda::Function"))
+            ]["Properties"]["Tags"], text[:0]
+        app.has_resource_properties("AWS::CloudWatch::Alarm", {
+            "Namespace": "Foundry/Probe", "MetricName": "Healthy", "Dimensions": [{"Name": "Deployment", "Value": name}]})
+        app.has_resource_properties("AWS::Lambda::Function", {
+            "Environment": {"Variables": Match.object_like({"DEPLOYMENT": name})}})
+        assert data.to_json()["Outputs"]["Deployment"]["Value"] == name
+        seen[name] = True
+    assert seen == {"alice": True, "bob": True}
+
+
+def test_main_keeps_its_names_and_its_data():  # N2, N5
+    data, app = _deployment("main")
+    for kind in ("AWS::S3::Bucket", "AWS::DynamoDB::Table", "AWS::SNS::Topic"):
+        for r in data.find_resources(kind).values():
+            assert r["DeletionPolicy"] == "Retain", kind
+    for r in app.find_resources("AWS::Logs::LogGroup").values():
+        assert r["DeletionPolicy"] == "Retain"
+    assert not data.find_resources("Custom::S3AutoDeleteObjects")
+    app.has_resource_properties("AWS::CloudWatch::Alarm", {
+        "MetricName": "Healthy", "Dimensions": [{"Name": "Deployment", "Value": "main"}]})
+
+
+def test_a_named_deployment_is_removed_whole():  # N4, N5
+    data, app = _deployment("alice")
+    for kind in ("AWS::S3::Bucket", "AWS::DynamoDB::Table", "AWS::SNS::Topic"):
+        for r in data.find_resources(kind).values():
+            assert r["DeletionPolicy"] == "Delete", kind
+    for r in app.find_resources("AWS::Logs::LogGroup").values():
+        assert r["DeletionPolicy"] == "Delete"
+    assert data.find_resources("Custom::S3AutoDeleteObjects")  # empties the bucket (every version) before deleting it
+    data.resource_count_is("AWS::Budgets::Budget", 0)  # no account budget unless asked for
+    assert data.to_json()["Outputs"]["ApiConcurrency"]["Value"] == "0"
+
+
+def _cloud_sh(*args, env=None):
+    """scripts/cloud.sh with an `aws` on PATH that records any call (so a refusal can be shown to come first)."""
+    import os
+    import subprocess
+    import tempfile
+
+    root = Path(__file__).resolve().parents[1]
+    with tempfile.TemporaryDirectory() as d:
+        log = Path(d) / "aws-calls"
+        (Path(d) / "aws").write_text(f"#!/bin/sh\necho \"$@\" >> {log}\nexit 1\n")
+        (Path(d) / "aws").chmod(0o755)
+        r = subprocess.run(["bash", str(root / "scripts/cloud.sh"), *args], capture_output=True, text=True,
+                           env={**os.environ, "PATH": f"{d}:/usr/bin:/bin", **(env or {})}, timeout=60)
+        return r.returncode, r.stderr, log.read_text() if log.exists() else ""
+
+
+def test_cloud_sh_refuses_a_bad_name_and_main_data_teardown_before_calling_aws():  # N1, N5
+    code, err, calls = _cloud_sh("--name", "Bad_Name", "status")
+    assert code == 1 and "deployment name 'Bad_Name'" in err and not calls
+    code, err, calls = _cloud_sh("status", env={"FOUNDRY_DEPLOYMENT": "a--b"})
+    assert code == 1 and "deployment name 'a--b'" in err and not calls
+    code, err, calls = _cloud_sh("destroy", "--data", "--yes")
+    assert code == 1 and "refused for the main deployment" in err and not calls
+    code, err, calls = _cloud_sh("--name", "main", "destroy", "--data", "--yes")  # "main" is the main deployment
+    assert code == 1 and "refused for the main deployment" in err and not calls
+    code, err, calls = _cloud_sh("--name", "alice", "status")  # a valid name goes on to AWS (the stub says no)
+    assert code == 1 and "no Foundry-alice-App" in err and calls
+
+
+def test_the_probe_reports_its_deployment(monkeypatch):  # N3
+    import sys as _sys
+    import types
+
+    sent = {}
+
+    class CW:
+        def put_metric_data(self, **kw):
+            sent.update(kw)
+
+    monkeypatch.setitem(_sys.modules, "boto3", types.SimpleNamespace(client=lambda name: CW()))
+    monkeypatch.setenv("PROBE_URL", "http://127.0.0.1:9")
+    monkeypatch.setenv("DEPLOYMENT", "alice")
+    from foundry import lambda_probe
+
+    assert lambda_probe.handler({}, None) == {"healthy": False}
+    (m,) = sent["MetricData"]
+    assert sent["Namespace"] == "Foundry/Probe" and m["Dimensions"] == [{"Name": "Deployment", "Value": "alice"}]

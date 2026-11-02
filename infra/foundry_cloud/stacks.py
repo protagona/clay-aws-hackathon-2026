@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from foundry_cloud.names import MAIN
 from aws_cdk import CfnOutput, CfnParameter, Duration, RemovalPolicy, Stack, Tags
 from aws_cdk import aws_budgets as budgets
 from aws_cdk import aws_cloudwatch as cw
@@ -45,18 +46,23 @@ TABLE_ITEM_ACTIONS = ["dynamodb:GetItem", "dynamodb:BatchGetItem", "dynamodb:Que
                       "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:ConditionCheckItem"]
 
 
-def _tag(stack: Stack) -> None:
+def _tag(stack: Stack, deployment: str) -> None:
     Tags.of(stack).add("project", "clay-foundry")
     Tags.of(stack).add("owner", "team-46")
+    Tags.of(stack).add("deployment", deployment)
 
 
 class FoundryDataStack(Stack):
     def __init__(self, scope: Construct, cid: str, *, email: str, budget_usd: float | None = None,
-                 cap_usd: float | None = 30.0, api_concurrency: int = 20, **kw) -> None:
+                 cap_usd: float | None = 30.0, api_concurrency: int = 20, deployment: str = MAIN, **kw) -> None:
         super().__init__(scope, cid, **kw)
+        # Main's data outlives its stacks (spec D4); a named (personal) deployment is removed whole by
+        # `cloud.sh destroy --data` (named-deployments N5), bucket versions included.
+        keep = deployment == MAIN
+        policy = RemovalPolicy.RETAIN if keep else RemovalPolicy.DESTROY
         self.bucket = s3.Bucket(
             self, "State", versioned=True, block_public_access=s3.BlockPublicAccess.BLOCK_ALL, enforce_ssl=True,
-            encryption=s3.BucketEncryption.S3_MANAGED, removal_policy=RemovalPolicy.RETAIN,
+            encryption=s3.BucketEncryption.S3_MANAGED, removal_policy=policy, auto_delete_objects=not keep,
             # The browser POSTs uploads straight here (presigned, ADR-10); nothing else is allowed cross-origin.
             cors=[s3.CorsRule(allowed_methods=[s3.HttpMethods.POST], allowed_origins=["*"], allowed_headers=["*"])],
             lifecycle_rules=[
@@ -71,9 +77,9 @@ class FoundryDataStack(Stack):
             billing_mode=ddb.BillingMode.PAY_PER_REQUEST, time_to_live_attribute="ttl",
             point_in_time_recovery_specification=ddb.PointInTimeRecoverySpecification(
                 point_in_time_recovery_enabled=True, recovery_period_in_days=35),
-            removal_policy=RemovalPolicy.RETAIN)
+            removal_policy=policy)
         self.topic = sns.Topic(self, "Alerts", display_name="Foundry alerts")
-        self.topic.apply_removal_policy(RemovalPolicy.RETAIN)
+        self.topic.apply_removal_policy(policy)
         self.topic.add_subscription(subs.EmailSubscription(email))
         if budget_usd:  # account-wide: tag filters don't work in an organization member account (spec O2)
             budgets.CfnBudget(self, "Budget", budget=budgets.CfnBudget.BudgetDataProperty(
@@ -93,12 +99,13 @@ class FoundryDataStack(Stack):
         CfnOutput(self, "CapUsd", value="0" if cap_usd is None else f"{cap_usd:g}")
         # Spec A6's function-level limit, applied by cloud.sh (it checks the account can spare it) and kept here.
         CfnOutput(self, "ApiConcurrency", value=str(api_concurrency))
-        _tag(self)
+        CfnOutput(self, "Deployment", value=deployment)
+        _tag(self, deployment)
 
 
 class FoundryAppStack(Stack):
     def __init__(self, scope: Construct, cid: str, *, data: FoundryDataStack, build: str = "dev",
-                 cap_usd: float | None = 30.0, **kw) -> None:
+                 cap_usd: float | None = 30.0, deployment: str = MAIN, **kw) -> None:
         super().__init__(scope, cid, **kw)
         bucket, table, topic = data.bucket, data.table, data.topic
         api_version = CfnParameter(self, "ApiVersion", default="$LATEST",
@@ -111,8 +118,8 @@ class FoundryAppStack(Stack):
                                                         platform=ecr_assets.Platform.LINUX_ARM64)
 
         def log_group(name: str) -> logs.LogGroup:
-            return logs.LogGroup(self, f"{name}Logs", retention=logs.RetentionDays.ONE_MONTH,
-                                 removal_policy=RemovalPolicy.RETAIN)  # kept 30 days after a destroy too (O1)
+            return logs.LogGroup(self, f"{name}Logs", retention=logs.RetentionDays.ONE_MONTH,  # main's are kept 30 days
+                                 removal_policy=RemovalPolicy.RETAIN if deployment == MAIN else RemovalPolicy.DESTROY)
 
         env = {"STATE_BUCKET": bucket.bucket_name, "TABLE": table.table_name, "FOUNDRY_BUILD": build}
 
@@ -166,7 +173,7 @@ class FoundryAppStack(Stack):
         # --- probe and alarms (spec O2, ADR-12) ------------------------------------------------------------------
         probe = lam.DockerImageFunction(
             self, "Probe", code=image("foundry.lambda_probe.handler"), architecture=lam.Architecture.ARM_64,
-            memory_size=256, timeout=Duration.seconds(30), environment={"PROBE_URL": url.url},
+            memory_size=256, timeout=Duration.seconds(30), environment={"PROBE_URL": url.url, "DEPLOYMENT": deployment},
             log_group=log_group("Probe"))
         probe.add_to_role_policy(iam.PolicyStatement(actions=["cloudwatch:PutMetricData"], resources=["*"],
                                                      conditions={"StringEquals": {"cloudwatch:namespace": "Foundry/Probe"}}))
@@ -189,7 +196,7 @@ class FoundryAppStack(Stack):
                           treat_missing_data=cw.TreatMissingData.NOT_BREACHING)
         down = cw.Alarm(self, "ProbeFailed", alarm_description="The public /healthz failed twice in 10 minutes",
                         metric=cw.Metric(namespace="Foundry/Probe", metric_name="Healthy", statistic="Minimum",
-                                         period=Duration.minutes(5)),
+                                         dimensions_map={"Deployment": deployment}, period=Duration.minutes(5)),
                         threshold=1, evaluation_periods=2, comparison_operator=cw.ComparisonOperator.LESS_THAN_THRESHOLD,
                         treat_missing_data=cw.TreatMissingData.BREACHING)
         busy = cw.Alarm(self, "ApiInvocations", alarm_description="Over 5,000 API requests in 15 minutes (a cost guard)",
@@ -203,9 +210,10 @@ class FoundryAppStack(Stack):
         for name, value in (("Url", url.url), ("ApiFunction", api.function_name), ("WorkerFunction", worker.function_name),
                             ("StateMachine", machine.state_machine_arn), ("ProbeRule", rule.rule_name),
                             ("ProbeAlarm", down.alarm_name), ("Build", build),
-                            ("Cap", "" if cap_usd is None else f"{cap_usd:g}"), ("BatchLogGroup", machine_logs.log_group_name)):
+                            ("Cap", "" if cap_usd is None else f"{cap_usd:g}"), ("BatchLogGroup", machine_logs.log_group_name),
+                            ("Deployment", deployment)):
             CfnOutput(self, name, value=value)
-        _tag(self)
+        _tag(self, deployment)
 
 
 def _mib(n: int):

@@ -11,7 +11,7 @@ export PATH := $(or $(ASDF_DATA_DIR),$(HOME)/.asdf)/shims:$(PATH)
 RUFF := uvx ruff@0.14.0
 ASDF_PLUGINS := uv nodejs awscli
 
-.PHONY: help bootstrap doctor sync test test-all lint typecheck web-test web-build types check ui deploy status logs
+.PHONY: help bootstrap doctor sync test test-all lint typecheck web-test web-build types check ui deploy status logs deployments
 
 help: ## List the targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-z-]+:.*## / {printf "  \033[1m%-11s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -78,11 +78,16 @@ check: lint typecheck test web-test ## Everything worth running before a commit
 ui: ## The local UI and API on http://127.0.0.1:8765
 	uv run foundry ui
 
-deploy: ## Deploy to AWS (scripts/cloud.sh deploy; pass options with ARGS="--email you@example.com")
-	scripts/cloud.sh deploy $(ARGS)
+CLOUD := scripts/cloud.sh $(if $(NAME),--name $(NAME))
 
-status: ## The deployment's URL, build and spend cap
-	scripts/cloud.sh status
+deploy: ## Deploy to AWS: the main deployment, or yours with NAME=<you> (options: ARGS="--email you@example.com")
+	$(CLOUD) deploy $(ARGS)
 
-logs: ## CloudWatch logs: make logs SERVICE=api|worker|probe|batch [ARGS="--since 2h"]
-	scripts/cloud.sh logs $(or $(SERVICE),api) $(ARGS)
+status: ## A deployment's URL, build and spend cap (NAME=<you> for yours)
+	$(CLOUD) status
+
+logs: ## CloudWatch logs: make logs [NAME=<you>] SERVICE=api|worker|probe|batch [ARGS="--since 2h"]
+	$(CLOUD) logs $(or $(SERVICE),api) $(ARGS)
+
+deployments: ## Every deployment in the AWS account
+	scripts/cloud.sh list

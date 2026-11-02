@@ -351,6 +351,8 @@ scripts/cloud.sh token add <name>                 # prints the token once; send 
 
 Anyone with a token can also use the API from a terminal without a clone: the deployment serves a one-file client at `/cli/foundry-remote.pyz` (from a clone: `uv run foundry remote`). Its commands are in the [CLI reference](docs/cli.md#foundry-remote-reference).
 
+Several people can deploy into one account: `scripts/cloud.sh --name <you> deploy` gives you your own deployment next to the team's main one ([Personal deployments](docs/deploy.md#personal-deployments-several-people-one-account)).
+
 The runbook covers first deploys, day-to-day commands, alerts, restoring data and troubleshooting: [docs/deploy.md](docs/deploy.md). The spec, design and verification record are in [docs/eval-sandbox/aws-deploy/](docs/eval-sandbox/aws-deploy/handoff.md).
 
 ## Deploy (live checks, the legacy stack)
