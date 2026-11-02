@@ -457,7 +457,8 @@ Tool versions are pinned in `.tool-versions` (uv, Node, AWS CLI) and `.python-ve
 
 `make` lists the day-to-day targets:
 - `make check` runs lint, the type check, the Python tests and the web tests.
-- `make test-all` adds the tests that need internet, as CI does.
+- `make test-all` adds the tests that need internet.
+- CI (`.github/workflows/ci.yml`) runs the same checks on every push: `make lint`, every Python test (internet ones included), and the web tests, type check and build. It also checks that the committed web bundle matches its source.
 - `make ui`, `make types`, `make web-build`, and `make deploy` / `status` / `logs` pass through to `scripts/cloud.sh`.
 
 Python comes from uv rather than asdf, so nothing needs compiling. asdf would build CPython from source, and 3.12 doesn't build against Homebrew's OpenSSL 4.
