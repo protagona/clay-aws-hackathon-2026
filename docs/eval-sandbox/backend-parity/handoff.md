@@ -1,6 +1,6 @@
 # One code path for the laptop and AWS — Handoff
 
-**Spec:** ./spec.md   **Design:** ./design.md   **Date:** 2026-11-01   **Track:** Standard   **Build:** `14e8c38` (HEAD), live in the sandbox
+**Spec:** ./spec.md   **Design:** ./design.md   **Date:** 2026-11-01   **Track:** Standard   **Build:** `14e8c38`, live in the sandbox (later commits change only tests and docs)
 
 **What shipped:** a feature is now written once for both setups. Services reach state through `state.of(ws)` and build board cards with one builder. Job kinds are declared once, and batches run on one engine orchestrator. Every API test runs on the laptop app and on the cloud app, where each request starts from an empty copy of the data, so a missed cloud step fails CI instead of a deploy.
 
@@ -86,7 +86,11 @@
     - **Fixed:** `test_every_prompt_write_is_read_back_by_a_fresh_request` covers create, edit, expected steps, new version and archive, each read back by a cold request. `test_a_write_from_a_stale_page_is_refused` checks every write route's version check.
     - **Write-side mutation run** (`evidence/mutations-writes.txt`): all 16 removals of `project_write` and `state.expecting` are caught.
     - The pass ran out of disk partway, and you freed space.
-  - **Pass 3:** see below.
+  - **Pass 3:** no blockers. It checked every write route, re-checked the three redundant reads, and ran its own worker-side mutations. Its two minor findings both predate this change:
+    - the cloud worker's publish of a refreshed tool listing has no test
+    - a cloud batch item whose run exits 2 after the first push can keep a "running" card
+
+    Both are under Follow-ups.
 
 **Specialists consulted:**
 - QA Automation: the harness, mutation checks of the net and of the path fix, and the parity tests.
@@ -120,6 +124,10 @@
   - **`CloudState`:** it exposes `store` and `mirror` as attributes. The architecture rule doesn't stop a service from reaching them through `state.of(ws)`; convention does.
   - **`runs.interrupted`:** it reads `cards_fresh`, a state attribute, by design.
 - **Live after the Verify fixes:** `14e8c38` deployed with its health checks passing. The full live check (AC10) ran on `97f21c6` and `9fd8422`, whose run, scoring, batch and prompt code paths are unchanged by the fixes. (`9fd8422` was amended to `7827571` before pushing, to drop a stray binary, so the code is identical.)
+
+- **From Verify pass 3:**
+  - Add a cloud test that runs a `tools` job through the worker and reads the listing back.
+  - Record a cloud batch item's run once more when it ends in error, not only when it ran.
 
 **Risks to watch:**
 - The cloud parameter roughly doubles the API tests' time (now 48 s for the four files).
