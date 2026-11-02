@@ -1,7 +1,7 @@
 # One code path for the laptop and AWS — Spec
 
 **Track:** Standard   **Product stage:** Introduction
-**Status:** Agreed   **Last updated:** 2026-11-01
+**Status:** Built   **Last updated:** 2026-11-01
 
 ## Problem
 
