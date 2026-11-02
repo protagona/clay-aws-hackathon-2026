@@ -111,7 +111,10 @@
   ! cd /Users/mpereira/Extra/repos/protagona/clay-aws-hackathon-2026 && PATH="$HOME/.asdf/shims:$PATH" AWS_PROFILE=protagona-sandbox-1 AWS_REGION=us-west-2 uv run python /private/tmp/claude-501/-Users-mpereira-Extra-repos-protagona-clay-aws-hackathon-2026/d98dcd93-7759-46cf-9061-cdc910349cc1/scratchpad/cleanup.py /private/tmp/claude-501/-Users-mpereira-Extra-repos-protagona-clay-aws-hackathon-2026/d98dcd93-7759-46cf-9061-cdc910349cc1/scratchpad/parity/cleanup-manifest.json
   ```
 - **Prompt adb-001's project version:** it moved from 35 to 37 (edit, then restore). Its content is unchanged.
-- **Other test files** (`test_dashboard.py`, `test_prompts.py`, `test_tools.py`) still build only the laptop app. Converting them follows the same pattern.
+- **Other test files:** `test_dashboard.py`, `test_prompts.py` and `test_tools.py` were converted later the same day.
+  - Their API tests now run on both setups.
+  - One more test is laptop-only: the prompt store's lock file and hand-edited bytes.
+  - In total, 6 single-setup tests, against the cap of 10.
 
 - **Minor, from Verify pass 1, accepted:**
   - **Laptop summaries:** they now type their numbers, so an integer score prints as `1.0`, and a missing score as an empty cell instead of `None`.

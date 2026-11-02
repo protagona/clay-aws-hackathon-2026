@@ -6,19 +6,13 @@ import shutil
 import pytest
 
 from conftest import FIXTURES, ROOT
-from fastapi.testclient import TestClient
 from eval_helpers import eval_config, load
 
 from foundry.contract import Step
 from foundry.engine.evaluate.evaluate import evaluate
-from foundry.server import create_app
 from foundry.services.stats import MAX_COLOURED, build
 
 BASE = "http://127.0.0.1:8765"
-
-
-def _client(runs):
-    return TestClient(create_app(runs, ROOT, port=8765), base_url=BASE, follow_redirects=False)
 
 
 def _seed(runs, name, as_=None, model=None, prompt=None):
@@ -88,14 +82,14 @@ def test_hostile_scores_are_skipped_not_fatal():  # D7
     assert d["criteria"] == [] and d["missed"] == [] and d["kpis"]["spent"] == 0.1
 
 
-def test_dashboard_from_real_runs(tmp_path):  # D1, D6 (increment 16: through /api, was a server-rendered page)
-    runs = tmp_path / "runs"
-    runs.mkdir()
+def test_dashboard_from_real_runs(backend, tmp_path):  # D1, D6 (increment 16: through /api, was a server-rendered page)
+    runs = backend.runs_dir
     clean = _seed(runs, "clean")
     _seed(runs, "recovered", model="other-model")
     _seed(runs, "failed")
     evaluate(clean, load(eval_config(tmp_path / "e")))
-    body = _client(runs).get("/api/dashboard?rubric=all").json()  # all runs, incl. unscored (default: active only)
+    backend.sync()
+    body = backend.client.get("/api/dashboard?rubric=all").json()  # all runs, incl. unscored (default: active only)
     assert body["d"]["kpis"]["runs"] == 3 and body["d"]["kpis"]["scored"] == 1
     assert {m["model"] for m in body["d"]["leaderboard"]} == {"scripted-a", "other-model"}
     assert any(p["run_id"] == "fixture-clean" for p in body["d"]["scatter"]["dots"])
@@ -105,14 +99,13 @@ def test_dashboard_from_real_runs(tmp_path):  # D1, D6 (increment 16: through /a
 # (Vitest "key numbers follow the model filter"); /api/runs returns every run.
 
 
-def test_empty_and_hostile_runs(tmp_path):  # D7
-    runs = tmp_path / "runs"
-    c = _client(runs)
+def test_empty_and_hostile_runs(backend):  # D7
+    runs, c = backend.runs_dir, backend.client
     assert c.get("/api/dashboard").json()["total_runs"] == 0
-    runs.mkdir()
     _seed(runs, "hostile", model="<img src=x onerror=alert(1)>")
     (runs / "broken").mkdir()
     (runs / "broken" / "run.json").write_text("{not json")
+    backend.sync()
     r = c.get("/api/dashboard?rubric=all")
     assert r.status_code == 200 and r.headers["content-type"] == "application/json"  # the name is data, never HTML
     assert r.json()["d"]["leaderboard"][0]["model"] == "<img src=x onerror=alert(1)>"
@@ -127,11 +120,10 @@ def test_pipeline_is_its_own_row():  # increment 7, S2
     assert {p["model"] for p in d["scatter"]["dots"]} == {"kimi", "kimi · pipeline"}
 
 
-def test_filter_by_rubric(tmp_path):  # increment 8, T3
+def test_filter_by_rubric(backend, tmp_path):  # increment 8, T3
     import hashlib
 
-    runs = tmp_path / "runs"
-    runs.mkdir()
+    runs = backend.runs_dir
     for name in ("clean", "recovered"):
         evaluate(_seed(runs, name), load(eval_config(tmp_path / f"e-{name}")))
     # The recovered run was scored with another rubric: its own rubric.json copy and the sha in scores.json agree.
@@ -143,7 +135,8 @@ def test_filter_by_rubric(tmp_path):  # increment 8, T3
     sc.update(rubric_sha256=other_sha, rubric_id_loaded="clay-adb", rubric_version="1.0")
     (rec / "scores.json").write_text(json.dumps(sc))
     _seed(runs, "failed")  # unscored
-    c = _client(runs)
+    backend.sync()
+    c = backend.client
     active = hashlib.sha256((ROOT / "tasks/adb/rubric.json").read_bytes()).hexdigest()
     default = c.get("/api/dashboard").json()
     assert default["d"]["kpis"]["runs"] == 1 and default["mixed"] is False  # only the active rubric's run
@@ -156,13 +149,11 @@ def test_filter_by_rubric(tmp_path):  # increment 8, T3
     assert junk["d"]["kpis"]["runs"] == 1 and junk["rubric_choice"] == "active"
 
 
-def test_empty_state_right_after_an_activation(tmp_path):  # T3: the active rubric has scored nothing yet
-    runs = tmp_path / "runs"
-    runs.mkdir()
-    evaluate(_seed(runs, "clean"), load(eval_config(tmp_path / "e")))
-    root = tmp_path / "proj"
-    shutil.copytree(ROOT / "tasks", root / "tasks")
-    shutil.copytree(ROOT / "config", root / "config")
+def test_empty_state_right_after_an_activation(backend, tmp_path):  # T3: the active rubric has scored nothing yet
+    evaluate(_seed(backend.runs_dir, "clean"), load(eval_config(tmp_path / "e")))
+    backend.sync()
+    root = backend.project
     (root / "tasks/adb/rubric.json").write_text((root / "tasks/adb/rubric.json").read_text().replace("0.1", "0.2"))
-    body = TestClient(create_app(runs, root, port=8765), base_url=BASE).get("/api/dashboard").json()
+    backend.sync_project()
+    body = backend.client.get("/api/dashboard").json()
     assert body["d"]["kpis"]["runs"] == 0 and body["total_runs"] == 1  # the page shows its "Show all runs" state

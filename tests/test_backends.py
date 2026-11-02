@@ -8,7 +8,8 @@ import pytest
 from conftest import ROOT
 from harness_helpers import write_config
 
-CONVERTED = ["test_api.py", "test_api_contract.py", "test_api_ports.py", "test_backends.py"]
+CONVERTED = ["test_api.py", "test_api_contract.py", "test_api_ports.py", "test_backends.py", "test_prompts.py",
+             "test_dashboard.py", "test_tools.py"]
 MAX_SINGLE_SETUP = 10
 
 

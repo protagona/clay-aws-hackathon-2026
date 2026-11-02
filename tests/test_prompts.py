@@ -139,26 +139,14 @@ def test_archived_flag_is_exactly_true(store):
 # --- the API (P1-P4, P6, P7, P10, P12), through the real app on a copy of the project -----------------------------
 
 from conftest import FIXTURES  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-
-from foundry.server import create_app  # noqa: E402
-
-BASE = "http://127.0.0.1:8765"
 
 
 @pytest.fixture
-def api(tmp_path, monkeypatch):
-    root = tmp_path / "proj"
-    shutil.copytree(ROOT / "tasks", root / "tasks", ignore=shutil.ignore_patterns("drafts", "sources"))
-    shutil.copytree(ROOT / "config", root / "config")
-    monkeypatch.setenv("FOUNDRY_HOME", str(root))
-    runs = tmp_path / "runs"
-    runs.mkdir()
-    shutil.copytree(FIXTURES / "clean", runs / "fixture-clean")  # a run of adb-001
-    app = create_app(runs, root, port=8765)
-    c = TestClient(app, base_url=BASE, follow_redirects=False)
-    csrf = c.get("/api/session").json()["csrf"]
-    return app, c, {"x-csrf-token": csrf}, root
+def api(backend, monkeypatch):
+    """The app on both setups (tests/backends.py) with a run of adb-001; (harness, client, headers, project root)."""
+    monkeypatch.setenv("FOUNDRY_HOME", str(backend.project))
+    backend.seed("clean")  # a run of adb-001
+    return backend, backend.client, backend.headers(), backend.project
 
 
 def test_prompts_list_counts_and_create(api):  # P1, P2, P3
@@ -166,7 +154,7 @@ def test_prompts_list_counts_and_create(api):  # P1, P2, P3
     body = c.get("/api/prompts").json()
     rows = {p["prompt_id"]: p for p in body["prompts"]}
     assert len(rows) == 6 and rows["adb-001"]["runs"] == 1 and rows["adb-002"]["runs"] == 0
-    assert rows["adb-001"]["stages"] and body["next_id"] == "adb-007" and body["root_name"] == "proj"
+    assert rows["adb-001"]["stages"] and body["next_id"] == "adb-007" and body["root_name"] == root_name(api[0])
     r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-007", "prompt": "Map mangroves."})
     assert r.status_code == 201 and r.json() == {"prompt_id": "adb-007"}
     assert "adb-007" in c.get("/api/session").json()["prompts"]
@@ -199,6 +187,7 @@ def test_archive_hides_from_session_and_refuses_runs(api):  # P7
     r = c.post("/api/batches", headers=h, json={"config": "offline", "prompts": ["adb-002"], "max_cost": 1})
     assert r.status_code == 400 and "archived" in r.json()["error"]
     from foundry.data.tasks import load_prompts
+    api[0].pull_project()
     assert any(p.prompt_id == "adb-002" for p in load_prompts("adb"))  # the CLI still resolves it (FOUNDRY_HOME copy)
     assert c.post("/api/prompts/adb-002/archive", headers=h, json={"archived": False}).status_code == 200
     assert "adb-002" in c.get("/api/session").json()["prompts"]
@@ -214,8 +203,8 @@ def test_scripted_config_without_script_refused(api):  # P10
 
 
 def test_steps_through_api_and_tools(api):  # P8, P9
-    app, c, h, _ = api
-    (app.state.ui.runs_dir / ".ui-tools.json").write_text('{"listed_at": "x", "servers": [], "tools": []}')  # no listing job
+    h_, c, h, _ = api
+    h_.set_tool_cache({"listed_at": "x", "servers": [], "tools": []})  # no listing job
     tools = c.get("/api/prompts/tools").json()["tools"]  # increment 15: objects, from traces here
     assert any(t["name"] == "search_datasets" and t["server"] == "roda" and t["runs"] for t in tools)
     r = c.put("/api/prompts/adb-006/stages", headers=h, json={"stages": [["search_datasets"], ["roda/get_dataset_details"]]})
@@ -234,10 +223,16 @@ def test_prompts_must_deny(api):  # P12
         assert c.put(f"/api/prompts/{bad}", headers=h, json={"prompt": "z"}).status_code in (404, 405)
     assert c.get("/api/prompts?task=../etc").status_code == 400
     (root / "tasks/adb/prompts.jsonl").write_text((root / "tasks/adb/prompts.jsonl").read_text() + "{broken\n")
+    api[0].sync_project()
     r = c.get("/api/prompts")
-    assert r.status_code == 400 and "tasks/adb/prompts.jsonl:7" in r.json()["error"] and str(root) not in r.text
+    server_root = str(api[0].ws.root)
+    assert r.status_code == 400 and "tasks/adb/prompts.jsonl:7" in r.json()["error"] and server_root not in r.text
     r = c.post("/api/runs", headers=h, json={"prompt_id": "adb-001", "config": "offline"})
-    assert r.status_code == 400 and str(root) not in r.text
+    assert r.status_code == 400 and server_root not in r.text
+
+
+def root_name(h) -> str:
+    return h.ws.root.name
 
 
 def _run(runs: Path, name: str, prompt_id: str, started: str, rubric_sha: str | None = None) -> None:
@@ -253,10 +248,11 @@ def _run(runs: Path, name: str, prompt_id: str, started: str, rubric_sha: str | 
 
 
 def test_prompt_view_runs_latest_20(api):  # P4: newest first, at most 20, with the total
-    app, c, _, _ = api
-    runs = app.state.ui.runs_dir
+    h_, c, _, _ = api
+    runs = h_.runs_dir
     for i in range(22):
         _run(runs, f"r{i:02d}", "adb-003", f"2026-10-{(i % 28) + 1:02d}T10:00:00Z")
+    h_.sync()
     d = c.get("/api/prompts/adb-003").json()
     assert d["runs_total"] == 22 and len(d["runs"]) == 20
     assert [r["started_at"] for r in d["runs"]] == sorted((r["started_at"] for r in d["runs"]), reverse=True)
@@ -266,11 +262,12 @@ def test_prompt_view_runs_latest_20(api):  # P4: newest first, at most 20, with 
 def test_prompts_mean_uses_active_rubric_only(api):  # P2: a run scored with another rubric counts as a run, not in the mean
     from foundry.engine.evaluate.evaluate import evaluate
 
-    app, c, _, _ = api
-    runs = app.state.ui.runs_dir
+    h_, c, _, _ = api
+    runs = h_.runs_dir
     from eval_helpers import eval_config, load
     evaluate(runs / "fixture-clean", load(eval_config(runs.parent / "e")))
     _run(runs, "other-rubric", "adb-001", "2026-10-30T10:00:00Z", rubric_sha="0" * 64)
+    h_.sync()
     row = next(p for p in c.get("/api/prompts").json()["prompts"] if p["prompt_id"] == "adb-001")
     shares = {r["run_id"]: r["kpi"]["overall"] for r in c.get("/api/runs").json()["runs"]}
     assert row["runs"] == 2 and row["scored"] == 1 and shares["other-rubric"] is None
@@ -278,16 +275,17 @@ def test_prompts_mean_uses_active_rubric_only(api):  # P2: a run scored with ano
 
 
 def test_scripted_config_with_script_allowed(api):  # P10, the positive case: the offline config has adb-001's script
-    app, c, h, _ = api
+    h_, c, h, _ = api
     r = c.post("/api/runs", headers=h, json={"prompt_id": "adb-001", "config": "offline"})
     assert r.status_code == 201, r.text
-    (job,) = app.state.ui.jobs.values()
-    job.proc.kill()  # the check is what's under test, not the run itself
-    job.proc.wait(10)
+    for job in getattr(h_.ws, "jobs", {}).values():  # the check is what's under test, not the run (a laptop's process)
+        job.proc.kill()
+        job.proc.wait(10)
 
 
-def test_prompts_api_lock_bytes_echo_and_origin(api):  # P11, P12 through the API
-    app, c, h, root = api
+@pytest.mark.laptop_only("the prompt store's lock file and hand-edited project bytes: the cloud's write lease and pushed versions do that job")
+def test_prompts_api_lock_and_bytes(api):  # P11 through the API
+    _, c, h, root = api
     path = root / "tasks/adb/prompts.jsonl"
     (root / "tasks/adb/.prompts.lock").write_text(str(os.getpid()))
     r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-007", "prompt": "x"})
@@ -299,6 +297,10 @@ def test_prompts_api_lock_bytes_echo_and_origin(api):  # P11, P12 through the AP
     assert c.post("/api/prompts/adb-002/archive", headers=h, json={"archived": True}).status_code == 400
     assert path.read_bytes() == broken
     path.write_bytes(before)
+
+
+def test_prompts_api_echo_origin_host_and_surrogates(api):  # P12 through the API, on both setups
+    _, c, h, _ = api
     r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-007", "prompt": "<script>alert(1)</script>"})
     assert r.status_code == 201
     r = c.get("/api/prompts/adb-007")
