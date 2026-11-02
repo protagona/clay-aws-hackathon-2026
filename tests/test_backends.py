@@ -3,6 +3,8 @@ by each setup's own machinery; and the rule that single-setup tests stay few (sp
 
 import ast
 
+import pytest
+
 from conftest import ROOT
 from harness_helpers import write_config
 
@@ -382,3 +384,64 @@ def test_a_run_finishing_while_the_board_is_read_is_not_a_crash(tmp_path, monkey
         assert card["status"] == "running" and "reason" not in card
     finally:
         proc.kill()
+
+
+# --- every project write reaches the store (Verify pass 2: a write that skipped project_write passed every test) ---
+
+
+def test_every_prompt_write_is_read_back_by_a_fresh_request(backend):
+    """Create, edit, expected steps, new version, archive: each is read back by the next request, which on the cloud
+    starts from an empty copy, so a write that never left the instance (no project_write) fails here."""
+    h = backend
+    c, hd = h.client, h.headers()
+
+    def prompt(pid):
+        return c.get(f"/api/prompts/{pid}?task=adb").json()["prompt"]
+
+    pid = c.get("/api/prompts?task=adb").json()["next_id"]
+    r = c.post("/api/prompts", headers=hd, json={"task": "adb", "prompt_id": pid, "prompt": "Map wetlands in the Everglades."})
+    assert r.status_code == 201, r.text
+    assert prompt(pid)["prompt"] == "Map wetlands in the Everglades."
+    assert pid in c.get("/api/session").json()["prompts"]  # the run form offers it, from the fetched project
+    assert c.put(f"/api/prompts/{pid}", headers=hd, json={"task": "adb", "prompt": "Map wetlands, 2020-2024."}).status_code == 200
+    assert prompt(pid)["prompt"] == "Map wetlands, 2020-2024."
+    assert c.put(f"/api/prompts/{pid}/stages", headers=hd, json={"task": "adb", "stages": [["search_datasets"]]}).status_code == 200
+    assert prompt(pid)["stages"] == [["search_datasets"]]
+    v2 = c.post(f"/api/prompts/{pid}/version", headers=hd, json={"task": "adb"}).json()["prompt_id"]
+    assert prompt(v2)["prompt"] == "Map wetlands, 2020-2024."
+    assert c.post(f"/api/prompts/{pid}/archive", headers=hd, json={"task": "adb", "archived": True}).status_code == 200
+    assert prompt(pid)["archived"] is True and pid not in c.get("/api/session").json()["prompts"]
+    stale = c.get("/api/prompts?task=adb").json().get("base_version")
+    if stale is not None:  # the cloud checks the version the page loaded (the laptop's files can't move under it)
+        c.post(f"/api/prompts/{v2}/archive", headers=hd, json={"task": "adb", "archived": True})
+        r = c.put(f"/api/prompts/{v2}", headers=hd, json={"task": "adb", "prompt": "late", "base_version": stale})
+        assert r.status_code == 409 and "reload" in r.json()["error"]
+
+
+STALE_WRITES = [  # every write route that takes the project version its page loaded (aws-deploy spec S2)
+    ("post", "/api/prompts", {"task": "adb", "prompt_id": "adb-901", "prompt": "x"}),
+    ("put", "/api/prompts/adb-002", {"task": "adb", "prompt": "x"}),
+    ("put", "/api/prompts/adb-002/stages", {"task": "adb", "stages": [["search_datasets"]]}),
+    ("post", "/api/prompts/adb-002/version", {"task": "adb"}),
+    ("post", "/api/prompts/adb-002/archive", {"task": "adb", "archived": True}),
+    ("put", "/api/rubric/drafts/{draft}", {"task": "adb", "body": {}}),
+    ("post", "/api/rubric/history/activate", {"task": "adb", "file": "adb-rubric-v0@0.1.json"}),
+]
+
+
+@pytest.mark.cloud_only("a write from a page showing an older project version: a laptop's files can't change under it")
+@pytest.mark.parametrize("method,path,body", STALE_WRITES, ids=[f"{m} {p}" for m, p, _ in STALE_WRITES])
+def test_a_write_from_a_stale_page_is_refused(backend, method, path, body):
+    import json
+
+    from test_api import RUBRIC
+
+    h = backend
+    c, hd = h.client, h.headers()
+    draft = c.post("/api/rubric/drafts", headers=hd, data={"task": "adb", "kind": "file", "config": "offline"},
+                   files={"file": ("clay.json", json.dumps(RUBRIC).encode())}).json()["draft_id"]
+    stale = c.get("/api/prompts?task=adb").json()["base_version"]
+    nxt = c.get("/api/prompts?task=adb").json()["next_id"]
+    assert c.post("/api/prompts", headers=hd, json={"task": "adb", "prompt_id": nxt, "prompt": "moved"}).status_code == 201
+    r = getattr(c, method)(path.format(draft=draft), headers=hd, json={**body, "base_version": stale})
+    assert r.status_code == 409 and "reload" in r.json()["error"], (r.status_code, r.text)

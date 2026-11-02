@@ -57,7 +57,7 @@
   - **Cleanup:** the token is revoked. The check's records still need deleting; see Follow-ups.
 
 **Suites:**
-- pytest: 560 passed, 4 skipped (the laptop-only tests on the cloud setup), 4 network tests deselected, in 3 m 27 s.
+- pytest: 569 passed, 11 skipped (the laptop-only tests on the cloud setup, and the 7 cloud-only stale-version cases on the laptop), 4 network tests deselected, in 3 m 29 s. 5 single-setup tests, against the cap of 10.
 - The parity tests passed three times in a row.
 - ruff and `tsc` are clean, and gitleaks found no leaks.
 
@@ -82,7 +82,11 @@
       - the polling test's silent exit
       - `batch_list` fetching every run unnecessarily
     - **Noted here:** the rest, under Follow-ups.
-  - **Pass 2:** see the gate record below.
+  - **Pass 2** confirmed the race fix by reading the code. It found 1 blocker: a project write that skipped `project_write` passed every test, because no cloud test read a write back.
+    - **Fixed:** `test_every_prompt_write_is_read_back_by_a_fresh_request` covers create, edit, expected steps, new version and archive, each read back by a cold request. `test_a_write_from_a_stale_page_is_refused` checks every write route's version check.
+    - **Write-side mutation run** (`evidence/mutations-writes.txt`): all 16 removals of `project_write` and `state.expecting` are caught.
+    - The pass ran out of disk partway, and you freed space.
+  - **Pass 3:** see below.
 
 **Specialists consulted:**
 - QA Automation: the harness, mutation checks of the net and of the path fix, and the parity tests.
