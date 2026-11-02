@@ -11,10 +11,10 @@ export PATH := $(or $(ASDF_DATA_DIR),$(HOME)/.asdf)/shims:$(PATH)
 RUFF := uvx ruff@0.14.0
 ASDF_PLUGINS := uv nodejs awscli
 
-.PHONY: help bootstrap doctor sync test test-all lint typecheck web-test web-build types check ui account-setup account-ready deploy status logs deployments
+.PHONY: help bootstrap doctor sync test test-all lint typecheck web-test web-build types check ui cdk-bootstrap laptop-stack deploy status logs deployments
 
 help: ## List the targets
-	@awk 'BEGIN {FS = ":.*## "} /^[a-z-]+:.*## / {printf "  \033[1m%-11s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*## "} /^[a-z-]+:.*## / {printf "  \033[1m%-13s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # --- setting up -----------------------------------------------------------------------------------------------------
 
@@ -81,22 +81,16 @@ ui: ## The local UI and API on http://127.0.0.1:8765
 CLOUD := scripts/cloud.sh $(if $(NAME),--name $(NAME))
 CDK := ./node_modules/.bin/cdk
 
-account-setup: ## Once per AWS account (current credentials, us-west-2): CDK bootstrap, the laptop stack, samples (YES=1: no IAM prompt)
+cdk-bootstrap:  # every deploy runs this first: the CDK bootstrap, once per account and region
 	@account=$$(aws sts get-caller-identity --query Account --output text) || { echo "no AWS credentials: aws sso login, or set AWS_PROFILE"; exit 1; }; \
-	echo "account $$account, us-west-2"; \
-	cd infra; \
 	aws cloudformation describe-stacks --stack-name CDKToolkit --region us-west-2 >/dev/null 2>&1 \
-	  || $(CDK) bootstrap aws://$$account/us-west-2; \
-	$(CDK) deploy ClayFoundryEvalSandbox $(if $(YES),--require-approval never)
+	  || { echo "account $$account has no CDK bootstrap in us-west-2: bootstrapping"; cd infra && $(CDK) bootstrap aws://$$account/us-west-2; }
+
+laptop-stack: cdk-bootstrap ## Optional: S3 copies of laptop Bedrock runs, in this account (ClayFoundryEvalSandbox; YES=1: no IAM prompt)
+	cd infra && $(CDK) deploy ClayFoundryEvalSandbox $(if $(YES),--require-approval never)
 	scripts/stage_samples.sh --if-missing
 
-account-ready:  # what every deploy runs first: account-setup, unless this account already has the bootstrap and the laptop stack
-	@if aws cloudformation describe-stacks --stack-name CDKToolkit --region us-west-2 >/dev/null 2>&1 \
-	   && aws cloudformation describe-stacks --stack-name ClayFoundryEvalSandbox --region us-west-2 >/dev/null 2>&1; then \
-	  echo "account set up (CDK bootstrap, ClayFoundryEvalSandbox); make account-setup re-applies it"; \
-	else $(MAKE) --no-print-directory account-setup; fi
-
-deploy: account-ready ## Deploy to AWS: main, or yours with NAME=<you> (ARGS="--email you@example.com"); sets up a new account first
+deploy: cdk-bootstrap ## Deploy to AWS: main, or yours with NAME=<you> (ARGS="--email you@example.com")
 	$(CLOUD) deploy $(ARGS)
 
 status: ## A deployment's URL, build and spend cap (NAME=<you> for yours)

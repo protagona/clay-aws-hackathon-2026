@@ -15,7 +15,7 @@ What you get:
 | `FoundryDataStack` | the state bucket (versioned, private, 35-day restore window), the DynamoDB table (35-day point-in-time recovery), the alerts topic, an optional account budget | **kept** |
 | `FoundryAppStack` | the api, worker and probe functions (one container image), the function URL, the batch workflow, three alarms, 30-day logs | removed |
 
-The laptop stack `ClayFoundryEvalSandbox` (`infra/app.py`: the runs bucket and role for live checks from a laptop) is separate, and `cloud.sh` never touches it. `make account-setup` creates it, and `make deploy` runs that first in an account that doesn't have it yet. See the README's "The account's laptop stack".
+The laptop stack `ClayFoundryEvalSandbox` (`infra/app.py`: the runs bucket and role for live checks from a laptop) is separate, and `cloud.sh` never touches it. It's optional and no deploy creates it: `make laptop-stack` does, in an account where someone wants laptop runs copied to S3 (README, "Optional: the laptop stack").
 
 ## First deploy into a fresh account (about 15 minutes)
 
@@ -30,7 +30,7 @@ The laptop stack `ClayFoundryEvalSandbox` (`infra/app.py`: the runs bucket and r
    aws sts get-caller-identity
    ```
 3. **Bedrock model access:** in the Bedrock console (us-west-2), enable the models that `config/bedrock*.toml` name. This is the one console step.
-4. **Set up the account, once:** `make account-setup` (after `make bootstrap` on your machine). It runs the CDK bootstrap if the account lacks it, deploys the laptop stack and stages the samples. `make deploy` does this by itself in an account that isn't set up, so in your own sandbox you can skip to step 5.
+4. **The CDK bootstrap, once per account:** `make deploy` runs it by itself when the account lacks it (or run `(cd infra && npx cdk bootstrap aws://<account>/us-west-2)`).
 5. **Check, then deploy:**
    ```sh
    scripts/cloud.sh preflight
@@ -72,7 +72,7 @@ python3 foundry-remote.pyz runs
 
 ## Personal deployments (several people, one account)
 
-Each participant can have their own deployment in the shared account, next to the team's main one. In your **own sandbox account** it's the same: `make deploy` (main, or `NAME=<you>`) with your sandbox's credentials sets up that account first (`make account-setup`), and your laptop's Bedrock runs mirror to that account's own runs bucket.
+Each participant can have their own deployment in the shared account, next to the team's main one. In your **own sandbox account** it's the same: `make deploy` (main, or `NAME=<you>`) with your sandbox's credentials bootstraps that account if needed, and nothing else is required there.
 
 ```sh
 scripts/cloud.sh --name alice deploy --email alice@example.com   # stacks Foundry-alice-Data and Foundry-alice-App

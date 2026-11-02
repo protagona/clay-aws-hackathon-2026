@@ -51,6 +51,46 @@ def test_an_account_bucket_is_the_callers_own_and_checked_as_such(fixture_run, m
         stub.assert_no_pending_responses()
 
 
+def test_an_account_with_no_laptop_stack_is_noted_once_then_skipped_quietly(fixture_run, monkeypatch, capsys):
+    import os
+
+    run_dir = fixture_run("clean")
+    client = boto3.client("s3", region_name="us-west-2")
+    stub = Stubber(client)
+    stub.add_client_error("put_object", service_error_code="NoSuchBucket", http_status_code=404)
+    monkeypatch.setattr(storage, "make_client", lambda t: client)
+    monkeypatch.setattr(storage, "caller_account", lambda t: "222233334444")
+    cfg = StorageCfg(s3_uri="s3://foundry-runs-{account}-us-west-2")
+    with stub:
+        storage.mirror(run_dir, cfg)  # the first run: one note, not a failure
+        storage.mirror(run_dir, cfg)  # the next: nothing sent, nothing said (a put would find the stub empty)
+        stub.assert_no_pending_responses()
+    err = capsys.readouterr().err.strip().splitlines()
+    assert len(err) == 1 and err[0].startswith("note: no s3://foundry-runs-222233334444-us-west-2") and "laptop-stack" in err[0]
+    marker = run_dir.parent / ".no-bucket-foundry-runs-222233334444-us-west-2"
+    os.utime(marker, (0, 0))  # an hour later the bucket is checked again (it may have been created since)
+    stub.add_response("put_object", {}, {"Bucket": "foundry-runs-222233334444-us-west-2", "Body": ANY, "Key": ANY,
+                                          "ExpectedBucketOwner": "222233334444"})
+    stub.add_response("put_object", {}, {"Bucket": ANY, "Body": ANY, "Key": ANY, "ExpectedBucketOwner": ANY})
+    stub.add_response("put_object", {}, {"Bucket": ANY, "Body": ANY, "Key": ANY, "ExpectedBucketOwner": ANY})
+    with stub:
+        storage.mirror(run_dir, cfg)
+        stub.assert_no_pending_responses()
+
+
+def test_a_named_bucket_that_is_missing_still_warns_every_time(fixture_run, monkeypatch, capsys):
+    run_dir = fixture_run("clean")
+    client = boto3.client("s3", region_name="us-west-2")
+    stub = Stubber(client)
+    stub.add_client_error("put_object", service_error_code="NoSuchBucket", http_status_code=404)
+    stub.add_client_error("put_object", service_error_code="NoSuchBucket", http_status_code=404)
+    monkeypatch.setattr(storage, "make_client", lambda t: client)
+    with stub:
+        storage.mirror(run_dir, StorageCfg(s3_uri="s3://my-runs"))
+        storage.mirror(run_dir, StorageCfg(s3_uri="s3://my-runs"))
+    assert capsys.readouterr().err.count("S3 upload to s3://my-runs failed") == 2
+
+
 def test_the_account_placeholder_is_the_only_one_allowed():
     assert StorageCfg(s3_uri="s3://foundry-runs-{account}-us-west-2").s3_uri == "s3://foundry-runs-{account}-us-west-2"
     for bad in ("s3://foundry-{region}", "s3://{account}/runs", "s3://Foundry-{account}"):

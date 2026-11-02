@@ -62,7 +62,7 @@ export_timeout_s = 10
 service_name = "foundry"
 
 [storage]
-s3_uri = "s3://foundry-runs-{account}-us-west-2"  # make account-setup creates it in your account; "" turns mirroring off
+s3_uri = "s3://foundry-runs-{account}-us-west-2"  # optional: make laptop-stack creates it in your account; "" turns mirroring off
 
 [scoring]
 workflow_weight = 0.5

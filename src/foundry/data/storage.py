@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
+
+NO_BUCKET_QUIET_S = 3600  # after a missing-bucket note, how long runs skip the mirror quietly
 
 
 def make_client(timeout_s: float):
@@ -35,15 +38,23 @@ def mirror(run_dir: Path, storage_cfg) -> None:
         return  # no AWS client is created
     bucket = storage_cfg.s3_uri.removeprefix("s3://").rstrip("/")
     run_dir = Path(run_dir)
+    owner, marker = {}, None
     try:
-        owner = {}
         if "{account}" in bucket:
             account = caller_account(storage_cfg.s3_timeout_s)
             bucket = bucket.replace("{account}", account)
             owner = {"ExpectedBucketOwner": account}
+            marker = run_dir.parent / f".no-bucket-{bucket}"
+            if marker.exists() and time.time() - marker.stat().st_mtime < NO_BUCKET_QUIET_S:
+                return  # this account has no laptop stack (optional): said so once, recheck later
         client = make_client(storage_cfg.s3_timeout_s)
         for path in files_to_upload(run_dir):
             client.put_object(Bucket=bucket, Key=f"runs/{run_dir.name}/{path.name}", Body=path.read_bytes(), **owner)
     except Exception as exc:
+        if marker is not None and getattr(exc, "response", {}).get("Error", {}).get("Code") == "NoSuchBucket":
+            marker.touch()
+            print(f"note: no s3://{bucket} in this account, so runs stay local only (optional: make laptop-stack "
+                  f"creates it). Not repeated for an hour.", file=sys.stderr)
+            return
         print(f"S3 upload to s3://{bucket} failed: {type(exc).__name__}: {str(exc)[:300]}; "
               f"local files are kept in {run_dir}", file=sys.stderr)
