@@ -60,7 +60,7 @@ Spec: [spec.md](spec.md) · design: [design.md](design.md) · evidence: [evidenc
 
 ## Exercised live
 
-- **Deployment:** named deployment `embeddings` in the sandbox account (us-west-2), deployed four times. The URL is in `evidence/deploy*.log`.
+- **Deployment:** named deployment `embeddings` in the sandbox account (us-west-2), deployed five times. The URL is in `evidence/deploy*.log`.
 - **adb-007 (Kimi K3):** coverage, `embedding_change` (27.4 s), then `get_item` / `search_items` on the scene ids it returned, then the plan.
   - Evaluated: overall 1.00, path check 2/2 found, sequence 2/2.
   - Rerun on the 768 MB build: `embedding_change` took 15.6 s and peak memory was 1,688 MB.
@@ -69,7 +69,7 @@ Spec: [spec.md](spec.md) · design: [design.md](design.md) · evidence: [evidenc
   - The Lambda base image has no `find` (Dockerfile fix).
   - A seeding bug that existed before this change: a worker that cold-started first had no `tasks/`. Fixed in `cloud_boot.py` with a regression test.
   - Memory headroom (DuckDB limit lowered to 768 MB).
-- **Deploys:** builds 47067d7 (`deploy-4.log`) and 2d69274 (`deploy-5.log`) went live. The allowlist and tag fixes (68d3dca and later) are committed but **not yet deployed**: the AWS SSO session expired mid-deploy. The live AC20 evaluations ran on the path-check code from before the allowlist; AC7 was rerun against real S3 afterwards.
+- **Deploys:** builds 47067d7 (`deploy-4.log`) and 2d69274 (`deploy-5.log`) went live, then 8d57954 (`deploy-6.log`, the final commit) after an AWS SSO re-login. The live AC20 evaluations ran on the path-check code from before the character allowlist; AC7 was rerun against real S3 afterwards.
 
 ## Security scans
 
