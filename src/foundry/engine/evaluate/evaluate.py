@@ -89,7 +89,8 @@ def _evaluate_locked(rd: RunDir, run, cfg: EvalConfig, rubric_file, force: bool)
         raise EvaluateError(str(exc)) from None
     wf = workflow.score(effective, steps, expected)
     run_data = view.build(effective, steps, output)
-    path_result = paths.check(paths.extract(output.text)) if paths.enabled(cfg) else None
+    path_result = (paths.check(paths.extract(output.text), requester_pays=frozenset(cfg.checks.requester_pays))
+                   if paths.enabled(cfg) else None)
     judge_input = run_data + ("\n\n" + view.checks_block(path_result) if path_result is not None else "")
     judge_provider = build_provider(cfg.judge)
     summ_provider = build_provider(cfg.summarizer)

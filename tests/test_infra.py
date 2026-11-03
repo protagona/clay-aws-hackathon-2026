@@ -57,7 +57,12 @@ def test_role_policy_is_exact():
     actions = sorted(a for s in stmts for a in ([s["Action"]] if isinstance(s["Action"], str) else s["Action"]))
     assert actions == ["bedrock:InvokeModel", "bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream",
                        "bedrock:InvokeModelWithResponseStream",
-                       "s3:GetObject", "s3:GetObject", "s3:ListBucket", "s3:PutObject"]
+                       "s3:GetObject", "s3:GetObject", "s3:ListBucket", "s3:ListBucket", "s3:PutObject"]
+    # requirement-gaps slice A: list-only on the requester-pays NAIP buckets the configs name, nothing else
+    rp = [s for s in stmts if s["Resource"] == [f"arn:aws:s3:::{b}" for b in
+                                                ("naip-analytic", "naip-source", "naip-visualization")]]
+    assert len(rp) == 1 and rp[0]["Action"] == "s3:ListBucket" and "Condition" not in rp[0]
+    stmts = [s for s in stmts if s not in rp]
     s3_stmts = [s for s in stmts if any(a.startswith("s3:") for a in
                                         ([s["Action"]] if isinstance(s["Action"], str) else s["Action"]))]
     for s in s3_stmts:

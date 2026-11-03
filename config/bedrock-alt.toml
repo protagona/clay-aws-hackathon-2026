@@ -64,6 +64,9 @@ tracers = ["jsonl"]
 [storage]
 s3_uri = "s3://foundry-runs-{account}-us-west-2"  # optional: make laptop-stack creates it in your account; "" turns mirroring off
 
+[checks]                     # path check: NAIP is Requester Pays, so these get a signed list billed to this account
+requester_pays = ["naip-analytic", "naip-visualization", "naip-source"]   # ($0.000005 per list; at most 25 per run)
+
 [scoring]
 workflow_weight = 0.5
 output_weight = 0.5

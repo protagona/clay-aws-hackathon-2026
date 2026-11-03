@@ -1,9 +1,10 @@
 """Path check: does each S3 location the agent's output cites exist? (clay-embeddings design, path check.)
 
-Pulls S3 locations out of the final output and lists each one with a single anonymous ListObjectsV2 call:
-`found`, `not_found`, or `unverified` (access denied, requester-pays, timeouts, limits). Requests are unsigned
-(no identity, no requester-pays charges), go only to S3 endpoints boto3 derives from a validated bucket name,
-and never read object contents (design ADR-2). The result is evidence for the judge and the report; it doesn't
+Pulls S3 locations out of the final output and lists each one with a single ListObjectsV2 call: `found`,
+`not_found`, or `unverified` (access denied, requester-pays, timeouts, limits). Requests are unsigned (no identity,
+no charges) except for buckets on the configured requester-pays allowlist (`[checks] requester_pays`), which get one
+signed list that names the requester as payer (requirement-gaps design, slice A / ADR-3). Requests go only to S3
+endpoints boto3 derives from a validated bucket name, and never read object contents (clay-embeddings ADR-2). The result is evidence for the judge and the report; it doesn't
 change `overall` (ADR-1).
 """
 
@@ -15,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable, NamedTuple
 from urllib.parse import unquote
 
-VERSION = "v1"
+VERSION = "v2"  # v2: signed requester-pays lists for allowlisted buckets
 LIMIT = 25
 BUDGET_S = 30.0
 MAX_KEY_CHARS = 512
@@ -119,15 +120,55 @@ def default_lister() -> Lister:
     return lister
 
 
-def check(refs: list[S3Ref], lister: Lister | None = None, limit: int = LIMIT, budget_s: float = BUDGET_S) -> dict:
-    """List up to `limit` refs in parallel within `budget_s`; everything else is `unverified` with the reason."""
+RP_REGION = "us-west-2"  # where the NAIP buckets are; a signed list from another region also works (design slice A)
+
+
+def requester_pays_lister() -> Lister:
+    """One signed S3 client (default credential chain) that lists as the paying requester. Same timeouts and single
+    attempt as default_lister. Only ever called for allowlisted buckets."""
+    import boto3
+    from botocore.config import Config
+    from botocore.exceptions import (ClientError, ConnectTimeoutError, NoCredentialsError, PartialCredentialsError,
+                                     ReadTimeoutError)
+
+    client = boto3.client("s3", region_name=RP_REGION, config=Config(
+        connect_timeout=3, read_timeout=3, retries={"total_max_attempts": 1}))
+
+    def lister(bucket: str, prefix: str) -> tuple[str, str]:
+        try:
+            r = client.list_objects_v2(Bucket=bucket, Prefix=prefix, MaxKeys=1, RequestPayer="requester")
+        except (NoCredentialsError, PartialCredentialsError):
+            return UNVERIFIED, "no AWS credentials for requester pays"
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "Unknown")
+            if code == "NoSuchBucket":
+                return NOT_FOUND, "bucket does not exist"
+            return UNVERIFIED, f"requester-pays check failed ({code})"
+        except (ConnectTimeoutError, ReadTimeoutError):
+            return UNVERIFIED, "timed out"
+        except Exception as exc:  # noqa: BLE001 - any failure is "couldn't verify", never a crash
+            return UNVERIFIED, f"error: {type(exc).__name__}"
+        if r.get("KeyCount", 0) >= 1:
+            return FOUND, "found (requester pays)"
+        return (FOUND, "bucket exists (empty)") if prefix == "" else (NOT_FOUND, "no object with this prefix")
+
+    return lister
+
+
+def check(refs: list[S3Ref], lister: Lister | None = None, limit: int = LIMIT, budget_s: float = BUDGET_S,
+          requester_pays: frozenset[str] = frozenset(), rp_lister: Lister | None = None) -> dict:
+    """List up to `limit` refs in parallel within `budget_s`; everything else is `unverified` with the reason.
+    Refs in a `requester_pays` bucket go to `rp_lister` (signed, the requester pays); no unsigned request is sent for
+    them. Every other bucket gets only the anonymous `lister`."""
     items = [{"location": r.location, "status": UNVERIFIED, "reason": f"not checked (limit of {limit})"}
              for r in refs]
     todo = refs[:limit]
     if todo:
-        lister = lister or default_lister()
+        anon = lister or default_lister() if any(r.bucket not in requester_pays for r in todo) else None
+        signed = rp_lister or requester_pays_lister() if any(r.bucket in requester_pays for r in todo) else None
         pool = ThreadPoolExecutor(max_workers=WORKERS)
-        futures = {pool.submit(lister, r.bucket, r.key): i for i, r in enumerate(todo)}
+        futures = {pool.submit(signed if r.bucket in requester_pays else anon, r.bucket, r.key): i
+                   for i, r in enumerate(todo)}
         done, _ = wait(futures, timeout=budget_s)
         for fut, i in futures.items():
             if fut in done:

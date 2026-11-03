@@ -37,7 +37,7 @@ from aws_cdk import aws_stepfunctions as sfn
 from constructs import Construct
 
 from foundry_cloud.batch_sm import batch_state_machine
-from stack import BEDROCK_ACTIONS, PROFILE_REGIONS, bedrock_models
+from stack import BEDROCK_ACTIONS, PROFILE_REGIONS, bedrock_models, requester_pays_buckets
 
 REPO = Path(__file__).resolve().parents[2]
 # Partition keys a worker may touch: never TOKEN, CONFIG or RATE (the token hashes and the session key; ADR-12).
@@ -143,6 +143,9 @@ class FoundryAppStack(Stack):
         bedrock(worker)
         bucket.grant_read_write(worker)  # includes ListBucket, so a missing key is a 404, not a 403
         bucket.grant_delete(worker)
+        if rp := requester_pays_buckets():  # path check: signed NAIP lists (requirement-gaps slice A), list only
+            worker.add_to_role_policy(iam.PolicyStatement(actions=["s3:ListBucket"],
+                                                          resources=[f"arn:aws:s3:::{b}" for b in rp]))
         worker.add_to_role_policy(iam.PolicyStatement(actions=TABLE_ITEM_ACTIONS, resources=[table.table_arn],
                                                       conditions={"ForAllValues:StringEquals": {"dynamodb:LeadingKeys": WORKER_KEYS}}))
 

@@ -52,3 +52,4 @@ def _no_path_check_network(request, monkeypatch):
             raise AssertionError("path check tried real S3 in a non-network test; pass a fake lister")
 
         monkeypatch.setattr(paths, "default_lister", _refuse)
+        monkeypatch.setattr(paths, "requester_pays_lister", _refuse)  # signed and billed: never in unit tests

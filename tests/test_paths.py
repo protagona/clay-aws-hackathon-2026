@@ -216,7 +216,12 @@ def test_offline_configs_off():  # AC8
     for f in sorted((ROOT / "config").glob("offline*.toml")):
         assert tomllib.loads(f.read_text())["checks"]["paths"] is False, f.name
     for f in sorted((ROOT / "config").glob("bedrock*.toml")):
-        assert "checks" not in tomllib.loads(f.read_text()), f.name  # on by default
+        checks = tomllib.loads(f.read_text()).get("checks", {})
+        assert checks.get("paths", True) is True, f.name  # on by default
+        # requirement-gaps AC1: the NAIP buckets get a signed requester-pays list
+        assert checks.get("requester_pays") == ["naip-analytic", "naip-visualization", "naip-source"], f.name
+    for f in sorted((ROOT / "config").glob("offline*.toml")):  # AC5: no signed requests offline
+        assert not tomllib.loads(f.read_text())["checks"].get("requester_pays"), f.name
 
 
 @pytest.fixture
@@ -245,7 +250,7 @@ def test_evaluate_writes_paths_and_judge_sees_block(tmp_path, fixture_run, monke
     run = fixture_run("clean")
     scores = _evaluate(tmp_path, run)
     on_disk = json.loads((run / "scores.json").read_text())
-    assert on_disk["paths"] == scores["paths"] and on_disk["path_checker"] == "v1"
+    assert on_disk["paths"] == scores["paths"] and on_disk["path_checker"] == "v2"
     assert [(i["location"], i["status"]) for i in scores["paths"]["items"]] == [("s3://naip-analytic/", "unverified")]
     (prompt,) = recording_judge
     run_data_end = prompt.index("</run_data>")
@@ -294,3 +299,113 @@ def test_golden_paths_network():  # AC7, real anonymous S3 (about 10 list calls)
     assert out["s3://us-west-2.opendata.source.coop/clay/clay-v1-5-sentinel2/sentinel-s2-l2a-cogs/"] == ("found", "")
     assert out["s3://usgs-landsat/collection02/"] == ("unverified", "access denied (Requester Pays)")
     assert out["s3://zz-no-such-bucket-foundry-test-8812/x"] == ("not_found", "bucket does not exist")
+
+
+# --- requirement-gaps slice A: signed requester-pays lists for allowlisted buckets (AC1-AC4) --------------------------
+
+RP = frozenset({"naip-analytic"})
+_REAL_RP_LISTER = paths.requester_pays_lister  # captured before conftest swaps in the refusing stub
+
+
+def _recording(table, calls):
+    def lister(bucket, prefix):
+        calls.append((bucket, prefix))
+        return table.get((bucket, prefix), ("not_found", "no object with this prefix"))
+    return lister
+
+
+def test_allowlisted_bucket_goes_signed_only():  # AC1, AC3
+    anon_calls, rp_calls = [], []
+    anon = _recording({("naip-analytic", "ca/"): ("unverified", "access denied (Requester Pays)")}, anon_calls)
+    signed = _recording({("naip-analytic", "ca/2020/60cm/rgbir_cog/32115/"): ("found", "found (requester pays)")},
+                        rp_calls)
+    refs = paths.extract("s3://naip-analytic/ca/2020/60cm/rgbir_cog/32115/ and s3://naip-visualization/ca/")
+    out = paths.check(refs, lister=anon, requester_pays=RP, rp_lister=signed)
+    assert rp_calls == [("naip-analytic", "ca/2020/60cm/rgbir_cog/32115/")]  # no unsigned request for it
+    assert anon_calls == [("naip-visualization", "ca/")]  # not allowlisted here: anonymous only, never signed
+    assert [(i["status"], i["reason"]) for i in out["items"]] == [
+        ("found", "found (requester pays)"), ("not_found", "no object with this prefix")]
+    assert out["version"] == "v2"
+
+
+def test_no_requester_pays_means_no_signed_lister(monkeypatch):  # AC3: nothing signed is even built
+    monkeypatch.setattr(paths, "requester_pays_lister", lambda: (_ for _ in ()).throw(AssertionError("signed")))
+    out = paths.check(paths.extract("s3://naip-analytic/ca/"), lister=fake({("naip-analytic", "ca/"): (
+        "unverified", "access denied (Requester Pays)")}))
+    assert out["items"][0]["reason"] == "access denied (Requester Pays)"
+
+
+class _FakeS3:
+    def __init__(self, behaviour):
+        self.behaviour, self.calls = behaviour, []
+
+    def list_objects_v2(self, **kw):
+        self.calls.append(kw)
+        b = self.behaviour
+        if isinstance(b, Exception):
+            raise b
+        return b
+
+
+def _rp_with(monkeypatch, behaviour):
+    import boto3
+
+    s3 = _FakeS3(behaviour)
+    monkeypatch.setattr(boto3, "client", lambda *a, **k: s3)
+    return _REAL_RP_LISTER(), s3
+
+
+@pytest.mark.parametrize("behaviour, prefix, want", [
+    ({"KeyCount": 1}, "ca/", ("found", "found (requester pays)")),
+    ({"KeyCount": 0}, "nope/", ("not_found", "no object with this prefix")),
+    ({"KeyCount": 0}, "", ("found", "bucket exists (empty)")),
+])
+def test_requester_pays_lister_mapping(monkeypatch, behaviour, prefix, want):  # AC1, AC2
+    lister, s3 = _rp_with(monkeypatch, behaviour)
+    assert lister("naip-analytic", prefix) == want
+    assert s3.calls == [{"Bucket": "naip-analytic", "Prefix": prefix, "MaxKeys": 1, "RequestPayer": "requester"}]
+
+
+def test_requester_pays_lister_failures(monkeypatch):  # AC4: never a crash, always unverified with a reason
+    from botocore.exceptions import ClientError, NoCredentialsError, ReadTimeoutError
+
+    def err(code):
+        return ClientError({"Error": {"Code": code, "Message": "x"}}, "ListObjectsV2")
+
+    cases = [(NoCredentialsError(), ("unverified", "no AWS credentials for requester pays")),
+             (err("AccessDenied"), ("unverified", "requester-pays check failed (AccessDenied)")),
+             (err("NoSuchBucket"), ("not_found", "bucket does not exist")),
+             (ReadTimeoutError(endpoint_url="x"), ("unverified", "timed out")),
+             (RuntimeError("boom"), ("unverified", "error: RuntimeError"))]
+    for exc, want in cases:
+        lister, _ = _rp_with(monkeypatch, exc)
+        assert lister("naip-analytic", "ca/") == want, exc
+
+
+def test_requester_pays_counts_against_limit_and_budget():  # AC4
+    import time
+
+    slow = lambda b, p: (time.sleep(0.5), ("found", "found (requester pays)"))[1]  # noqa: E731
+    refs = paths.extract(" ".join(f"s3://naip-analytic/k{i}/" for i in range(30)))
+    out = paths.check(refs, lister=fake({}), requester_pays=RP, rp_lister=slow, budget_s=0.2)
+    reasons = {i["reason"] for i in out["items"]}
+    assert out["checked"] == 25 and "not checked (limit of 25)" in reasons and "not checked (time budget)" in reasons
+
+
+def test_config_rejects_bad_bucket_names():
+    from foundry.config import ChecksCfg
+
+    with pytest.raises(ValueError):
+        ChecksCfg(requester_pays=["Not_A_Bucket"])
+    assert ChecksCfg(requester_pays=["naip-analytic"]).requester_pays == ["naip-analytic"]
+
+
+@pytest.mark.network
+def test_requester_pays_live_naip():  # AC1/AC2 against the real bucket; skipped without AWS credentials
+    import boto3
+
+    if boto3.Session().get_credentials() is None:
+        pytest.skip("no AWS credentials")
+    lister = _REAL_RP_LISTER()
+    assert lister("naip-analytic", "ca/2020/60cm/rgbir_cog/32115/") == ("found", "found (requester pays)")
+    assert lister("naip-analytic", "ca/2020/60cm/rgbir_cog/no-such-quad/")[0] == "not_found"

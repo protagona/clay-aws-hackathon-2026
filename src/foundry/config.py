@@ -131,6 +131,16 @@ class ScoringCfg(_Strict):
 
 class ChecksCfg(_Strict):
     paths: bool = True  # path check: list each S3 location the output cites (clay-embeddings design)
+    # requester-pays buckets the path check may list signed, billed to this account (requirement-gaps slice A)
+    requester_pays: list[str] = []
+
+    @field_validator("requester_pays")
+    @classmethod
+    def _bucket_names(cls, v: list[str]) -> list[str]:
+        bad = [b for b in v if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", b)]
+        if bad:
+            raise ValueError(f"not S3 bucket names: {', '.join(bad)}")
+        return v
 
 
 class AgentsCfg(_Strict):

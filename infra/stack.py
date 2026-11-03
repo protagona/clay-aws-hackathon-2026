@@ -35,6 +35,18 @@ def bedrock_models(config_dir: Path = CONFIG_DIR) -> tuple[list[str], list[str]]
     return sorted(i for i in ids if i.startswith("us.")), sorted(i for i in ids if not i.startswith("us."))
 
 
+def requester_pays_buckets(config_dir: Path = CONFIG_DIR) -> list[str]:
+    """Requester-pays buckets the Bedrock configs' path check may list, signed and billed to this account
+    (requirement-gaps slice A). The role gets s3:ListBucket on these buckets only, never GetObject."""
+    names: set[str] = set()
+    for f in sorted(config_dir.glob("bedrock*.toml")):
+        names.update(tomllib.loads(f.read_text()).get("checks", {}).get("requester_pays", []))
+    bad = sorted(n for n in names if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", n))
+    if bad:
+        raise ValueError(f"Not S3 bucket names: {', '.join(bad)} (in {config_dir}/bedrock*.toml)")
+    return sorted(names)
+
+
 RUNS_BUCKET_PREFIX = "foundry-runs-"  # + <account>-<region>: src/foundry/data/storage.py fills in {account}
 
 class FoundryStack(Stack):
@@ -97,6 +109,9 @@ class FoundryStack(Stack):
         role.add_to_policy(iam.PolicyStatement(
             actions=["s3:ListBucket"], resources=[bucket.bucket_arn],
             conditions={"StringLike": {"s3:prefix": ["runs/*", "samples/*"]}}))
+        if rp := requester_pays_buckets():  # path check: signed lists of NAIP (requester pays), list only
+            role.add_to_policy(iam.PolicyStatement(actions=["s3:ListBucket"],
+                                                   resources=[f"arn:aws:s3:::{b}" for b in rp]))
 
         Tags.of(self).add("project", "clay-foundry")
         Tags.of(self).add("owner", "team-46")
