@@ -159,3 +159,13 @@ def test_cold_pulls_fetch_every_tree_in_parallel(tmp_path):  # slice 10: 26-34 s
     cloud_state.pull_all(mirror, store.query("TREE", prefix="run#"))
     assert sorted(p.name for p in (tmp_path / "fresh" / "runs").iterdir()) == [f"r-{i:02d}" for i in range(20)]
     assert len(threads) > 1
+
+
+def test_seeding_instance_gets_the_files_too(tmp_path):
+    """The instance that seeds pulls the files like any other (a worker that cold-starts first, 2026-11-03)."""
+    store = FakeStore()
+    mirror = Mirror(store, tmp_path / "state")
+    cloud_boot.seed_projects(store, mirror, app=ROOT)
+    for it in store.query("TREE", prefix="project#"):
+        mirror.pull(it["sk"], item=it)
+    assert (tmp_path / "state" / "project" / "tasks" / "adb" / "prompts.jsonl").is_file()

@@ -50,6 +50,9 @@ def seed_projects(store, mirror, app: Path | None = None) -> None:
             mirror.push(tree, files)
         except Conflict:
             pass
+        # push() records the new version as seen without writing the files locally, so the pull that follows
+        # would skip them and the seeding instance would have no tasks/ (hit when the worker seeds first).
+        mirror.seen.pop(tree, None)
 
 
 def configure_logging() -> None:
