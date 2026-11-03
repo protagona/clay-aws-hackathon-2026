@@ -344,3 +344,23 @@ def test_offline_caption_every_prompt(tmp_path, samples_env, prompt_id):  # AC9,
     assert status == "succeeded"
     scores = evaluate(run_dir, cfg)
     assert scores["workflow"]["sequence"]["matched"] == 1 and scores["output"]["score"] is not None
+
+
+def test_malformed_sample_is_unscored_not_a_crash(tmp_path, monkeypatch):
+    d = tmp_path / "naip-captions"
+    make_sample(d)
+    (d / "tiles.json").write_text('{"sample_id": "x"}')  # no "tiles"
+    monkeypatch.setenv("FOUNDRY_SAMPLES_DIR", str(tmp_path))
+    assert "tiles.json is malformed" in _score(retrieval.load("captions"))[0]["error"]
+    (d / "tiles.json").write_text("not json")
+    assert "tiles.json is malformed" in _score(retrieval.load("captions"))[0]["error"]
+
+
+def test_bad_sample_name_in_scorer_stops_evaluation(tmp_path, monkeypatch):
+    task = tmp_path / "tasks" / "broken"
+    task.mkdir(parents=True)
+    (task / "scorer.json").write_text(json.dumps({"kind": "retrieval", "references": "r.jsonl",
+                                                  "sample": {"name": "../etc"}, "targets": {}}))
+    monkeypatch.setattr("foundry.data.tasks.project_root", lambda: tmp_path)
+    with pytest.raises(retrieval.ScorerError, match="sample.name"):
+        retrieval.load("broken")

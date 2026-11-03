@@ -52,6 +52,8 @@ def load(task_id: str) -> Spec | None:
                     targets=dict(raw["targets"]))
     except (KeyError, TypeError, ValueError) as exc:
         raise ScorerError(f"{where}: missing or bad field ({exc})") from None
+    if not spec.sample_name or not set(spec.sample_name) <= set("abcdefghijklmnopqrstuvwxyz0123456789-"):
+        raise ScorerError(f"{where}: sample.name must be lowercase letters, digits and '-'")
     if not 1 <= spec.negatives <= 63:
         raise ScorerError(f"{where}: negatives must be 1-63")
     return spec
@@ -115,11 +117,15 @@ def score(spec: Spec, run, output, embedder, storage_cfg, prompt_text: str | Non
     if sample_dir is None:
         return _unscored(samples.staging_hint(spec.sample_name, storage_cfg), rubric_version)
     tiles_raw = (sample_dir / "tiles.json").read_bytes()
-    meta = json.loads(tiles_raw)
+    try:
+        meta = json.loads(tiles_raw)
+        tiles = {t["tile_id"]: t["embedding"] for t in meta["tiles"]}
+    except (ValueError, KeyError, TypeError) as exc:
+        return _unscored(f"sample {spec.sample_name}: tiles.json is malformed ({type(exc).__name__}); re-stage it",
+                         rubric_version)
     if spec.sample_id and meta.get("sample_id") != spec.sample_id:
         return _unscored(f"sample {spec.sample_name} is {meta.get('sample_id')}, but scorer.json expects "
                          f"{spec.sample_id}: re-stage the sample or update scorer.json", rubric_version)
-    tiles = {t["tile_id"]: t["embedding"] for t in meta["tiles"]}
     if target not in tiles:
         return _unscored(f"target {target} is not in sample {spec.sample_name}", rubric_version)
     cands = candidates(tiles, target, spec.negatives)
