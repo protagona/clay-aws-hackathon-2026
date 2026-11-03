@@ -59,7 +59,7 @@ Each evaluated task needs three things: a **known task**, **known input**, and a
 2. **Caption generation** for Clay v2:
    - Input is NAIP imagery plus Vantor samples.
    - The agent writes captions that support retrieval ("find railroads"). LGND embeddings are available for retrieval.
-   - **Mismatch:** the LGND embeddings cover Sentinel-2 imagery, not NAIP (see [LGND embeddings](#lgnd-embeddings) below). Ask Clay before building this task.
+   - The LGND embeddings cover Sentinel-2, not NAIP, but Clay publishes separate NAIP embeddings (`clay-v1-5-naip-2`; see [Other Clay embeddings](#other-clay-embeddings) below). Confirm with Clay which set the retrieval eval uses.
    - It is graded against Clay's example captions and retrieval eval set.
 3. **Open track**: a third task from Clay's eval lists, or a dataset-build target (e.g., a flooding or building-value layer). It is optional and only with Clay's explicit confirmation.
 
@@ -103,10 +103,24 @@ We followed the link in the docs ([source.coop/clay/lgnd-embeddings](https://sou
 - **Where:** `s3://us-west-2.opendata.source.coop/clay/lgnd-embeddings/`, readable with `--no-sign-request`, in **us-west-2** (our region).
 - **Format:** GeoParquet 1.1, split into folders as `model_version=v1.5/collection=sentinel-2-l2a/chip_size=1280m/dims=256/geohash=9y/year=2025/month=01/*.parquet`. Columns: `chips_id`, `cell_id`, `rasters_id`, `stac_item_id`, `collection`, `datetime`, `embedding`, `bbox`, `geometry`. Each folder holds files of about 20 MB. The READMEs show DuckDB queries that filter on `bbox`.
 - **Source scene index:** `rasters/collection=sentinel-2-l2a/stac.parquet` (1.3 GB, STAC GeoParquet) lists each scene's footprint, time, and per-band image URLs. It joins to the embeddings on `stac_item_id`. A `collection=naip` index is listed as "(future)".
+- **Gaps:** the data ends April 2026, and some months are missing (no June 2024 or June 2025 over California or Nepal; no 2021 over Nepal; checked 2026-11-02).
 - **What this means for us:**
-  - The caption task can't use these embeddings for NAIP retrieval yet. It would have to work on Sentinel-2 chips instead, or Clay would have to supply NAIP embeddings.
+  - The caption task can't use these embeddings for NAIP retrieval, but the NAIP embeddings below can.
   - The ADB task doesn't need them.
   - Real paths that an ADB agent may cite (for example a "Clay v1.5 Sentinel-2" bucket that RODA surfaces) can now be checked against this layout.
+
+## Other Clay embeddings
+
+Clay's Source Cooperative account (`s3://us-west-2.opendata.source.coop/clay/`, anonymous, us-west-2, CC BY 4.0) holds more than the LGND set. Listed 2026-11-02 from each README:
+
+| Prefix | What | Notes |
+|---|---|---|
+| `clay-v1-5-naip-2/` | Clay v1.5 embeddings of **all NAIP on AWS** (2010–2021), 1024 dims, one per 256×256 px tile | Made by Development Seed for Clay. Folders mirror NAIP's (`<state>/<year>/<res>/rgbir_cog/...parquet`); columns `geometry`, `embeddings` |
+| `clay-v1-5-naip/` | The first NAIP run | **Don't use:** its README says inference skipped normalization; use `-naip-2` |
+| `clay-v1-5-sentinel2/` | Clay v1.5 embeddings of Sentinel-2 (2.9 TiB), 1024 dims | Partial areas (USA, Brazil, Suriname, Andhra Pradesh) as of Dec 2024; folders mirror `sentinel-s2-l2a-cogs` |
+| `lgnd-clay-v1-5-sentinel-2-l2a/` | Earlier LGND set, 2560 m cells, 1024 dims | Near-global for **June 2024 and June 2025 only**, the months missing from `lgnd-embeddings` |
+| `california-naip-clay-v1/` | Clay v1 embeddings of California NAIP (43.6 GiB) | Older model; no README |
+| `clay-model-v0-embeddings/` | Clay v0 embeddings (`.gpq` files) | Superseded model |
 
 ## Top risks (from the Vision doc)
 
@@ -128,7 +142,7 @@ We followed the link in the docs ([source.coop/clay/lgnd-embeddings](https://sou
 - [ ] **Example captions** + **retrieval eval set** (caption task).
 - [ ] **NAIP Requester-Pays** handling (pre-staged sample vs. live pull).
 - [ ] The **agent-development partner** and any agent build we should stand on. *LGND is [lgnd.ai](https://lgnd.ai/), which maintains the Clay embeddings ([LGND embeddings](#lgnd-embeddings)); still confirm whether they are also the agent partner.*
-- [ ] *(Our addition)* **NAIP embeddings** for the caption task: the public LGND set covers Sentinel-2 only. Does Clay have NAIP embeddings, or should caption retrieval run on Sentinel-2 chips?
+- [ ] *(Our addition)* **Which embeddings** the caption retrieval eval uses: NAIP embeddings exist (`clay-v1-5-naip-2`, see [Other Clay embeddings](#other-clay-embeddings)); confirm that's the set, or whether they'd rather we use Sentinel-2.
 - [ ] If we take the **open third track**: the specific task and target.
 - [ ] *(Our addition)* Which **shared GitHub org/repo** we push to. The repo is "created at kickoff"; everyone needs a GitHub account ready.
 
