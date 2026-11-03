@@ -12,7 +12,7 @@ HEAD_STEPS = 100
 TAIL_STEPS = 100
 CHECK_LOCATION_CHARS = 200
 _CLOSE_TAG = re.compile(r"<\s*/\s*run_data\s*>", re.IGNORECASE)
-_CHECKS_TAG = re.compile(r"<\s*(/?)\s*evaluator_checks\s*>", re.IGNORECASE)
+_CHECKS_TAG = re.compile(r"<\s*(/?)\s*evaluator_checks\b[^>]*>", re.IGNORECASE)  # attributes too
 
 
 def neutralize(text: str) -> str:

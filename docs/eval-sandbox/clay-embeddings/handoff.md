@@ -69,7 +69,7 @@ Spec: [spec.md](spec.md) · design: [design.md](design.md) · evidence: [evidenc
   - The Lambda base image has no `find` (Dockerfile fix).
   - A seeding bug that existed before this change: a worker that cold-started first had no `tasks/`. Fixed in `cloud_boot.py` with a regression test.
   - Memory headroom (DuckDB limit lowered to 768 MB).
-- Both fixes from the verify run's edge cases are in the final deploy (`evidence/deploy-4.log`).
+- **Deploys:** builds 47067d7 (`deploy-4.log`) and 2d69274 (`deploy-5.log`) went live. The allowlist and tag fixes (68d3dca and later) are committed but **not yet deployed**: the AWS SSO session expired mid-deploy. The live AC20 evaluations ran on the path-check code from before the allowlist; AC7 was rerun against real S3 afterwards.
 
 ## Security scans
 
@@ -109,7 +109,8 @@ Spec: [spec.md](spec.md) · design: [design.md](design.md) · evidence: [evidenc
   - The report wording now names both ways to turn the check off.
   - Pass 2: em dashes, query strings, fragments, `,` lists, emphasis, `?`/`!`, non-ASCII punctuation and `%s` still garbled keys. Fixed by switching to the allowlist (16 cases in `test_extract_stops_at_anything_unsafe`).
   - After the change, `pytest -m network` passed: 24 tests, including AC7 against real S3 and AC19's offline run of every prompt. One existing test that pinned the server list was updated to include `embeddings`.
-  - Pass 3: see below.
+  - Pass 3 (the last allowed): one blocker. An imitation `<evaluator_checks source=…>` tag with attributes wasn't neutralised. Fixed: the tag pattern now matches attributes, with a test. China-partition hosts (`.amazonaws.com.cn`) no longer leak `.cn` into the key.
+  - That last fix was not re-reviewed independently, because the gate's three passes were used up. Probed in pass 3: about 85 realistic citation forms, and no correct citation comes out longer than the real path.
 
 ## Specialists consulted
 
@@ -134,6 +135,7 @@ Spec: [spec.md](spec.md) · design: [design.md](design.md) · evidence: [evidenc
 - **Scan the built image** with Trivy or Grype.
 - **The judge scored both live runs 1.00** with the stand-in rubric. Rerun `scripts/judge_sanity.py` with the path check on, and calibrate again once Clay's rubric arrives.
 - **Caption task:** use `clay-v1-5-naip-2` once Clay confirms which embeddings set (K-1).
+- **More citation forms:** GDAL's `/vsis3/bucket/key`, which is common in geospatial plans, plus `s3a://`, dualstack and FIPS hosts. These are missed today (not garbled), so they show as uncited.
 - **Faster embeddings:** pre-extract areas, or cache partitions in `/tmp` across calls, if `embedding_change` across two partitions proves slow.
 
 ## Risks to watch

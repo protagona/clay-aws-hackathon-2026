@@ -29,8 +29,8 @@ _KEY = r"([A-Za-z0-9._\-/=%]*)"  # % only so https keys can be percent-decoded; 
 _PATTERNS = [  # (regex, is_https); group 1 = bucket, group 2 = key (may be empty)
     (re.compile(r"s3://([A-Za-z0-9.\-_]+)/?" + _KEY), False),
     (re.compile(r"arn:aws:s3:::([A-Za-z0-9.\-_]+)/?" + _KEY), False),
-    (re.compile(r"https?://s3" + _REGION + r"\.amazonaws\.com/([A-Za-z0-9.\-_]+)/?" + _KEY), True),
-    (re.compile(r"https?://([A-Za-z0-9.\-_]+)\.s3" + _REGION + r"\.amazonaws\.com/?" + _KEY), True),
+    (re.compile(r"https?://s3" + _REGION + r"\.amazonaws\.com/([A-Za-z0-9.\-_]+)(?![A-Za-z0-9.])/?" + _KEY), True),
+    (re.compile(r"https?://([A-Za-z0-9.\-_]+)\.s3" + _REGION + r"\.amazonaws\.com(?![A-Za-z0-9.])/?" + _KEY), True),
 ]
 # Keys keep only these characters (hive partitions need "="). Cutting early is harmless - a shorter prefix of a real
 # path still lists as found - while cutting late turns a real location into not_found, so anything else ends the key:
