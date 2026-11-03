@@ -86,6 +86,13 @@ Each evaluated task needs three things: a **known task**, **known input**, and a
   - A tracing tool, with "an OpenTelemetry-based LLM trace approach" as the suggested default.
   - The geospatial stack: rasterio, GDAL, xarray and pystac.
   - boto3.
+  - *Where we use them (2026-11-03, [requirement-gaps](eval-sandbox/requirement-gaps/design.md)):*
+    - **rasterio 1.5.2:** reads NAIP tiles in the `naip` MCP server and in `scripts/stage_naip_tiles.py`.
+    - **GDAL:** comes bundled inside rasterio's wheels; no separate install.
+    - **pystac 1.15 (through pystac-client 0.9.1):** the STAC MCP server opens and searches Earth Search with it.
+    - **xarray:** not used. Nothing here works with labelled n-dimensional arrays (no datacubes or time-series stacks), so adding it would be an unused dependency.
+    - **boto3:** S3 and Bedrock calls.
+    - **numpy:** comes in with rasterio.
 - **Preferred libraries** (Technical doc):
   - Clay/LGND embeddings.
   - scikit-learn and numpy for scoring metrics.

@@ -162,7 +162,14 @@ The format is the [trace contract](docs/trace-contract.md). Any harness that wri
 
 Without stages, the v1 weights above apply unchanged. `tasks/adb/expected.jsonl` is our stand-in until Clay's rubric arrives.
 
-**Path check:** during evaluation, every S3 location the agent's output cites is listed once, anonymously, and marked `found`, `not found` or `unverified` (for example requester-pays buckets). The judge sees the result in a block outside the run data, and `report.md` shows it under "Cited S3 locations". It doesn't change the formula below. It's off in the `offline*.toml` configs and with `FOUNDRY_PATH_CHECK=off`.
+**Path check:** during evaluation, every S3 location the agent's output cites is listed once and marked `found`, `not found` or `unverified`. Lists are anonymous, except for the requester-pays buckets named in `[checks] requester_pays` (the NAIP buckets in the Bedrock configs), which get one signed list billed to this account ($0.000005 each, at most 25 per evaluation). The judge sees the result in a block outside the run data, and `report.md` shows it under "Cited S3 locations". It doesn't change the formula below. It's off in the `offline*.toml` configs and with `FOUNDRY_PATH_CHECK=off`.
+
+**Caption task: retrieval instead of the judge.** A task with `tasks/<task>/scorer.json` is scored by that scorer instead of the judge. For `captions`:
+- The caption is compared, as text, with the reference captions of its tile and the tile's 7 most similar tiles by Clay v1.5 NAIP embedding (hard look-alikes).
+- The output score is 1 / (the tile's rank), and `report.md` shows a "Retrieval" section.
+- The text embedder is Titan Text Embeddings V2 on Bedrock, or a deterministic hash embedder offline (`[embedder]` in each config).
+- The 64 reference captions are stand-ins written by Claude from the images. They are to be replaced with Clay's, and they are frozen per deployment once seeded.
+- `scripts/caption_scorer_sanity.py` checks that the scorer ranks good captions above bad ones ([result](docs/eval-sandbox/requirement-gaps/evidence/caption-scorer-sanity.md)).
 
 **Overall score** is `0.5 × workflow + 0.5 × output`, configurable in `[scoring]`. It is `null` ("incomplete") when the judge's reply can't be used after one retry.
 
@@ -202,11 +209,13 @@ Result on 2026-10-30, Opus 4.6 judge, $0.36. **All 13 checks pass.**
 
 ## Tools the agent can use
 
-Three MCP servers are configured, and none needs credentials:
+The ADB configs set up three MCP servers, and the caption configs one. None of them needs credentials:
 
 - **RODA** (`awslabs.roda-mcp-server`, pinned): discovers datasets in the Registry of Open Data on AWS.
-- **STAC** (`src/foundry/engine/mcp_servers/stac.py`, part of this repo): finds actual scenes for an area and date range through `search_items`, `get_item` and `list_collections`. It uses Earth Search by default; set `STAC_API_URL` to use another STAC API. Responses are compacted to a few KB, so they don't flood the agent's context.
+- **STAC** (`src/foundry/engine/mcp_servers/stac.py`, part of this repo): finds actual scenes for an area and date range through `search_items`, `get_item` and `list_collections`. It queries through pystac-client. It uses Earth Search by default; set `STAC_API_URL` to use another STAC API. Responses are compacted to a few KB, so they don't flood the agent's context.
 - **Clay embeddings** (`src/foundry/engine/mcp_servers/embeddings.py`, part of this repo): Clay v1.5 embeddings by LGND (Sentinel-2, 1280 m cells, 256 dims), read straight from the public bucket on Source Cooperative. `embedding_coverage` lists which months exist for an area (some are missing), `similar_places` finds cells that look like a given point, and `embedding_change` compares an area's cells between two months. Areas are capped at 1° × 1°. Each query reads a whole partition-month (~330 MB), so expect seconds in AWS and up to a minute or more on a laptop. Details: [clay-embeddings design](docs/eval-sandbox/clay-embeddings/design.md).
+
+- **NAIP tiles** (`src/foundry/engine/mcp_servers/naip.py`, part of this repo; caption task only): `naip_tile` returns one 256 × 256 px tile of the staged NAIP sample as a PNG image, with its footprint and date. It's read with rasterio from a local copy the runner fetches from the deployment's runs bucket (`samples/naip-captions/`), so the server never gets AWS credentials. Only Claude models read images returned by a tool; Kimi and Qwen reject them ([vision spike](docs/eval-sandbox/requirement-gaps/evidence/vision-spike.md)), so the caption configs use Claude Sonnet 4.6.
 
 Every MCP server runs under a small reaper (`foundry.engine.harness.reaper`), so it can't outlive a killed `foundry run`.
 

@@ -93,7 +93,7 @@ Short on Python people? Merge C into B, and put the strongest generalist on D. G
 | E-1 | 5–10 synthetic ADB-style prompts, ranging from easy to hard | M | dom | — | `tasks/adb/prompts.jsonl` committed |
 | E-2 | Rubric as data: criteria, scale and what a 1 vs. a 4 looks like. **Draft a stand-in now** and swap in Clay's when it arrives | M | dom | — | `tasks/adb/rubric.json` committed |
 | E-3 | Expected workflow per prompt: which tools *should* be called, roughly in what order | S | dom | E-1 | Used by the D-1 sequence check |
-| E-4 | Caption task pack: imagery sample, Clay's example captions, the retrieval eval set, and LGND embeddings. Needs its own output scorer (retrieval metrics). The LGND embeddings cover Sentinel-2; NAIP embeddings are a separate set, `clay-v1-5-naip-2` ([details](requirements.md#other-clay-embeddings)). Use whichever Clay confirms in K-1 | C | dom+py | K-1, A-2 | `tasks/captions/` committed; a caption run is scored |
+| E-4 | Caption task pack: imagery sample, Clay's example captions, the retrieval eval set, and LGND embeddings. Needs its own output scorer (retrieval metrics). The LGND embeddings cover Sentinel-2; NAIP embeddings are a separate set, `clay-v1-5-naip-2` ([details](requirements.md#other-clay-embeddings)). Use whichever Clay confirms in K-1 | C | dom+py | K-1, A-2 | `tasks/captions/` committed; a caption run is scored. **Built 2026-11-03** with stand-in captions and a stand-in retrieval set ([requirement-gaps](eval-sandbox/requirement-gaps/spec.md)); Clay's captions and retrieval set still pending (K-1) |
 
 ## F: UI
 

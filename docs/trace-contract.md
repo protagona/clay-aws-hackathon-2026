@@ -164,6 +164,16 @@ Written by `foundry evaluate`, always together with `rubric.json` and `report.md
 - `path_checker`: `"v1"`, or `null` when off. It also marks runs whose judge input carried the `<evaluator_checks>` block.
 - The key names, the item shape and the three status values are permanent under the additive-only rule. `reason` is display text: don't match on it.
 
+**Caption task and requester-pays paths** (requirement-gaps, 2026-11-03)
+- **`trace.jsonl`:** an optional `images` count on a `tool_call` whose result carried image blocks. The image bytes themselves are not traced.
+- **`run.json`:** `reference_ids` is filled (for example `["captions-stand-in-v0"]`) for tasks with a `scorer.json`.
+- **`scores.json`, retrieval-scored runs:**
+  - optional `output.scorer` (`"retrieval-v1"`) and `output.retrieval`, shaped `{target, rank, of, candidates[{tile_id, clay_similarity, caption_similarity}], embedder{provider, id}, references_id, references_sha256, tiles_sha256, sample_id}`;
+  - optional `retrieval_sha256` and `evaluation.embedder`.
+- **Nullable judge fields:** `output.judge`, `evaluation.judge` and `templates.judge` are **null** for retrieval-scored runs. This is a reader-facing change: they used to always be set, so readers must accept null.
+- **`retrieval.json`:** an optional evaluation file holding the scorer's exact inputs (target, candidates' references and Clay similarities, caption).
+- **Path check v2:** `path_checker` may be `"v2"`. Item statuses are unchanged; `reason` can be `found (requester pays)`, `requester-pays check failed (<code>)` or `no AWS credentials for requester pays`.
+
 ## Rules
 
 1. **Additive only.** New optional fields are fine; renaming or removing a field needs the whole team.

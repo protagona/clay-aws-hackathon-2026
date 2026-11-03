@@ -8,6 +8,10 @@ on copies in --out, then checks fixtures/judge-cases/expected.json:
   criteria     named criteria never score above a cap (the hallucinated plan's data-fit and feasibility)
   consistency  across repeats, output scores spread by at most max_spread.output and every criterion by at most
                max_spread.criterion points
+  below        (requirement-gaps AC7) a case's every repeat scores below every repeat of each listed case, on the
+               listed criteria and the output score. A case with "control": "nocheck" is also scored with the path
+               check off, as "<case>@nocheck", so the comparison isolates the path evidence
+  paths        a controlled case's cited locations all come back not_found (else the case isn't testing anything)
 
 This proves the judge separates obvious cases and is stable; it does not prove it agrees with humans.
 
@@ -20,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import statistics
 import sys
@@ -40,7 +45,22 @@ def score_once(case: Path, dest: Path, cfg) -> dict:
     scores = evaluate(dest, cfg)
     out = scores["output"]
     return {"output": out["score"], "criteria": {c["id"]: c["score"] for c in out["criteria"]},
-            "cost": (scores.get("evaluation") or {}).get("cost_usd")}
+            "cost": (scores.get("evaluation") or {}).get("cost_usd"),
+            "paths": [i["status"] for i in (scores.get("paths") or {}).get("items", [])] if scores.get("paths") else None}
+
+
+def score_without_path_check(case: Path, dest: Path, cfg) -> dict:
+    """The control: the same case with the path check off (no <evaluator_checks> block). Run serially, after the
+    pool, so the environment change can't reach other cases' evaluations."""
+    old = os.environ.get("FOUNDRY_PATH_CHECK")
+    os.environ["FOUNDRY_PATH_CHECK"] = "off"
+    try:
+        return score_once(case, dest, cfg)
+    finally:
+        if old is None:
+            os.environ.pop("FOUNDRY_PATH_CHECK", None)
+        else:
+            os.environ["FOUNDRY_PATH_CHECK"] = old
 
 
 def check(results: dict[str, list[dict]], expected: dict) -> list[tuple[str, bool, str]]:
@@ -50,8 +70,24 @@ def check(results: dict[str, list[dict]], expected: dict) -> list[tuple[str, boo
         if case not in results:
             checks.append((f"band {case}", False, "case not scored"))
             continue
-        lo, hi = expected["bands"][exp["band"]]
-        checks.append((f"band {case}", lo <= means[case] <= hi, f"mean {means[case]:.2f}, want {exp['band']} [{lo}, {hi}]"))
+        if "band" in exp:
+            lo, hi = expected["bands"][exp["band"]]
+            checks.append((f"band {case}", lo <= means[case] <= hi,
+                           f"mean {means[case]:.2f}, want {exp['band']} [{lo}, {hi}]"))
+        if exp.get("control"):
+            seen = [r.get("paths") for r in results[case]]
+            ok = all(s and all(x == "not_found" for x in s) for s in seen)
+            checks.append((f"paths {case} all not_found", ok, f"statuses per repeat {seen}"))
+        for other in exp.get("below", []):
+            if other not in results:
+                checks.append((f"below {case} < {other}", False, f"{other} not scored"))
+                continue
+            for crit in [*exp.get("criteria", []), "output"]:
+                def vals(c, crit=crit):
+                    return [r["output"] if crit == "output" else r["criteria"].get(crit) for r in results[c]]
+                mine, theirs = vals(case), vals(other)
+                ok = None not in mine + theirs and max(mine) < min(theirs)
+                checks.append((f"below {case} < {other} {crit}", ok, f"{mine} vs {theirs}"))
         for crit, cap in exp.get("criteria_max", {}).items():
             seen = [r["criteria"].get(crit) for r in results[case]]
             checks.append((f"cap {case} {crit}", all(s is not None and s <= cap for s in seen), f"scores {seen}, cap {cap}"))
@@ -104,6 +140,10 @@ def main(argv: list[str] | None = None) -> int:
     results: dict[str, list[dict]] = {}
     for (case, _), r in zip(jobs, scored):
         results.setdefault(case.name, []).append(r)
+    for case, exp in expected["cases"].items():  # controls: serially, path check off
+        if exp.get("control") == "nocheck":
+            results[f"{case}@nocheck"] = [score_without_path_check(cases_dir / case, out / f"r{i + 1}" / f"{case}@nocheck",
+                                                                   cfg) for i in range(args.repeats)]
 
     checks = check(results, expected)
     md = to_markdown(args.config, cfg.judge.id, results, checks, args.repeats)

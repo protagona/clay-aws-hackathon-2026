@@ -6,6 +6,15 @@ Each increment's spec, design and verification record is under [docs/eval-sandbo
 
 ### Added
 
+- **Requirement gaps** ([requirement-gaps](docs/eval-sandbox/requirement-gaps/spec.md)):
+  - **Caption task** (`tasks/captions`, `config/*-captions.toml`):
+    - 12 prompts over an 8 × 8-tile NAIP sample (El Centro, CA, 2020).
+    - The new `naip` MCP server returns a tile as an image.
+    - A retrieval scorer against Clay NAIP look-alikes replaces the judge. It uses Titan V2 text embeddings, or a hash embedder offline.
+  - **Staging:** `scripts/stage_naip_tiles.py` stages the sample once and uploads it per deployment. The runner fetches it with `{sample:<name>}` in MCP server env.
+  - **NAIP path check:** the path check lists requester-pays buckets on the allowlist with a signed request, so NAIP locations come back found or not found.
+  - **Judge case F** (missing data locations) with a no-path-check control, plus `scripts/caption_scorer_sanity.py`.
+  - **Trace:** `tool_call.images`. `run.json` `reference_ids` is filled, and `retrieval.json` is written in run directories.
 - **Clay embeddings and path checks** ([clay-embeddings](docs/eval-sandbox/clay-embeddings/spec.md)):
   - **A third MCP server** gives the agent Clay v1.5 embeddings (LGND, Sentinel-2): coverage, similar places, change.
   - **Prompts:** `adb-007` (where Fresno changed, 2020 to 2024) and `adb-008` (places like a flood-hit farm in Nepal) expect these tools.
@@ -56,6 +65,10 @@ Each increment's spec, design and verification record is under [docs/eval-sandbo
 
 ### Changed
 
+- **STAC server:** queries Earth Search through pystac-client. Tools and outputs are unchanged.
+- **Dependencies:** pins rasterio 1.5.2 and pystac-client 0.9.1.
+- **`path_checker`:** now `v2`.
+- **Judge fields:** `templates.judge`, `evaluation.judge` and `output.judge` are null for retrieval-scored runs.
 - **One code path for the laptop and AWS** ([backend-parity](docs/eval-sandbox/backend-parity/handoff.md)):
   - **State:** services read and write through `state.of(ws)`.
   - **Board:** board cards come from one builder (`services/cards.py`).
