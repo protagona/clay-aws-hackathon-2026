@@ -1,0 +1,52 @@
+[
+ {
+  "text": "1. Check Clay embeddings coverage for the area.\n2. Confirm scenes with a STAC search.\n3. Write the plan: data and why, access, processing steps, limitations."
+ },
+ {
+  "tool": "embedding_coverage",
+  "input": {
+   "bbox": [
+    85.05,
+    26.8,
+    85.55,
+    27.3
+   ]
+  }
+ },
+ {
+  "tool": "search_items",
+  "input": {
+   "collection": "sentinel-2-l2a",
+   "bbox": [
+    85.05,
+    26.8,
+    85.55,
+    27.3
+   ],
+   "datetime": "2024-07-01/2024-07-31",
+   "limit": 3,
+   "max_cloud_cover": 70
+  }
+ },
+ {
+  "text": "Plan: the Clay embeddings cover this part of the Terai (2021 is missing). Find cells most similar to the confirmed flood-affected cell in the same month, then verify the top candidates with low-cloud Sentinel-2 L2A scenes from Earth Search (sentinel-cogs, us-west-2, no Requester-Pays) and a water index. Limitations: similarity is not flood evidence; monsoon cloud cover limits optical checks."
+ },
+ {
+  "tool": "search_items",
+  "input": {
+   "collection": "sentinel-2-l2a",
+   "bbox": [
+    85.05,
+    26.8,
+    85.55,
+    27.3
+   ],
+   "datetime": "2024-07-01/2024-07-31",
+   "limit": 3,
+   "max_cloud_cover": 70
+  }
+ },
+ {
+  "text": "VERDICT: approve\nThe plan matches the tool results."
+ }
+]

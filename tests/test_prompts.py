@@ -29,20 +29,20 @@ def store(tmp_path):
 
 
 def test_create_and_errors(store):  # P3
-    assert store.next_id(set()) == "adb-007"
-    assert store.next_id({"adb-007"}) == "adb-008"  # an id with runs is never offered
-    store.create("adb-007", "  Map mangroves in Indonesia.  ", set())
-    assert store.get("adb-007") == {"prompt_id": "adb-007", "prompt": "Map mangroves in Indonesia.", "archived": False, "stages": None}
-    for pid, text, field, msg in [("adb-007", "x", "prompt_id", "already a prompt"), ("new", "x", "prompt_id", "reserved"),
+    assert store.next_id(set()) == "adb-009"
+    assert store.next_id({"adb-009"}) == "adb-010"  # an id with runs is never offered
+    store.create("adb-009", "  Map mangroves in Indonesia.  ", set())
+    assert store.get("adb-009") == {"prompt_id": "adb-009", "prompt": "Map mangroves in Indonesia.", "archived": False, "stages": None}
+    for pid, text, field, msg in [("adb-009", "x", "prompt_id", "already a prompt"), ("new", "x", "prompt_id", "reserved"),
                                   (".", "x", "prompt_id", "reserved"), ("a/b", "x", "prompt_id", "letters"),
                                   ("a..b", "x", "prompt_id", "letters"), ("x" * 65, "x", "prompt_id", "letters"),
-                                  ("adb-008", "   ", "prompt", "empty"), ("adb-008", "y" * 20_001, "prompt", "limit"),
+                                  ("adb-010", "   ", "prompt", "empty"), ("adb-010", "y" * 20_001, "prompt", "limit"),
                                   ("adb-001", "x", "prompt_id", "already a prompt")]:
         with pytest.raises(StoreError, match=msg) as e:
             store.create(pid, text, set())
         assert e.value.status == 400 and e.value.field == field
     with pytest.raises(StoreError, match="already has runs"):
-        store.create("adb-009", "x", {"adb-009"})
+        store.create("adb-011", "x", {"adb-011"})
 
 
 def test_store_keeps_other_lines_verbatim(store):  # P11: extra keys, CRLF and blank lines survive; only the target changes
@@ -63,9 +63,9 @@ def test_store_keeps_other_lines_verbatim(store):  # P11: extra keys, CRLF and b
 
 def test_text_with_line_separators_roundtrips(store):  # pass-3 blocker: U+2028/U+2029/U+0085 must not split a line
     text = "first second third\x85fourth"
-    store.create("adb-007", text, set())
-    assert store.get("adb-007")["prompt"] == text
-    assert len([ln for ln in store.prompts_path.read_text(encoding="utf-8").split("\n") if ln.strip()]) == 7
+    store.create("adb-009", text, set())
+    assert store.get("adb-009")["prompt"] == text
+    assert len([ln for ln in store.prompts_path.read_text(encoding="utf-8").split("\n") if ln.strip()]) == 9
 
 
 def test_new_version_copies_text_and_steps(store):  # P5
@@ -98,10 +98,10 @@ def test_steps_roundtrip_limits_and_removal(store):  # P8, P9
 def test_store_lock_and_atomic(store):  # P11
     (store.dir / ".prompts.lock").write_text(str(os.getpid()))
     with pytest.raises(StoreError, match="being changed") as e:
-        store.create("adb-007", "x", set())
+        store.create("adb-009", "x", set())
     assert e.value.status == 409
     (store.dir / ".prompts.lock").write_text("999999")  # a crashed writer's lock is cleared
-    store.create("adb-007", "x", set())
+    store.create("adb-009", "x", set())
     assert not (store.dir / ".prompts.lock").exists() and not list(store.dir.glob("*.tmp-*"))
 
 
@@ -116,18 +116,18 @@ def test_hand_edit_detected(store, monkeypatch):  # a hand edit between our read
 
     monkeypatch.setattr(mod, "parse_prompts", edit_meanwhile)
     with pytest.raises(StoreError, match="changed on disk") as e:
-        store.create("adb-007", "x", set())
-    assert e.value.status == 409 and "adb-007" not in store.prompts_path.read_text()
+        store.create("adb-009", "x", set())
+    assert e.value.status == 409 and "adb-009" not in store.prompts_path.read_text()
 
 
 def test_store_errors_use_relative_paths(store):  # P12: messages name tasks/adb/prompts.jsonl, never the temp file or root
     store.prompts_path.write_text(store.prompts_path.read_text() + "{not json\n")
     with pytest.raises(StoreError) as e:
         store.rows()
-    assert "tasks/adb/prompts.jsonl:7" in e.value.message and str(store.dir) not in e.value.message
+    assert "tasks/adb/prompts.jsonl:9" in e.value.message and str(store.dir) not in e.value.message
     dup = store.prompts_path.read_text().replace("{not json\n", '{"prompt_id": "adb-001", "prompt": "again"}\n')
     store.prompts_path.write_text(dup)
-    with pytest.raises(StoreError, match="adb-001 on lines 1, 7"):
+    with pytest.raises(StoreError, match="adb-001 on lines 1, 9"):
         store.set_archived("adb-002", True)
 
 
@@ -153,14 +153,14 @@ def test_prompts_list_counts_and_create(api):  # P1, P2, P3
     _, c, h, root = api
     body = c.get("/api/prompts").json()
     rows = {p["prompt_id"]: p for p in body["prompts"]}
-    assert len(rows) == 6 and rows["adb-001"]["runs"] == 1 and rows["adb-002"]["runs"] == 0
-    assert rows["adb-001"]["stages"] and body["next_id"] == "adb-007" and body["root_name"] == root_name(api[0])
-    r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-007", "prompt": "Map mangroves."})
-    assert r.status_code == 201 and r.json() == {"prompt_id": "adb-007"}
-    assert "adb-007" in c.get("/api/session").json()["prompts"]
-    r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-007", "prompt": "again"})
+    assert len(rows) == 8 and rows["adb-001"]["runs"] == 1 and rows["adb-002"]["runs"] == 0
+    assert rows["adb-001"]["stages"] and body["next_id"] == "adb-009" and body["root_name"] == root_name(api[0])
+    r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-009", "prompt": "Map mangroves."})
+    assert r.status_code == 201 and r.json() == {"prompt_id": "adb-009"}
+    assert "adb-009" in c.get("/api/session").json()["prompts"]
+    r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-009", "prompt": "again"})
     assert r.status_code == 400 and r.json()["field"] == "prompt_id"
-    r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-008", "prompt": ""})
+    r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-010", "prompt": ""})
     assert r.status_code == 400 and r.json()["field"] == "prompt"
 
 
@@ -195,11 +195,11 @@ def test_archive_hides_from_session_and_refuses_runs(api):  # P7
 
 def test_scripted_config_without_script_refused(api):  # P10
     _, c, h, _ = api
-    assert c.post("/api/prompts", headers=h, json={"prompt_id": "adb-007", "prompt": "New."}).status_code == 201
-    r = c.post("/api/runs", headers=h, json={"prompt_id": "adb-007", "config": "offline"})
-    assert r.status_code == 400 and r.json()["error"] == "The offline config 'offline' has no script for adb-007. Pick a Bedrock config."
-    r = c.post("/api/batches", headers=h, json={"config": "offline", "prompts": ["adb-001", "adb-007"], "max_cost": 1})
-    assert r.status_code == 400 and "no script for adb-007" in r.json()["error"]
+    assert c.post("/api/prompts", headers=h, json={"prompt_id": "adb-009", "prompt": "New."}).status_code == 201
+    r = c.post("/api/runs", headers=h, json={"prompt_id": "adb-009", "config": "offline"})
+    assert r.status_code == 400 and r.json()["error"] == "The offline config 'offline' has no script for adb-009. Pick a Bedrock config."
+    r = c.post("/api/batches", headers=h, json={"config": "offline", "prompts": ["adb-001", "adb-009"], "max_cost": 1})
+    assert r.status_code == 400 and "no script for adb-009" in r.json()["error"]
 
 
 def test_steps_through_api_and_tools(api):  # P8, P9
@@ -226,7 +226,7 @@ def test_prompts_must_deny(api):  # P12
     api[0].sync_project()
     r = c.get("/api/prompts")
     server_root = str(api[0].ws.root)
-    assert r.status_code == 400 and "tasks/adb/prompts.jsonl:7" in r.json()["error"] and server_root not in r.text
+    assert r.status_code == 400 and "tasks/adb/prompts.jsonl:9" in r.json()["error"] and server_root not in r.text
     r = c.post("/api/runs", headers=h, json={"prompt_id": "adb-001", "config": "offline"})
     assert r.status_code == 400 and server_root not in r.text
 
@@ -288,7 +288,7 @@ def test_prompts_api_lock_and_bytes(api):  # P11 through the API
     _, c, h, root = api
     path = root / "tasks/adb/prompts.jsonl"
     (root / "tasks/adb/.prompts.lock").write_text(str(os.getpid()))
-    r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-007", "prompt": "x"})
+    r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-009", "prompt": "x"})
     assert r.status_code == 409 and r.json()["error"] == "Prompts are being changed; try again"
     (root / "tasks/adb/.prompts.lock").unlink()
     before = path.read_bytes()  # an invalid write (a hand-made duplicate elsewhere) is refused and changes nothing
@@ -301,12 +301,12 @@ def test_prompts_api_lock_and_bytes(api):  # P11 through the API
 
 def test_prompts_api_echo_origin_host_and_surrogates(api):  # P12 through the API, on both setups
     _, c, h, _ = api
-    r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-007", "prompt": "<script>alert(1)</script>"})
+    r = c.post("/api/prompts", headers=h, json={"prompt_id": "adb-009", "prompt": "<script>alert(1)</script>"})
     assert r.status_code == 201
-    r = c.get("/api/prompts/adb-007")
+    r = c.get("/api/prompts/adb-009")
     assert r.headers["content-type"] == "application/json" and r.json()["prompt"]["prompt"] == "<script>alert(1)</script>"
-    assert c.post("/api/prompts", headers={**h, "origin": "http://evil.example"}, json={"prompt_id": "adb-008", "prompt": "x"}).status_code == 403
-    assert c.put("/api/prompts/adb-007", headers={**h, "host": "evil.example"}, json={"prompt": "y"}).status_code == 400
+    assert c.post("/api/prompts", headers={**h, "origin": "http://evil.example"}, json={"prompt_id": "adb-010", "prompt": "x"}).status_code == 403
+    assert c.put("/api/prompts/adb-009", headers={**h, "host": "evil.example"}, json={"prompt": "y"}).status_code == 400
     r = c.post("/api/prompts", headers={**h, "content-type": "application/json"},
                content='{"prompt_id": "adb-009", "prompt": "a\\ud800b"}')  # escaped: clients can't encode it raw
     assert r.status_code == 400 and r.json()["field"] == "prompt"  # a lone surrogate: 400, not a 500

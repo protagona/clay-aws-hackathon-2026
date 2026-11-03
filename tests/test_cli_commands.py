@@ -273,7 +273,10 @@ def test_tools_lists_each_servers_tools(home, tmp_path):
     offline = (home / "config" / "offline.toml").read_text()
     start, end = offline.index("[mcp.servers.roda]"), offline.index("[mcp.servers.stac]")
     (home / "config" / "offline.toml").unlink()
-    (home / "config" / "stac.toml").write_text(offline[:start] + offline[end:])
+    stac_only = offline[:start] + offline[end:]
+    e_start = stac_only.index("[mcp.servers.embeddings]")
+    e_end = stac_only.index("\n[", e_start) + 1
+    (home / "config" / "stac.toml").write_text(stac_only[:e_start] + stac_only[e_end:])
     r = foundry(home, "tools", STAC_API_URL="http://127.0.0.1:9")  # nothing listens there
     assert r.returncode == 0, r.stderr
     listed = json.loads(r.stdout)
@@ -356,3 +359,16 @@ def test_rubric_draft_exit_0_and_1(home, tmp_path):
     r = foundry(home, "rubric", "draft", "--text", "Accuracy counts double.", "--config", str(cfg))
     assert r.returncode == 1 and ": INVALID: " in r.stdout, (r.stdout, r.stderr)
     assert "  draft " in foundry(home, "rubric", "list").stdout and " invalid from " in foundry(home, "rubric", "list").stdout
+
+
+def test_tools_lists_embeddings_tools(home):
+    """The in-repo embeddings server, as config/offline.toml declares it; listing its tools needs no network."""
+    offline = (home / "config" / "offline.toml").read_text()
+    start, end = offline.index("[mcp.servers.roda]"), offline.index("[mcp.servers.embeddings]")
+    (home / "config" / "offline.toml").unlink()
+    (home / "config" / "emb.toml").write_text(offline[:start] + offline[end:])
+    r = foundry(home, "tools")
+    assert r.returncode == 0, r.stderr
+    listed = json.loads(r.stdout)
+    assert [s["name"] for s in listed["servers"]] == ["embeddings"] and not listed["servers"][0]["error"]
+    assert [t["name"] for t in listed["tools"]] == ["embedding_change", "embedding_coverage", "similar_places"]

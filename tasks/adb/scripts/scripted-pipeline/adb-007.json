@@ -1,0 +1,52 @@
+[
+ {
+  "text": "1. Check Clay embeddings coverage for the area.\n2. Confirm scenes with a STAC search.\n3. Write the plan: data and why, access, processing steps, limitations."
+ },
+ {
+  "tool": "embedding_coverage",
+  "input": {
+   "bbox": [
+    -120.0,
+    36.6,
+    -119.6,
+    36.9
+   ]
+  }
+ },
+ {
+  "tool": "search_items",
+  "input": {
+   "collection": "sentinel-2-l2a",
+   "bbox": [
+    -120.0,
+    36.6,
+    -119.6,
+    36.9
+   ],
+   "datetime": "2024-07-01/2024-07-31",
+   "limit": 3,
+   "max_cloud_cover": 20
+  }
+ },
+ {
+  "text": "Plan: the Clay embeddings cover Fresno from 2017-01 to 2026-04 (June 2024 and June 2025 are missing). Compare July 2020 with July 2024 per 1.28 km cell, take the least similar cells as candidate change areas, and pull the matching Sentinel-2 L2A scenes (sentinel-cogs bucket, us-west-2, no Requester-Pays) for an NDVI-difference change layer over those areas. Limitations: embedding change is not labelled change; confirm with imagery."
+ },
+ {
+  "tool": "search_items",
+  "input": {
+   "collection": "sentinel-2-l2a",
+   "bbox": [
+    -120.0,
+    36.6,
+    -119.6,
+    36.9
+   ],
+   "datetime": "2024-07-01/2024-07-31",
+   "limit": 3,
+   "max_cloud_cover": 20
+  }
+ },
+ {
+  "text": "VERDICT: approve\nThe plan matches the tool results."
+ }
+]

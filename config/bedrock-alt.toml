@@ -51,6 +51,13 @@ version = "0.1.0"
 error_detection = "mcp"
 env = { STAC_API_URL = "https://earth-search.aws.element84.com/v1" }   # Earth Search: public, no credentials
 
+[mcp.servers.embeddings]     # Clay v1.5 embeddings (LGND, Sentinel-2, 1280 m): coverage, similar places, change
+command = "{python}"         # in this repo (src/foundry/engine/mcp_servers/embeddings.py); DuckDB over public S3
+args = ["-m", "foundry.engine.mcp_servers.embeddings"]
+package = "foundry.mcp_servers.embeddings"
+version = "0.1.0"
+error_detection = "mcp"
+
 [tracing]
 tracers = ["jsonl"]
 
