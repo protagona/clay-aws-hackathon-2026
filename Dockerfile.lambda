@@ -4,6 +4,9 @@ FROM public.ecr.aws/lambda/python:3.12-arm64
 
 # uv, pinned like .tool-versions; used only at build time.
 RUN pip install --no-cache-dir uv==0.13.6
+# rasterio's manylinux wheel links libexpat.so.1, which the Lambda base image (Amazon Linux 2023) lacks
+# (requirement-gaps Verify: the first deployed caption run failed with "libexpat.so.1: cannot open shared object file").
+RUN dnf install -y expat && dnf clean all
 
 # Dependencies first (cached layer), straight into the runtime's site-packages; then the package itself.
 COPY pyproject.toml uv.lock README.md LICENSE ${LAMBDA_TASK_ROOT}/
@@ -12,6 +15,9 @@ RUN cd ${LAMBDA_TASK_ROOT} && uv export --frozen --no-dev --no-emit-project --fo
 # DuckDB's httpfs extension for the embeddings MCP server, installed at build time so no run downloads it
 # (clay-embeddings AC16); the server finds /opt/duckdb-extensions and turns autoinstall off.
 RUN python3 -c "import duckdb, pathlib; d = '/opt/duckdb-extensions'; duckdb.connect(config={'extension_directory': d}).install_extension('httpfs'); print(*pathlib.Path(d).rglob('httpfs*'))"
+# Smoke check, so a missing system library fails the build instead of the first run: rasterio opens a GeoTIFF and
+# writes a PNG (what the naip MCP server does), and pystac-client imports.
+RUN python3 -c "import numpy as np, rasterio, pystac_client; from rasterio.io import MemoryFile; m = MemoryFile(); d = m.open(driver='PNG', width=8, height=8, count=3, dtype='uint8'); d.write(np.zeros((3, 8, 8), 'uint8')); d.close(); print('rasterio', rasterio.__version__, 'gdal', rasterio.__gdal_version__)"
 COPY src ${LAMBDA_TASK_ROOT}/src
 RUN cd ${LAMBDA_TASK_ROOT} && uv pip install --system --no-cache --no-deps .
 

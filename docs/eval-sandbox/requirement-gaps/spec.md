@@ -1,7 +1,7 @@
 # Requirement gaps (NAIP paths, judge cases, caption task, geospatial libraries): Spec
 
 **Track:** Standard   **Product stage:** Introduction (hackathon prototype; presentations 2026-11-05)
-**Status:** Draft   **Last updated:** 2026-11-03
+**Status:** Built (2026-11-03; see handoff.md)   **Last updated:** 2026-11-03
 
 ## Problem
 
@@ -47,27 +47,27 @@ Against `docs/requirements.md`, the evaluator has four gaps. Each one costs the 
 
 ### NAIP path verification
 
-- [ ] **AC1:** `[checks] requester_pays` names `naip-analytic`. When a plan cites an existing NAIP prefix there, such as `s3://naip-analytic/ca/2020/60cm/rgbir_cog/32114/`, the path check reports it `found`. The reason is `found (requester pays)`.
-- [ ] **AC2:** Given the same allowlist, when a plan cites a key that doesn't exist in `naip-analytic`, it is `not_found`.
-- [ ] **AC3:** When a requester-pays bucket is not on the allowlist, it stays `unverified` with the reason `access denied (Requester Pays)`, and no signed request is sent. A unit test asserts that no signed call is made.
-- [ ] **AC4:** When there are no AWS credentials, or the signed list fails or times out, the location is `unverified` with a reason, and the evaluation still completes. The 25-location limit and the 30 s budget still apply.
-- [ ] **AC5:** The offline configs send no signed requests (the path check stays off there).
-- [ ] **AC6:** In the deployed `embeddings` deployment, a live run whose plan cites a `naip-analytic` prefix shows it `found`. The worker's IAM grants `s3:ListBucket` only on the allowlisted buckets.
+- [x] **AC1:** `[checks] requester_pays` names `naip-analytic`. When a plan cites an existing NAIP prefix there, such as `s3://naip-analytic/ca/2020/60cm/rgbir_cog/32114/`, the path check reports it `found`. The reason is `found (requester pays)`.
+- [x] **AC2:** Given the same allowlist, when a plan cites a key that doesn't exist in `naip-analytic`, it is `not_found`.
+- [x] **AC3:** When a requester-pays bucket is not on the allowlist, it stays `unverified` with the reason `access denied (Requester Pays)`, and no signed request is sent. A unit test asserts that no signed call is made.
+- [x] **AC4:** When there are no AWS credentials, or the signed list fails or times out, the location is `unverified` with a reason, and the evaluation still completes. The 25-location limit and the 30 s budget still apply.
+- [x] **AC5:** The offline configs send no signed requests (the path check stays off there).
+- [x] **AC6:** In the deployed `embeddings` deployment, a live run whose plan cites a `naip-analytic` prefix shows it `found`. The worker's IAM grants `s3:ListBucket` only on the allowlisted buckets.
 
 ### Judge sanity cases
 
-- [ ] **AC7:** A new judge case, F, isolates the path evidence.
+- [x] **AC7:** A new judge case, F, isolates the path evidence.
   - **The case:** case A's plan, with each of its four S3 ARNs replaced by a plausible location that doesn't exist. A's trace never names those buckets, so nothing but the path check can reveal the change.
   - **The test:** with the Bedrock judge, F is scored 3 times with the path check on, and 3 times with it off (`FOUNDRY_PATH_CHECK=off`, the control).
   - **The criteria:** with the check on, F's highest data-fit score and highest output score are lower than the lowest scores of both A and the control F.
   - **Where recorded:** the checks are in `fixtures/judge-cases/expected.json` and run in `scripts/judge_sanity.py`.
   - **If the control fails** (the judge marks F down without the evidence): that is recorded as a finding. Changing the judge prompt is out of scope.
-- [ ] **AC8:** The existing 13 judge sanity checks still pass.
+- [x] **AC8:** The existing 13 judge sanity checks still pass.
 
 ### Caption task
 
-- [ ] **AC9:** `tasks/captions/` holds 12 prompts. Each names one tile of the staged sample by id. The task also has `system.txt`, `expected.jsonl`, and stand-in reference captions with a "stand-in" note. The caption task appears wherever tasks are listed (CLI and UI) and can be chosen for a run.
-- [ ] **AC10:** A new MCP tool, `naip_tile(tile_id)`, returns:
+- [x] **AC9:** `tasks/captions/` holds 12 prompts. Each names one tile of the staged sample by id. The task also has `system.txt`, `expected.jsonl`, and stand-in reference captions with a "stand-in" note. The caption task appears wherever tasks are listed (CLI and UI) and can be chosen for a run.
+- [x] **AC10:** A new MCP tool, `naip_tile(tile_id)`, returns:
   - the tile as a PNG (RGB, 256 × 256);
   - its footprint (lon/lat bbox), acquisition date and source image.
 
@@ -76,16 +76,16 @@ Against `docs/requirements.md`, the evaluator has four gaps. Each one costs the 
   - **How it gets local:** before the run starts its MCP servers, the harness downloads the sample into a local cache.
   - **Never:** the requester-pays buckets.
   - **When the sample isn't staged:** the run records a note naming the staging command, and `naip_tile` returns a tool error.
-- [ ] **AC10b:** A one-time staging script does two jobs:
+- [x] **AC10b:** A one-time staging script does two jobs:
   1. It reads the crop from NAIP (requester-pays) and writes `sample.tif` and `tiles.json` locally.
   2. It uploads them to a given deployment's runs bucket under `samples/naip-captions/`. Re-uploading needs no new NAIP reads.
   - **Re-staging:** creates a new `sample_id`. Runs and evaluations refresh their cached copy when the bucket objects change. The scorer refuses a sample whose `sample_id` doesn't match `scorer.json`.
   - **Laptop CLI runs:** use the local copy in `samples/naip-captions/` (git-ignored).
-- [ ] **AC11:** A live caption run with Claude Sonnet 4.6 as the agent model on Bedrock succeeds.
+- [x] **AC11:** A live caption run with Claude Sonnet 4.6 as the agent model on Bedrock succeeds.
   - **The trace:** the `naip_tile` step carries `images: 1`, a new optional trace field.
   - **The output:** a caption.
   - **Tool results over the size cap:** the image is kept. Only the text is cut.
-- [ ] **AC12:** A caption run's output score comes from the retrieval scorer, computed as follows:
+- [x] **AC12:** A caption run's output score comes from the retrieval scorer, computed as follows:
   1. The candidates are the target tile plus its 7 nearest tiles in the staged sample, by cosine similarity of their Clay v1.5 NAIP embeddings.
   2. Each candidate's reference caption is compared with the run's caption, by cosine similarity of their text embeddings.
   3. The score is 1 / (the target's rank).
@@ -94,22 +94,22 @@ Against `docs/requirements.md`, the evaluator has four gaps. Each one costs the 
   - **For auditing:** the evaluation copies its exact inputs into the run directory as `retrieval.json`: the target, the candidates' reference captions, their Clay similarities and the caption. That keeps a record of exactly what produced the score after Clay swaps references.
   - **The judge** is not called for captions. `output.judge`, `evaluation.judge` and `templates.judge` are null, and the report says "Judge: not used (retrieval scorer)".
   - **Time limit:** the embedder's calls have a 60 s total budget. Past it, the output is unscored with an error.
-- [ ] **AC13:** A deterministic scorer sanity check over all 12 tiles, with the Bedrock text embedder, gives these results:
+- [x] **AC13:** A deterministic scorer sanity check over all 12 tiles, with the Bedrock text embedder, gives these results:
   - **The target's own reference caption:** scores 1.0 on all 12.
   - **The generic caption "An aerial image of land.":** scores ≤ 0.5 on at least 10 of 12.
   - **A random other tile's reference caption:** scores lower than the target's own on at least 10 of 12.
 
   The check runs as a script and its result is recorded. If it fails, the window may be re-staged once. If it still fails, the result is recorded as a finding.
-- [ ] **AC14:** The text embedder is chosen in config. The Bedrock configs use a Bedrock text-embedding model. The offline configs use a deterministic local embedder that needs no network, and tests use it.
-- [ ] **AC15:** The workflow score for captions uses the expected stages `[["naip_tile"]]`.
-- [ ] **AC16:** A caption run's report shows a "Retrieval" section with the target's rank, the candidates, and each candidate's similarity.
-- [ ] **AC17:** ADB evaluation is unchanged. The golden-run tests and existing evaluate tests pass, and ADB's `scores.json` gains no required key.
+- [x] **AC14:** The text embedder is chosen in config. The Bedrock configs use a Bedrock text-embedding model. The offline configs use a deterministic local embedder that needs no network, and tests use it.
+- [x] **AC15:** The workflow score for captions uses the expected stages `[["naip_tile"]]`.
+- [x] **AC16:** A caption run's report shows a "Retrieval" section with the target's rank, the candidates, and each candidate's similarity.
+- [x] **AC17:** ADB evaluation is unchanged. The golden-run tests and existing evaluate tests pass, and ADB's `scores.json` gains no required key.
 
 ### Geospatial libraries
 
-- [ ] **AC18:** The STAC MCP server queries Earth Search through pystac-client. Its tool names, arguments and outputs are unchanged, and the existing STAC tests pass, including the network test against Earth Search.
-- [ ] **AC19:** rasterio is a pinned runtime dependency, used by `naip_tile` and the staging script. `docs/requirements.md` records which expected library is used where, and why xarray and a separate GDAL are not used.
-- [ ] **AC20:** The Lambda image builds. A live caption run's worker peaks below 1,800 MB, out of 2,048 MB.
+- [x] **AC18:** The STAC MCP server queries Earth Search through pystac-client. Its tool names, arguments and outputs are unchanged, and the existing STAC tests pass, including the network test against Earth Search.
+- [x] **AC19:** rasterio is a pinned runtime dependency, used by `naip_tile` and the staging script. `docs/requirements.md` records which expected library is used where, and why xarray and a separate GDAL are not used.
+- [x] **AC20:** The Lambda image builds. A live caption run's worker peaks below 1,800 MB, out of 2,048 MB.
 
 ## Success signals
 

@@ -73,12 +73,12 @@ def naip_tile(tile_id: str) -> list:
     acquisition date and source image. Tile ids look like t-r03-c05; the prompt names the tile to caption."""
     tile_id = (tile_id or "").strip()
     if not _TILE_ID.match(tile_id):
-        raise ToolError(f"Unknown tile {tile_id!r}. Tile ids look like t-r03-c05 (row and column 00–07); "
+        raise ToolError(f"Unknown tile {tile_id[:40]!r}. Tile ids look like t-r03-c05 (row and column 00–07); "
                         "the prompt names the tile to caption.")
     tif, meta, tiles = _sample()
     tile = tiles.get(tile_id)
     if tile is None:
-        raise ToolError(f"Unknown tile {tile_id!r}. Tile ids look like t-r03-c05 (row and column 00–07); "
+        raise ToolError(f"Unknown tile {tile_id[:40]!r}. Tile ids look like t-r03-c05 (row and column 00–07); "
                         "the prompt names the tile to caption.")
     src = meta.get("source", {})
     info = {"tile_id": tile_id, "bbox": tile["bbox"], "acquired": src.get("acquired"),

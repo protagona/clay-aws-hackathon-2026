@@ -373,6 +373,17 @@ All changes are additive (`docs/trace-contract.md`, Rules 1):
   - The "delete `scorer.json`" rollback lever works only locally or on a fresh deployment.
 - **Reversibility:** easy (B or C later).
 
+### ADR-9: Install expat in the Lambda image, and smoke-test rasterio at build time (Verify, 2026-11-03)
+- **Context:** the first deployed caption runs failed at `import rasterio` with `libexpat.so.1: cannot open shared object file`. The manylinux wheel expects libexpat from the system, and the Lambda base image (Amazon Linux 2023) doesn't ship it. Tests and the local CLI didn't show this, because macOS and the dev machine have it.
+- **Options:**
+  - A) `dnf install -y expat` in `Dockerfile.lambda`.
+  - B) Vendor libexpat into the image by hand.
+  - C) Build rasterio from source against system GDAL.
+- **Decision:** A, plus a `RUN python3 -c "…"` smoke check after the dependency install: rasterio writes a PNG and pystac-client imports. A missing library then fails the build instead of the first run.
+- **Why:** smallest change. The base image's own package manager gives a patched, tracked expat (2.8.3-1.amzn2023).
+- **Reversibility:** easy.
+- **Sources:** reproduced and fixed in `public.ecr.aws/lambda/python:3.12-arm64` with podman, 2026-11-03: before, ImportError; after, "ok PNG bytes 270 gdal 3.12.2". `evidence/deploy-2.log` line 183 shows the smoke check passing in the real build.
+
 ## Failure modes
 
 | Failure | Detection | Behavior | Recovery |
@@ -386,7 +397,8 @@ All changes are additive (`docs/trace-contract.md`, Rules 1):
 | `scorer.json` malformed | `EvaluateError` before any model call | `foundry evaluate` exits non-zero with file and field | Fix the file |
 | Prompt has no target (e.g. added in the UI) | Scorer | Output null with error copy | Add the target to `scorer.json` |
 | pystac-client raises an unmapped exception | Generic `except Exception` in each tool | `ToolError("STAC client error: <Name>")` | n/a |
-| Lambda memory (rasterio + numpy) | `REPORT` Max Memory Used | n/a | AC20 measures it; raise memory if above 1,800 MB |
+| Lambda memory (rasterio + numpy) | `REPORT` Max Memory Used | n/a | AC20 measures it; raise memory if above 1,800 MB. Measured: 389 MB peak on caption runs |
+| A system library rasterio needs is missing from the Lambda image | Build-time smoke check in `Dockerfile.lambda` (rasterio writes a PNG) | The image build fails, so it never deploys | Install the library with `dnf` in the Dockerfile. This happened in Verify with `libexpat.so.1`, see ADR-9 |
 
 ## Security and privacy
 
