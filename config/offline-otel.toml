@@ -60,3 +60,6 @@ output_weight = 0.5
 [prices]                     # USD per million tokens (Bedrock geo/regional = first-party + 10%)
 "us.anthropic.claude-sonnet-5-5" = { input = 2.20, output = 11.00 }
 "us.anthropic.claude-haiku-5-5"  = { input = 0.11, output = 0.55 }
+
+[checks]
+paths = false              # offline demo replay must work without network (clay-embeddings AC8)

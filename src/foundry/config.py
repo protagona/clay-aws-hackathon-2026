@@ -129,6 +129,10 @@ class ScoringCfg(_Strict):
         return self
 
 
+class ChecksCfg(_Strict):
+    paths: bool = True  # path check: list each S3 location the output cites (clay-embeddings design)
+
+
 class AgentsCfg(_Strict):
     mode: Literal["single", "pipeline"] = "single"  # pipeline: planner -> executor -> checker (increment 7)
 
@@ -151,6 +155,7 @@ class EvalConfig(_Strict):
     scoring: ScoringCfg = Field(default_factory=ScoringCfg)
     prices: dict[str, Price] = Field(default_factory=dict)
     storage: StorageCfg = Field(default_factory=StorageCfg)
+    checks: ChecksCfg = Field(default_factory=ChecksCfg)
     path: str = ""
 
 

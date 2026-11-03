@@ -57,3 +57,6 @@ output_weight = 0.5
 
 [agents]                     # planner -> executor -> checker, one revision on "VERDICT: revise" (increment 7)
 mode = "pipeline"
+
+[checks]
+paths = false              # offline demo replay must work without network (clay-embeddings AC8)

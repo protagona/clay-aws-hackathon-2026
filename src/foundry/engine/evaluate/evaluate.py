@@ -13,7 +13,7 @@ from foundry.config import EvalConfig
 from foundry.contract import CONTRACT_VERSION, validate_run_dir
 from foundry.engine.evaluate import judge as judge_mod
 from foundry.data import locks as lock
-from foundry.engine.evaluate import report, summarize, view, workflow
+from foundry.engine.evaluate import paths, report, summarize, view, workflow
 from foundry.engine.models.registry import build_provider
 from foundry.data.runs import RunDir, dump_line, utc_now
 from foundry.data.tasks import RubricError, load_expected, load_rubric, rubric_path
@@ -89,9 +89,11 @@ def _evaluate_locked(rd: RunDir, run, cfg: EvalConfig, rubric_file, force: bool)
         raise EvaluateError(str(exc)) from None
     wf = workflow.score(effective, steps, expected)
     run_data = view.build(effective, steps, output)
+    path_result = paths.check(paths.extract(output.text)) if paths.enabled(cfg) else None
+    judge_input = run_data + ("\n\n" + view.checks_block(path_result) if path_result is not None else "")
     judge_provider = build_provider(cfg.judge)
     summ_provider = build_provider(cfg.summarizer)
-    jr = judge_mod.judge(judge_provider, rubric, run_data, output.kind, cfg.judge.max_tokens)
+    jr = judge_mod.judge(judge_provider, rubric, judge_input, output.kind, cfg.judge.max_tokens)
     nr = summarize.narrative(summ_provider, run_data, cfg.summarizer.max_tokens)
 
     output_section = {"criteria": jr.criteria, "score": jr.score, "rubric_version": rubric.version,
@@ -123,6 +125,8 @@ def _evaluate_locked(rd: RunDir, run, cfg: EvalConfig, rubric_file, force: bool)
         "weights": {"workflow": cfg.scoring.workflow_weight, "output": cfg.scoring.output_weight},
         "workflow": wf,
         "output": output_section,
+        "paths": path_result,
+        "path_checker": paths.VERSION if path_result is not None else None,
         "overall": overall,
         "narrative": nr.text,
         "narrative_error": nr.error,

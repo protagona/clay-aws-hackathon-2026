@@ -36,3 +36,19 @@ def backend(request, tmp_path, monkeypatch):
     from backends import make
 
     return make(request, tmp_path, monkeypatch)
+
+
+@pytest.fixture(autouse=True)
+def _no_path_check_network(request, monkeypatch):
+    """The path check makes real S3 calls; tests turn it off (env reaches subprocesses) and fail loudly on a real call.
+
+    `network` tests keep the real lister; tests of the check pass their own lister or clear the variable.
+    """
+    monkeypatch.setenv("FOUNDRY_PATH_CHECK", "off")
+    if request.node.get_closest_marker("network") is None:
+        from foundry.engine.evaluate import paths
+
+        def _refuse():
+            raise AssertionError("path check tried real S3 in a non-network test; pass a fake lister")
+
+        monkeypatch.setattr(paths, "default_lister", _refuse)

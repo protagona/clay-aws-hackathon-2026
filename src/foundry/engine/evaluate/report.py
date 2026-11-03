@@ -28,6 +28,24 @@ def _fmt(score) -> str:
     return "n/a" if score is None else f"{score:.2f}"
 
 
+_STATUS_TEXT = {"found": "found", "not_found": "not found", "unverified": "unverified"}
+
+
+def _paths_section(scores: dict) -> list[str]:
+    lines = ["", "## Cited S3 locations", ""]
+    p = scores.get("paths")
+    if p is None:
+        return lines + ["Path check off ([checks] paths = false)."]
+    if not p.get("items"):
+        return lines + ["No S3 locations cited in the output."]
+    lines += [f"Checked with anonymous S3 list requests during evaluation (path checker {esc(p.get('version'))}). "
+              f"{p['found']} found · {p['not_found']} not found · {p['unverified']} unverified.", "",
+              "| Location | Status | Reason |", "|---|---|---|"]
+    lines += [f"| {cell(it['location'])} | {_STATUS_TEXT.get(it['status'], cell(it['status']))} | "
+              f"{cell(it.get('reason') or '')} |" for it in p["items"]]
+    return lines
+
+
 def build(run: RunRecord, steps: list[Step], output: Output, scores: dict) -> str:
     w, o = scores["workflow"], scores["output"]
     lines = [f"# Evaluation report: {esc(run.prompt_id)}", ""]
@@ -67,6 +85,8 @@ def build(run: RunRecord, steps: list[Step], output: Output, scores: dict) -> st
     else:
         lines += ["| Criterion | Score | Rationale |", "|---|---|---|"]
         lines += [f"| {cell(c['id'])} | {c['score']}/{c['max']} | {cell(c['rationale'])} |" for c in o["criteria"]]
+
+    lines += _paths_section(scores)
 
     lines += ["", "## Timeline", "", "| Step | Type | Name | Status | Duration (ms) | Detail |", "|---|---|---|---|---|---|"]
     for s in steps:
