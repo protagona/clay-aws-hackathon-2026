@@ -11,6 +11,8 @@ dependencies = [
     "mcp==2.1.1",
     "boto3==1.43.122",
     "duckdb==1.5.6",
+    "rasterio==1.5.2",
+    "pystac-client==0.9.1",
     "fastapi==0.162.0",
     "uvicorn==0.54.0",
     "python-multipart==0.0.32",

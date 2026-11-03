@@ -16,7 +16,9 @@ import os
 import re
 from urllib.parse import quote
 
-import httpx
+from pystac_client import Client
+from pystac_client.exceptions import APIError
+from pystac_client.stac_api_io import StacApiIO
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
@@ -30,35 +32,63 @@ MAX_ASSETS_LISTED = 40
 _DATETIME = re.compile(r"^(\.\.|\d{4}-\d{2}-\d{2}(T[0-9:.]+Z?)?)(/(\.\.|\d{4}-\d{2}-\d{2}(T[0-9:.]+Z?)?))?$")
 
 server = MCPServer("stac")
-logging.getLogger("httpx").setLevel(logging.WARNING)  # one INFO line per request would flood mcp-stac.log
+logging.getLogger("urllib3").setLevel(logging.WARNING)  # one line per request would flood mcp-stac.log
 _collections_cache: list[dict] | None = None
+# pystac-client opens the API (landing page, conformance) and builds and pages searches; every tool reads the server's
+# raw JSON through the same StacApiIO, never pystac objects, which pystac migrates and validates (requirement-gaps
+# ADR-6, slice D). max_retries=0: one attempt, like before; the default of 5 would multiply the timeout.
+_io_cache: StacApiIO | None = None
+_client_cache: Client | None = None
 
 
 def _api() -> str:
     return os.environ.get("STAC_API_URL", DEFAULT_API).rstrip("/")
 
 
-def _request(method: str, path: str, **kw) -> dict:
+def _io() -> StacApiIO:
+    global _io_cache
+    if _io_cache is None:
+        _io_cache = StacApiIO(timeout=TIMEOUT_S, max_retries=0)
+    return _io_cache
+
+
+def _client() -> Client:
+    global _client_cache
+    if _client_cache is None:
+        _client_cache = _call(lambda: Client.open(_api(), stac_io=_io()), "/")
+    return _client_cache
+
+
+def _call(fn, path: str):
+    """Run a pystac-client call; map its errors to the tool errors the server always gave (pystac-client 0.9.1 wraps
+    transport errors as APIError without a status_code, HTTP errors as APIError with one; stac_api_io.py:208-223)."""
     url = f"{_api()}{path}"
     try:
-        r = httpx.request(method, url, timeout=TIMEOUT_S, **kw)
-    except httpx.TimeoutException:
-        raise ToolError(f"STAC API timed out after {TIMEOUT_S:g}s ({url}). Try a smaller bbox or date range.") from None
-    except httpx.HTTPError as exc:
-        raise ToolError(f"STAC API unreachable ({url}): {type(exc).__name__}") from None
-    if r.status_code >= 400:
-        detail = r.text[:300].replace("\n", " ")
-        raise ToolError(f"STAC API returned HTTP {r.status_code} for {path}: {detail}")
-    try:
-        return r.json()
+        return fn()
+    except APIError as exc:
+        code = getattr(exc, "status_code", None)
+        if code is not None:
+            detail = str(exc)[:300].replace("\n", " ")
+            raise ToolError(f"STAC API returned HTTP {code} for {path}: {detail}") from None
+        if "timed out" in str(exc).lower():
+            raise ToolError(f"STAC API timed out after {TIMEOUT_S:g}s ({url}). Try a smaller bbox or date range.") from None
+        raise ToolError(f"STAC API unreachable ({url}): APIError") from None
+    except ToolError:
+        raise
     except ValueError:
         raise ToolError(f"STAC API returned non-JSON for {path}") from None
+    except Exception as exc:  # noqa: BLE001 - any client failure is a tool error, never a crash
+        raise ToolError(f"STAC client error: {type(exc).__name__}") from None
+
+
+def _get(path: str) -> dict:
+    return _call(lambda: _io().read_json(f"{_api()}{path}"), path)
 
 
 def _collections() -> list[dict]:
     global _collections_cache
     if _collections_cache is None:
-        _collections_cache = _request("GET", "/collections").get("collections", [])
+        _collections_cache = _get("/collections").get("collections", [])
     return _collections_cache
 
 
@@ -131,7 +161,8 @@ def search_items(collection: str, bbox: list[float], datetime: str, limit: int =
     body: dict = {"collections": [collection], "bbox": box, "datetime": _interval(datetime), "limit": limit}
     if max_cloud_cover is not None:
         body["query"] = {"eo:cloud_cover": {"lt": max_cloud_cover}}
-    data = _request("POST", "/search", json=body)
+    search = _call(lambda: _client().search(method="POST", max_items=limit, **body), "/search")
+    data = _call(lambda: next(search.pages_as_dicts(), {}), "/search")  # one POST; not matched(), which adds one
     items = [_compact(f) for f in data.get("features", [])][:limit]
     matched = data.get("numberMatched", data.get("context", {}).get("matched"))
     return json.dumps({"collection": collection, "matched": matched, "returned": len(items), "items": items})
@@ -141,7 +172,7 @@ def search_items(collection: str, bbox: list[float], datetime: str, limit: int =
 def get_item(collection: str, item_id: str) -> str:
     """Get one scene's details: date, platform, cloud cover, projection, and every asset with its href and type."""
     _check_collection(collection)
-    item = _request("GET", f"/collections/{collection}/items/{quote(item_id, safe='')}")
+    item = _get(f"/collections/{collection}/items/{quote(item_id, safe='')}")
     props = item.get("properties", {})
     keep = ("datetime", "platform", "eo:cloud_cover", "gsd", "proj:epsg", "proj:code", "s2:mgrs_tile",
             "landsat:wrs_path", "landsat:wrs_row")

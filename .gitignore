@@ -15,3 +15,6 @@ tasks/*/rubrics/.rubric.lock
 # prompts store (increment 13): its lock and any temp file a crash leaves behind
 tasks/*/.prompts.lock
 tasks/*/*.tmp-*
+
+# staged imagery samples (requirement-gaps): uploaded to each deployment bucket, never committed
+/samples/

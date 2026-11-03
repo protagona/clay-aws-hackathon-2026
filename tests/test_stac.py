@@ -24,6 +24,13 @@ def _item(i):
             "assets": FAKE_ASSETS, "links": [{"rel": "self", "href": "https://example.org"}] * 20}
 
 
+CONFORMS = ["https://api.stacspec.org/v1.0.0/core", "https://api.stacspec.org/v1.0.0/item-search",
+            "https://api.stacspec.org/v1.0.0/collections", "https://api.stacspec.org/v1.0.0/ogcapi-features",
+            "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core"]
+LANDING = {"type": "Catalog", "id": "fake", "stac_version": "1.0.0", "description": "fake STAC API",
+           "conformsTo": CONFORMS, "links": []}
+
+
 class FakeStac:
     def __init__(self, delay=0.0):
         self.requests = []
@@ -41,7 +48,9 @@ class FakeStac:
             def do_GET(self):
                 fake.requests.append(("GET", self.path, None))
                 time.sleep(delay)
-                if self.path == "/collections":
+                if self.path in ("/", "/conformance"):  # what pystac-client reads to open the API (slice D)
+                    self._send(200, LANDING)
+                elif self.path == "/collections":
                     self._send(200, {"collections": [{"id": "sentinel-2-l2a", "title": "Sentinel-2 L2A",
                                                       "extent": {"temporal": {"interval": [["2015-06-27T00:00:00Z", None]]}},
                                                       "license": "proprietary"}]})
