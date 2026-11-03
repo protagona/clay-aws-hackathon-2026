@@ -213,7 +213,9 @@ def _connection():
     tmp = os.environ.get("TMPDIR", "/tmp")
     ext_dir = os.environ.get("DUCKDB_EXTENSION_DIR") or (BUNDLED_EXTENSIONS if Path(BUNDLED_EXTENSIONS).is_dir()
                                                          else None)
-    config = {"memory_limit": os.environ.get("EMBEDDINGS_MEMORY_LIMIT", "1GB"), "threads": 4,
+    # 768MB: with 1GB the worker Lambda peaked at 1,741 of 2,048 MB on one embedding_change (2026-11-03); DuckDB
+    # spills to temp_directory past the limit instead.
+    config = {"memory_limit": os.environ.get("EMBEDDINGS_MEMORY_LIMIT", "768MB"), "threads": 4,
               "home_directory": tmp, "temp_directory": str(Path(tmp) / "duckdb-spill")}
     if ext_dir:
         config.update(extension_directory=ext_dir, autoinstall_known_extensions=False)

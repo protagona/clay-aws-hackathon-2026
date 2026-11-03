@@ -55,7 +55,7 @@ Clay's engineers can't tell from a run's score whether the access details in an 
 - [ ] AC12: `embedding_change(bbox, from_month, to_month)` returns the number of cells present in both months, their mean cosine similarity, and the 10 cells that changed most (lowest similarity) with bounding box, similarity and both scene ids.
 - [ ] AC13: Invalid input (a box over the size limit, a month with no data, a point with no cell, a point outside `search_bbox`, coordinates out of range, `k` over 25) returns a tool error that says what was wrong and what to try; the server doesn't crash. The limits are: `search_bbox` and the change `bbox` at most 1° by 1°, and at most 2 geohash partitions read per month.
 - [ ] AC14: Every tool result fits within the agent's tool-result limit (8,000 characters by default).
-- [ ] AC15: In the deployed worker (Lambda, us-west-2), each embeddings tool call returns within 20 s and the worker stays within its 2,048 MB memory, shown by a live run's trace durations and the Lambda's reported max memory.
+- [ ] AC15: In the deployed worker (Lambda, us-west-2), each embeddings tool call returns within 60 s and the worker stays within its 2,048 MB memory with headroom (max memory used under 1,800 MB), shown by a live run's trace durations and the Lambda's reported max memory. *(Relaxed from 20 s on 2026-11-03 by the user's pre-agreed rule: `embedding_change` measured 27.4 s live.)*
 - [ ] AC16: The Lambda image includes everything the server needs at run time; it downloads no DuckDB extensions after start.
 
 **Prompts and workflow**

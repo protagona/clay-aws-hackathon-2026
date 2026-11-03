@@ -181,7 +181,7 @@ agent ── MCP stdio ──▶ embeddings.py (FastMCP) ── DuckDB + httpfs 
 **Settings (environment variables, with defaults):**
 - `EMBEDDINGS_ROOT` defaults to `s3://us-west-2.opendata.source.coop/clay/lgnd-embeddings/monthly-aggregated/model_version=v1.5/collection=sentinel-2-l2a/chip_size=1280m/dims=256`.
 - `EMBEDDINGS_TIMEOUT_S` defaults to `60`.
-- `EMBEDDINGS_MEMORY_LIMIT` defaults to `1GB`.
+- `EMBEDDINGS_MEMORY_LIMIT` defaults to `768MB` (was `1GB`; lowered after the worker peaked at 1,741 MB live, see Performance).
 - `DUCKDB_EXTENSION_DIR` defaults to `/opt/duckdb-extensions` when that directory exists, otherwise DuckDB's own default.
 
 **Concurrency.** Strands runs tool calls concurrently by default (`ConcurrentToolExecutor`), and `MCPServer` runs sync tools on worker threads. So every tool body that touches DuckDB runs under one module-level `threading.Lock`. Calls to `similar_places` and `embedding_change` are therefore serialised: one connection, one `sel` temp table, and one interrupt timer at a time. `embedding_coverage` uses only boto3 and doesn't take the lock.
@@ -383,7 +383,13 @@ Each month's files are scanned once. `cell_id` is unique within a month (checked
   - The budget is 20 s per call in the worker (AC15).
   - From a laptop in Europe one partition-month took 28–107 s depending on the link, so laptops get no budget, only the 60 s timeout. Laptop calls that cross 2 partitions may time out; the error says to shrink the box.
   - Checked by a live run on Lambda: trace step `duration_ms`, plus the Lambda `REPORT` line's `Max Memory Used`.
-- **Memory:** DuckDB is capped at 1 GB inside a 2,048 MB worker. The worker process and the RODA and stac subprocesses share the rest. That's an estimate, unmeasured; AC15's live check records `Max Memory Used`. If it is too close, lower `EMBEDDINGS_MEMORY_LIMIT` to 768MB.
+- **Measured live, 2026-11-03, build ad5506c:**
+  - `embedding_coverage` took 0.6–0.8 s.
+  - `similar_places` took 4.9 s (one partition-month).
+  - `embedding_change` took 27.4 s (one partition, two months).
+  - With DuckDB at 1 GB, the worker's max memory was 1,741 MB.
+  - So AC15 moved to 60 s (the agreed fallback), and the DuckDB limit dropped to 768 MB.
+- **Memory:** DuckDB is capped at 768 MB inside a 2,048 MB worker. The worker process and the RODA and stac subprocesses share the rest. That's an estimate, unmeasured; AC15's live check records `Max Memory Used`. If it is too close, lower `EMBEDDINGS_MEMORY_LIMIT` to 768MB.
 
 ## Migration and rollback
 
