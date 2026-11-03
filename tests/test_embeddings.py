@@ -134,6 +134,7 @@ def test_change_over_empty_area(local_root):
     (lambda: emb.embedding_change([-112.9, 36.0, -112.1, 36.5], "2024-05", "2024-07"), "but not 9w"),
     (lambda: emb.embedding_coverage([-130.0, 30.0, -115.0, 33.0]), "Coverage box spans 15° x 3°"),
     (lambda: emb.embedding_coverage([1, 0, 0, 1]), "west<east"),
+    (lambda: emb.embedding_coverage(["a", "b", "c", "d"]), "4 numbers"),
 ])
 def test_errors(local_root, call, needle):  # AC13
     with pytest.raises(emb.ToolError, match=None) as exc:

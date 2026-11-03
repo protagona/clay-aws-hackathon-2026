@@ -38,6 +38,11 @@ def test_extract_cuts_placeholders_and_punctuation():
                           ("my-bucket", ""), ("b-7", "z")]
 
 
+def test_extract_markdown_table_cells():  # verify-run edge case
+    assert refs("| a | s3://b-one/x/y.tif |\n|s3://b-two/z|") == [("b-one", "x/y.tif"), ("b-two", "z")]
+    assert refs("|s3://b-three|") == [("b-three", "")]
+
+
 def test_extract_drops_invalid():
     long_key = "a" * 600
     assert refs(f"s3://Bad_Bucket/x s3://ab s3://ok-bucket/{long_key} s3:// arn:aws:s3:::") == []

@@ -31,8 +31,8 @@ _PATTERNS = [  # (regex, is_https); group 1 = bucket, group 2 = key (may be empt
     (re.compile(r"https?://s3" + _REGION + r"\.amazonaws\.com/([A-Za-z0-9.\-_]+)/?(\S*)"), True),
     (re.compile(r"https?://([A-Za-z0-9.\-_]+)\.s3" + _REGION + r"\.amazonaws\.com/?(\S*)"), True),
 ]
-_CUT = re.compile(r"\.\.\.|…|[{<\[$*`\s]")
-_TRAIL = ".,;:)]'\""
+_CUT = re.compile(r"\.\.\.|…|[{<\[$*`|\s]")  # | : markdown table cells
+_TRAIL = ".,;:)]'\"|"
 
 Lister = Callable[[str, str], tuple[str, str]]
 

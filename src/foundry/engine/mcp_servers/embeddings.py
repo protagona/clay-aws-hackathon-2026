@@ -95,7 +95,10 @@ def partitions(bbox: list[float]) -> list[str]:
 def _check_bbox(bbox: list[float], limit: float, name: str = "bbox") -> list[float]:
     if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
         raise ToolError(f"{name} must be [west, south, east, north] in degrees (4 numbers)")
-    w, s, e, n = (float(v) for v in bbox)
+    try:
+        w, s, e, n = (float(v) for v in bbox)
+    except (TypeError, ValueError):
+        raise ToolError(f"{name} must be [west, south, east, north] in degrees (4 numbers)") from None
     if not (-180 <= w < e <= 180 and -90 <= s < n <= 90):
         raise ToolError(f"{name} {list(bbox)} is not [west, south, east, north] with west<east and south<north "
                         "in degrees")
