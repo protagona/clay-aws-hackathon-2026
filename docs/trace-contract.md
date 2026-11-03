@@ -159,6 +159,11 @@ Written by `foundry evaluate`, always together with `rubric.json` and `report.md
 - `evaluation`: `{tokens_in, tokens_out, cost_usd, judge, summarizer}`
 - `forced`, `truncated_trace_lines`
 
+**Path check** (clay-embeddings, 2026-11-02)
+- `paths`: `null` when the check was off; otherwise `{version, checked, found, not_found, unverified, items[]}`, each item `{location, status, reason}`. `location` is `s3://bucket/key`; `status` is `found`, `not_found` or `unverified`.
+- `path_checker`: `"v1"`, or `null` when off. It also marks runs whose judge input carried the `<evaluator_checks>` block.
+- The key names, the item shape and the three status values are permanent under the additive-only rule. `reason` is display text: don't match on it.
+
 ## Rules
 
 1. **Additive only.** New optional fields are fine; renaming or removing a field needs the whole team.

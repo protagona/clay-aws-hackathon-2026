@@ -11,8 +11,7 @@ RUN cd ${LAMBDA_TASK_ROOT} && uv export --frozen --no-dev --no-emit-project --fo
     && uv pip install --system --no-cache -r /tmp/req.txt
 # DuckDB's httpfs extension for the embeddings MCP server, installed at build time so no run downloads it
 # (clay-embeddings AC16); the server finds /opt/duckdb-extensions and turns autoinstall off.
-RUN python3 -c "import duckdb; duckdb.connect(config={'extension_directory': '/opt/duckdb-extensions'}).install_extension('httpfs')" \
-    && find /opt/duckdb-extensions -name 'httpfs*'
+RUN python3 -c "import duckdb, pathlib; d = '/opt/duckdb-extensions'; duckdb.connect(config={'extension_directory': d}).install_extension('httpfs'); print(*pathlib.Path(d).rglob('httpfs*'))"
 COPY src ${LAMBDA_TASK_ROOT}/src
 RUN cd ${LAMBDA_TASK_ROOT} && uv pip install --system --no-cache --no-deps .
 

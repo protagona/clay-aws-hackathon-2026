@@ -6,6 +6,10 @@ Each increment's spec, design and verification record is under [docs/eval-sandbo
 
 ### Added
 
+- **Clay embeddings and path checks** ([clay-embeddings](docs/eval-sandbox/clay-embeddings/spec.md)):
+  - **A third MCP server** gives the agent Clay v1.5 embeddings (LGND, Sentinel-2): coverage, similar places, change.
+  - **Prompts:** `adb-007` (where Fresno changed, 2020 to 2024) and `adb-008` (places like a flood-hit farm in Nepal) expect these tools.
+  - **The path check:** every S3 location a plan cites is listed anonymously during evaluation. The judge and the report see found, not found or unverified. It found that the golden run's "fabricated" Clay bucket is real.
 - **Personal deployments in a shared account** ([named-deployments](docs/eval-sandbox/named-deployments/spec.md)):
   - `scripts/cloud.sh --name <you> …` (or `make … NAME=<you>`) runs each command against your own stacks. No name is the main deployment, unchanged.
   - Each probe's metric is tagged with its deployment, so each alarm watches its own.

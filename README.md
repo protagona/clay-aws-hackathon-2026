@@ -162,6 +162,8 @@ The format is the [trace contract](docs/trace-contract.md). Any harness that wri
 
 Without stages, the v1 weights above apply unchanged. `tasks/adb/expected.jsonl` is our stand-in until Clay's rubric arrives.
 
+**Path check:** during evaluation, every S3 location the agent's output cites is listed once, anonymously, and marked `found`, `not found` or `unverified` (for example requester-pays buckets). The judge sees the result in a block outside the run data, and `report.md` shows it under "Cited S3 locations". It doesn't change the formula below. It's off in the `offline*.toml` configs and with `FOUNDRY_PATH_CHECK=off`.
+
 **Overall score** is `0.5 × workflow + 0.5 × output`, configurable in `[scoring]`. It is `null` ("incomplete") when the judge's reply can't be used after one retry.
 
 The exact definitions are in the [spec](docs/eval-sandbox/spec.md#definitions).
@@ -200,10 +202,11 @@ Result on 2026-10-30, Opus 4.6 judge, $0.36. **All 13 checks pass.**
 
 ## Tools the agent can use
 
-Two MCP servers are configured, and both need no credentials:
+Three MCP servers are configured, and none needs credentials:
 
 - **RODA** (`awslabs.roda-mcp-server`, pinned): discovers datasets in the Registry of Open Data on AWS.
 - **STAC** (`src/foundry/engine/mcp_servers/stac.py`, part of this repo): finds actual scenes for an area and date range through `search_items`, `get_item` and `list_collections`. It uses Earth Search by default; set `STAC_API_URL` to use another STAC API. Responses are compacted to a few KB, so they don't flood the agent's context.
+- **Clay embeddings** (`src/foundry/engine/mcp_servers/embeddings.py`, part of this repo): Clay v1.5 embeddings by LGND (Sentinel-2, 1280 m cells, 256 dims), read straight from the public bucket on Source Cooperative. `embedding_coverage` lists which months exist for an area (some are missing), `similar_places` finds cells that look like a given point, and `embedding_change` compares an area's cells between two months. Areas are capped at 1° × 1°. Each query reads a whole partition-month (~330 MB), so expect seconds in AWS and up to a minute or more on a laptop. Details: [clay-embeddings design](docs/eval-sandbox/clay-embeddings/design.md).
 
 Every MCP server runs under a small reaper (`foundry.engine.harness.reaper`), so it can't outlive a killed `foundry run`.
 
