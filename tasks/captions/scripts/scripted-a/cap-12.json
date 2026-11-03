@@ -1,0 +1,11 @@
+[
+  {
+    "tool": "naip_tile",
+    "input": {
+      "tile_id": "t-r04-c02"
+    }
+  },
+  {
+    "text": "Sandy flat covered with dark patches of desert scrub; a dirt track crosses the bottom edge."
+  }
+]

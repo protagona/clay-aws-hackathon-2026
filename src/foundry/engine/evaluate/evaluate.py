@@ -13,7 +13,8 @@ from foundry.config import EvalConfig
 from foundry.contract import CONTRACT_VERSION, validate_run_dir
 from foundry.engine.evaluate import judge as judge_mod
 from foundry.data import locks as lock
-from foundry.engine.evaluate import paths, report, summarize, view, workflow
+from foundry.engine.evaluate import paths, report, retrieval, summarize, view, workflow
+from foundry.engine.models.embedder import build_embedder
 from foundry.engine.models.registry import build_provider
 from foundry.data.runs import RunDir, dump_line, utc_now
 from foundry.data.tasks import RubricError, load_expected, load_rubric, rubric_path
@@ -79,7 +80,11 @@ def _evaluate_locked(rd: RunDir, run, cfg: EvalConfig, rubric_file, force: bool)
 
     if run.rubric_id and run.rubric_id != rubric.rubric_id:
         print(f"warning: rubric id {rubric.rubric_id!r} differs from run.json's {run.rubric_id!r}", file=sys.stderr)
-    if cfg.judge.id == run.model.id:
+    try:
+        spec = retrieval.load(run.task_id)  # a task-pack scorer.json replaces the judge (requirement-gaps ADR-1)
+    except retrieval.ScorerError as exc:
+        raise EvaluateError(str(exc)) from None
+    if spec is None and cfg.judge.id == run.model.id:
         print(f"warning: judge model {cfg.judge.id!r} is the same as the agent model; it is grading itself",
               file=sys.stderr)
 
@@ -92,22 +97,36 @@ def _evaluate_locked(rd: RunDir, run, cfg: EvalConfig, rubric_file, force: bool)
     path_result = (paths.check(paths.extract(output.text), requester_pays=frozenset(cfg.checks.requester_pays))
                    if paths.enabled(cfg) else None)
     judge_input = run_data + ("\n\n" + view.checks_block(path_result) if path_result is not None else "")
-    judge_provider = build_provider(cfg.judge)
     summ_provider = build_provider(cfg.summarizer)
-    jr = judge_mod.judge(judge_provider, rubric, judge_input, output.kind, cfg.judge.max_tokens)
+    retrieval_bytes, embedder = None, None
+    if spec is not None:
+        embedder = build_embedder(cfg.embedder) if cfg.embedder else None
+        try:
+            output_section, retrieval_bytes = retrieval.score(spec, effective, output, embedder, cfg.storage,
+                                                              run.prompt, rubric.version)
+        except retrieval.ScorerError as exc:
+            raise EvaluateError(str(exc)) from None
+        judge_calls = []
+    else:
+        judge_provider = build_provider(cfg.judge)
+        jr = judge_mod.judge(judge_provider, rubric, judge_input, output.kind, cfg.judge.max_tokens)
+        output_section = {"criteria": jr.criteria, "score": jr.score, "rubric_version": rubric.version,
+                          "judge": {"provider": cfg.judge.provider, "id": cfg.judge.id}}
+        if jr.error:
+            output_section["error"] = jr.error
+        judge_calls = jr.calls
     nr = summarize.narrative(summ_provider, run_data, cfg.summarizer.max_tokens)
+    out_score = output_section["score"]
+    overall = None if out_score is None else round(
+        cfg.scoring.workflow_weight * wf["score"] + cfg.scoring.output_weight * out_score, 4)
 
-    output_section = {"criteria": jr.criteria, "score": jr.score, "rubric_version": rubric.version,
-                      "judge": {"provider": cfg.judge.provider, "id": cfg.judge.id}}
-    if jr.error:
-        output_section["error"] = jr.error
-    overall = None if jr.score is None else round(
-        cfg.scoring.workflow_weight * wf["score"] + cfg.scoring.output_weight * jr.score, 4)
-
-    calls = [(c, cfg.judge.id) for c in jr.calls] + [(c, cfg.summarizer.id) for c in nr.calls]
+    calls = [(c, cfg.judge.id) for c in judge_calls] + [(c, cfg.summarizer.id) for c in nr.calls]
     tokens_in = sum(c.tokens_in for c, _ in calls)
     tokens_out = sum(c.tokens_out for c, _ in calls)
     costs = [_cost(cfg, mid, c.tokens_in, c.tokens_out, c.tokens_in_cached) for c, mid in calls]
+    if embedder is not None and embedder.calls:  # Titan: input tokens only
+        tokens_in += sum(embedder.calls)
+        costs.append(_cost(cfg, cfg.embedder.id, sum(embedder.calls), 0))
     known = [c for c in costs if c is not None]
 
     scores = {
@@ -121,7 +140,7 @@ def _evaluate_locked(rd: RunDir, run, cfg: EvalConfig, rubric_file, force: bool)
         "rubric_id_loaded": rubric.rubric_id,
         "rubric_version": rubric.version,
         "rubric_id_mismatch": bool(run.rubric_id and run.rubric_id != rubric.rubric_id),
-        "templates": {"judge": judge_mod.TEMPLATE, "summarizer": summarize.TEMPLATE},
+        "templates": {"judge": None if spec else judge_mod.TEMPLATE, "summarizer": summarize.TEMPLATE},
         "workflow_scorer": workflow.VERSION,
         "weights": {"workflow": cfg.scoring.workflow_weight, "output": cfg.scoring.output_weight},
         "workflow": wf,
@@ -135,16 +154,22 @@ def _evaluate_locked(rd: RunDir, run, cfg: EvalConfig, rubric_file, force: bool)
         "evaluation": {
             "tokens_in": tokens_in, "tokens_out": tokens_out,
             "cost_usd": round(sum(known), 6) if known and len(known) == len(costs) else None,
-            "judge": {"provider": cfg.judge.provider, "id": cfg.judge.id},
+            "judge": None if spec else {"provider": cfg.judge.provider, "id": cfg.judge.id},
             "summarizer": {"provider": cfg.summarizer.provider, "id": cfg.summarizer.id},
+            **({"embedder": {"provider": cfg.embedder.provider, "id": cfg.embedder.id}}
+               if embedder is not None and cfg.embedder else {}),
         },
     }
     report_bytes = report.build(effective, steps, output, scores).encode()
     scores["rubric_sha256"] = hashlib.sha256(rubric_bytes).hexdigest()
     scores["report_sha256"] = hashlib.sha256(report_bytes).hexdigest()
+    files = {"rubric.json": rubric_bytes, "report.md": report_bytes}
+    if retrieval_bytes is not None:  # the retrieval scorer's exact inputs, for audit (requirement-gaps AC12)
+        scores["retrieval_sha256"] = hashlib.sha256(retrieval_bytes).hexdigest()
+        files["retrieval.json"] = retrieval_bytes
     scores_bytes = (dump_line(scores) + "\n").encode()
-    # scores.json goes last: it carries the hashes of the other two, so a torn write is detectable.
-    return scores, {"rubric.json": rubric_bytes, "report.md": report_bytes, "scores.json": scores_bytes}
+    # scores.json goes last: it carries the hashes of the others, so a torn write is detectable.
+    return scores, {**files, "scores.json": scores_bytes}
 
 
 def _cost(cfg: EvalConfig, model_id: str, tokens_in: int, tokens_out: int, cached: int = 0) -> float | None:

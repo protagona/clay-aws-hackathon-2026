@@ -48,6 +48,11 @@ package = "foundry.mcp_servers.embeddings"
 version = "0.1.0"
 error_detection = "mcp"
 
+[embedder]                   # deterministic, offline (requirement-gaps ADR-5): no AWS calls
+provider = "hash"
+id = "hash-bow-512"
+dimensions = 512
+
 [tracing]
 tracers = ["jsonl", "otel"]
 

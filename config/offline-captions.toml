@@ -1,0 +1,59 @@
+# Caption task offline (requirement-gaps slice C): no AWS credentials needed; needs the staged sample locally
+# (samples/naip-captions/ or FOUNDRY_SAMPLES_DIR). The scripted answer is the tile's reference caption.
+# Offline mode: no AWS credentials needed. The agent model is scripted and the judge and summarizer
+# are deterministic stand-ins; the MCP server is the real RODA server (needs network access).
+
+[task]
+id = "captions"
+
+[model]                      # the agent's model
+provider = "scripted"
+id = "scripted-a"
+script = "tasks/captions/scripts/scripted-a/{prompt_id}.json"
+
+[judge]
+provider = "offline"
+id = "offline-judge"
+
+[summarizer]
+provider = "offline"
+id = "offline-summarizer"
+
+[limits]
+max_model_calls = 20
+max_input_tokens = 600000
+max_seconds = 300
+max_tokens = 1024
+model_timeout_s = 120
+model_retries = 2
+mcp_start_timeout_s = 60
+
+[mcp.servers.naip]           # one NAIP tile as a PNG (requirement-gaps slice C); in this repo, no AWS credentials
+command = "{python}"
+args = ["-m", "foundry.engine.mcp_servers.naip"]
+package = "foundry.mcp_servers.naip"
+version = "0.1.0"
+error_detection = "mcp"
+env = { NAIP_SAMPLE_DIR = "{sample:naip-captions}" }
+
+[embedder]                   # deterministic, offline (requirement-gaps ADR-5): no AWS calls
+provider = "hash"
+id = "hash-bow-512"
+dimensions = 512
+
+[tracing]
+tracers = ["jsonl"]
+
+[storage]
+s3_uri = ""
+
+[scoring]
+workflow_weight = 0.5
+output_weight = 0.5
+
+[prices]                     # USD per million tokens (Bedrock geo/regional = first-party + 10%)
+"us.anthropic.claude-sonnet-5-5" = { input = 2.20, output = 11.00 }
+"us.anthropic.claude-haiku-5-5"  = { input = 0.11, output = 0.55 }
+
+[checks]
+paths = false              # offline demo replay must work without network (clay-embeddings AC8)

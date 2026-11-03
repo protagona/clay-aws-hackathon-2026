@@ -1,0 +1,11 @@
+[
+  {
+    "tool": "naip_tile",
+    "input": {
+      "tile_id": "t-r04-c04"
+    }
+  },
+  {
+    "text": "Highway bridge crossing a green river corridor diagonally, with an interchange ramp loop on bare sandy ground."
+  }
+]

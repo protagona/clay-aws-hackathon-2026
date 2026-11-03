@@ -1,0 +1,11 @@
+[
+  {
+    "tool": "naip_tile",
+    "input": {
+      "tile_id": "t-r05-c02"
+    }
+  },
+  {
+    "text": "Two highway carriageways diverging across bare sandy ground, with a canal and dirt tracks to the north."
+  }
+]

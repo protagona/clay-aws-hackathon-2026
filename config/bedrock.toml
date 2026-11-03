@@ -59,6 +59,12 @@ package = "foundry.mcp_servers.embeddings"
 version = "0.1.0"
 error_detection = "mcp"
 
+[embedder]                   # text embeddings for the caption task's retrieval scorer (requirement-gaps ADR-4)
+provider = "bedrock"
+id = "amazon.titan-embed-text-v2:0"   # on demand in us-west-2; dimensions 256, 512 or 1024 (tested 2026-11-03)
+region = "us-west-2"
+dimensions = 1024
+
 [tracing]
 tracers = ["jsonl"]
 
@@ -81,3 +87,4 @@ output_weight = 0.5
 "us.moonshotai.kimi-k3"                       = { input = 3.30, output = 16.50, cache_read = 0.33 }
 "us.amazon.nova-2-lite-v1:0"                  = { input = 0.33, output = 2.75, cache_read = 0.083 }
 "zai.glm-5"                                   = { input = 1.00, output = 3.20 }
+"amazon.titan-embed-text-v2:0"                = { input = 0.02, output = 0.0 }   # USW2-TitanEmbeddingV2-Text-input-tokens, $0.00002/1K, Price List API 2026-11-03

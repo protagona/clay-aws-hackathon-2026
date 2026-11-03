@@ -38,11 +38,28 @@ def _paths_section(scores: dict) -> list[str]:
         return lines + ["Path check off ([checks] paths = false, or FOUNDRY_PATH_CHECK=off)."]
     if not p.get("items"):
         return lines + ["No S3 locations cited in the output."]
-    lines += [f"Checked with anonymous S3 list requests during evaluation (path checker {esc(p.get('version'))}). "
+    lines += [f"Checked with S3 list requests during evaluation: anonymous, or signed with the requester paying for "
+              f"allowlisted requester-pays buckets (path checker {esc(p.get('version'))}). "
               f"{p['found']} found · {p['not_found']} not found · {p['unverified']} unverified.", "",
               "| Location | Status | Reason |", "|---|---|---|"]
     lines += [f"| {cell(it['location'])} | {_STATUS_TEXT.get(it['status'], cell(it['status']))} | "
               f"{cell(it.get('reason') or '')} |" for it in p["items"]]
+    return lines
+
+
+def _retrieval_section(scores: dict) -> list[str]:
+    r = (scores.get("output") or {}).get("retrieval")
+    if not r:
+        return []
+    lines = ["", "## Retrieval", "",
+             f"Target {cell(r['target'])} ranked {r['rank']} of {r['of']} (score {_fmt(scores['output']['score'])}) "
+             f"among its Clay-nearest look-alikes, by similarity of the caption to each tile's reference caption "
+             f"({cell(r['embedder']['provider'])} {cell(r['embedder']['id'])}; references "
+             f"{cell(r.get('references_id') or 'unnamed')}).", "",
+             "| Candidate | Clay similarity | Caption similarity | Target |", "|---|---|---|---|"]
+    rows = sorted(r["candidates"], key=lambda c: -c["caption_similarity"])
+    lines += [f"| {cell(c['tile_id'])} | {c['clay_similarity']:.3f} | {c['caption_similarity']:.3f} | "
+              f"{'yes' if c['tile_id'] == r['target'] else ''} |" for c in rows]
     return lines
 
 
@@ -86,6 +103,7 @@ def build(run: RunRecord, steps: list[Step], output: Output, scores: dict) -> st
         lines += ["| Criterion | Score | Rationale |", "|---|---|---|"]
         lines += [f"| {cell(c['id'])} | {c['score']}/{c['max']} | {cell(c['rationale'])} |" for c in o["criteria"]]
 
+    lines += _retrieval_section(scores)
     lines += _paths_section(scores)
 
     lines += ["", "## Timeline", "", "| Step | Type | Name | Status | Duration (ms) | Detail |", "|---|---|---|---|---|---|"]
@@ -121,9 +139,13 @@ def build(run: RunRecord, steps: list[Step], output: Output, scores: dict) -> st
               f"- Inputs: {esc(', '.join(i.uri for i in run.inputs) or 'none')}",
               f"- Rubric: {esc(scores['rubric_id_loaded'])} v{esc(scores['rubric_version'])}"
               + (f" (run.json says {esc(scores['rubric_id'])})" if scores.get("rubric_id_mismatch") else ""),
-              f"- Judge: {esc(ev['judge']['provider'])} {esc(ev['judge']['id'])}",
+              (f"- Judge: {esc(ev['judge']['provider'])} {esc(ev['judge']['id'])}" if ev.get("judge")
+               else "- Judge: not used (retrieval scorer)"),
+              *([f"- Embedder: {esc(ev['embedder']['provider'])} {esc(ev['embedder']['id'])}"] if ev.get("embedder")
+                else []),
               f"- Summarizer: {esc(ev['summarizer']['provider'])} {esc(ev['summarizer']['id'])}",
-              f"- Prompt templates: {esc(scores['templates']['judge'])}, {esc(scores['templates']['summarizer'])}",
+              f"- Prompt templates: {esc(scores['templates']['judge'] or 'no judge')}, "
+              f"{esc(scores['templates']['summarizer'])}",
               f"- Workflow scorer: {esc(scores['workflow_scorer'])}" + (
                   f" (expected stages sha256 {esc(w['sequence']['expected_sha256'][:12])})" if w.get("sequence") else ""),
               f"- Evaluation config: {esc(scores['config'])}",

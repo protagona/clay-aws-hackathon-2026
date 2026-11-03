@@ -1,0 +1,11 @@
+[
+  {
+    "tool": "naip_tile",
+    "input": {
+      "tile_id": "t-r06-c05"
+    }
+  },
+  {
+    "text": "Uniform plowed brown farm field with faint furrow lines and no buildings."
+  }
+]

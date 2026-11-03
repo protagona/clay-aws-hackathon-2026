@@ -1,0 +1,11 @@
+[
+  {
+    "tool": "naip_tile",
+    "input": {
+      "tile_id": "t-r06-c03"
+    }
+  },
+  {
+    "text": "Uniform dark green irrigated crop field with a north-south ditch and a dirt road and canal along the east edge."
+  }
+]

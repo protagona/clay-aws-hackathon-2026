@@ -1,0 +1,11 @@
+[
+  {
+    "tool": "naip_tile",
+    "input": {
+      "tile_id": "t-r01-c01"
+    }
+  },
+  {
+    "text": "Residential subdivision south of a main east-west road: rows of houses with trees and a pool along two north-south streets."
+  }
+]

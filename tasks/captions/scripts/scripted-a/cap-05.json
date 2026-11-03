@@ -1,0 +1,11 @@
+[
+  {
+    "tool": "naip_tile",
+    "input": {
+      "tile_id": "t-r03-c03"
+    }
+  },
+  {
+    "text": "Meandering river with a dark green riparian corridor curving east-west through bare desert ground with sparse shrubs."
+  }
+]

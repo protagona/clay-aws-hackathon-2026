@@ -157,6 +157,26 @@ class Price(_Strict):
         return ((tokens_in - cached) * self.input + cached * cache_rate + tokens_out * self.output) / 1_000_000
 
 
+class EmbedderCfg(_Strict):
+    """Text embedder for the retrieval output scorer (requirement-gaps slice C, ADR-5)."""
+
+    provider: Literal["bedrock", "hash"]
+    id: str
+    region: str = "us-west-2"
+    dimensions: int = 1024
+    timeout_s: float = Field(default=10, gt=0)
+    retries: int = Field(default=1, ge=0)
+    budget_s: float = Field(default=60, gt=0)
+
+    @model_validator(mode="after")
+    def _dims(self) -> EmbedderCfg:
+        if self.provider == "bedrock" and self.dimensions not in (256, 512, 1024):
+            raise ValueError("bedrock (Titan V2) dimensions must be 256, 512 or 1024")
+        if self.provider == "hash" and not 16 <= self.dimensions <= 4096:
+            raise ValueError("hash dimensions must be 16-4096")
+        return self
+
+
 class EvalConfig(_Strict):
     model_config = ConfigDict(extra="ignore")
 
@@ -166,6 +186,7 @@ class EvalConfig(_Strict):
     prices: dict[str, Price] = Field(default_factory=dict)
     storage: StorageCfg = Field(default_factory=StorageCfg)
     checks: ChecksCfg = Field(default_factory=ChecksCfg)
+    embedder: EmbedderCfg | None = None
     path: str = ""
 
 

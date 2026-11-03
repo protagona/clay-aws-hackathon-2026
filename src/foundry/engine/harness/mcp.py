@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
 import threading
 import warnings
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from mcp import StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -32,10 +33,18 @@ class McpStartError(Exception):
         super().__init__(f"MCP server '{server}' failed to start: {reason}")
 
 
-def server_env(cfg: McpServerCfg) -> dict[str, str]:
-    """Never pass AWS credentials or other secrets to third-party servers: allowlist only."""
+_SAMPLE_RE = re.compile(r"^\{sample:([a-z0-9-]+)\}$")
+
+
+def server_env(cfg: McpServerCfg, samples: Callable[[str], Path | None] | None = None) -> dict[str, str]:
+    """Never pass AWS credentials or other secrets to third-party servers: allowlist only.
+
+    An env value "{sample:<name>}" becomes the local directory of that staged sample: `samples(name)` resolves it
+    (the runner downloads it first), or "" without a resolver (tool listing) or when the sample is missing."""
     env = {k: v for k, v in os.environ.items() if k in ENV_ALLOWLIST or k.startswith("UV_")}
-    env.update(cfg.env)
+    for key, value in cfg.env.items():
+        m = _SAMPLE_RE.match(value)
+        env[key] = (str(samples(m.group(1)) or "") if samples else "") if m else value
     return env
 
 
@@ -64,7 +73,8 @@ class McpServers:
             log.close()
 
 
-def start_servers(servers: dict[str, McpServerCfg], startup_timeout: int, log_dir: Path) -> McpServers:
+def start_servers(servers: dict[str, McpServerCfg], startup_timeout: int, log_dir: Path,
+                  samples: Callable[[str], Path | None] | None = None) -> McpServers:
     """Each server's stderr goes to <run_dir>/mcp-<name>.log (useful when a server fails to start)."""
     started = McpServers()
     try:
@@ -76,7 +86,7 @@ def start_servers(servers: dict[str, McpServerCfg], startup_timeout: int, log_di
             # Wrap the server in the reaper so it can't outlive a harness that is SIGKILLed.
             params = StdioServerParameters(command=sys.executable,
                                            args=["-m", "foundry.engine.harness.reaper", "--", command, *cfg.args],
-                                           env=server_env(cfg))
+                                           env=server_env(cfg, samples))
             errlog = open(log_dir / f"mcp-{name}.log", "a", encoding="utf-8")  # noqa: SIM115 (lives as long as the server)
             started.logs.append(errlog)
             client = MCPClient(lambda p=params, e=errlog: stdio_client(p, errlog=e), startup_timeout=startup_timeout)

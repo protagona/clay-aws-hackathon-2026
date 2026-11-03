@@ -1,0 +1,75 @@
+# Caption task (requirement-gaps slice C), live on Amazon Bedrock (us-west-2). Needs AWS credentials with bedrock:InvokeModel and
+# bedrock:InvokeModelWithResponseStream, and model access plus non-zero quotas for the models below
+# (Sonnet/Haiku 5.5 had a 0 tokens/minute quota in the sandbox account on 2026-10-30; see design ADR-8).
+
+[task]
+id = "captions"
+
+[model]                      # Claude Sonnet 4.6: reads images returned by an MCP tool through Converse; Kimi K3/K2.5
+                             # and Qwen3-VL reject them, Nova ignores them (requirement-gaps ADR-7, evidence/vision-spike.md)
+provider = "bedrock"
+id = "us.anthropic.claude-sonnet-4-6"
+region = "us-west-2"
+
+[judge]                      # not called for captions (the retrieval scorer scores the output)
+provider = "bedrock"
+id = "us.anthropic.claude-opus-4-6-v1"
+region = "us-west-2"
+max_tokens = 2048
+timeout_s = 120
+retries = 2
+
+[summarizer]
+provider = "bedrock"
+id = "us.amazon.nova-2-lite-v1:0"
+region = "us-west-2"
+max_tokens = 2048
+timeout_s = 120
+retries = 2
+
+[limits]
+max_model_calls = 4           # one tool call and the caption, with room for a retry
+max_input_tokens = 200000
+max_seconds = 300
+max_tokens = 4096            # 1024 was too small for the final plan (L1, 2026-10-30)
+model_timeout_s = 120
+model_retries = 2
+mcp_start_timeout_s = 60
+
+[mcp.servers.naip]           # one NAIP tile as a PNG (requirement-gaps slice C); in this repo, no AWS credentials
+command = "{python}"
+args = ["-m", "foundry.engine.mcp_servers.naip"]
+package = "foundry.mcp_servers.naip"
+version = "0.1.0"
+error_detection = "mcp"
+env = { NAIP_SAMPLE_DIR = "{sample:naip-captions}" }   # the runner fetches the staged sample, passes a local path
+
+[embedder]                   # text embeddings for the caption task's retrieval scorer (requirement-gaps ADR-4)
+provider = "bedrock"
+id = "amazon.titan-embed-text-v2:0"   # on demand in us-west-2; dimensions 256, 512 or 1024 (tested 2026-11-03)
+region = "us-west-2"
+dimensions = 1024
+
+[tracing]
+tracers = ["jsonl"]
+
+[storage]
+s3_uri = "s3://foundry-runs-{account}-us-west-2"  # optional: make laptop-stack creates it in your account; "" turns mirroring off
+
+[checks]                     # path check: NAIP is Requester Pays, so these get a signed list billed to this account
+requester_pays = ["naip-analytic", "naip-visualization", "naip-source"]   # ($0.000005 per list; at most 25 per run)
+
+[scoring]
+workflow_weight = 0.5
+output_weight = 0.5
+
+[prices]                     # USD per 1M tokens, us-west-2 on-demand, us. geo profile, standard tier.
+                             # Source: AWS Price List API (pricing get-products, AmazonBedrock and
+                             # AmazonBedrockFoundationModels), queried 2026-10-30.
+"us.anthropic.claude-sonnet-4-6"              = { input = 3.30, output = 16.50, cache_read = 0.33 }
+"us.anthropic.claude-haiku-4-5-20251001-v1:0" = { input = 1.10, output = 5.50, cache_read = 0.11 }
+"us.anthropic.claude-opus-4-6-v1"             = { input = 5.50, output = 27.50, cache_read = 0.55 }
+"us.moonshotai.kimi-k3"                       = { input = 3.30, output = 16.50, cache_read = 0.33 }
+"us.amazon.nova-2-lite-v1:0"                  = { input = 0.33, output = 2.75, cache_read = 0.083 }
+"zai.glm-5"                                   = { input = 1.00, output = 3.20 }
+"amazon.titan-embed-text-v2:0"                = { input = 0.02, output = 0.0 }   # USW2-TitanEmbeddingV2-Text-input-tokens, $0.00002/1K, Price List API 2026-11-03

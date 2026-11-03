@@ -29,6 +29,8 @@ def bedrock_models(config_dir: Path = CONFIG_DIR) -> tuple[list[str], list[str]]
         cfg = tomllib.loads(f.read_text())
         ids.update(cfg[k]["id"] for k in ("model", "judge", "summarizer") if cfg.get(k, {}).get("provider") == "bedrock")
         ids.update(cfg.get("prices", {}))
+        if cfg.get("embedder", {}).get("provider") == "bedrock":  # the retrieval scorer's text embedder
+            ids.add(cfg["embedder"]["id"])
     bad = sorted(i for i in ids if not MODEL_ID_RE.match(i) or i.startswith(("global.", "eu.", "apac.")))
     if bad:
         raise ValueError(f"Not a us. profile or in-region model id: {', '.join(bad)} (in {config_dir}/bedrock*.toml)")

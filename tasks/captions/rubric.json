@@ -1,0 +1,21 @@
+{
+  "rubric_id": "captions-retrieval-v0",
+  "task_id": "captions",
+  "version": "0.1",
+  "description": "Stand-in rubric for retrieval captions of NAIP tiles. The retrieval scorer (scorer.json) fills its one criterion; the judge is not called. Replace with Clay's captions and retrieval set (K-1).",
+  "criteria": [
+    {
+      "id": "retrieval",
+      "name": "Retrieval",
+      "description": "The caption retrieves its own tile: among the tile and its 7 most Clay-similar look-alikes, the tile's reference caption is the most similar to the caption. Score = 4 / rank.",
+      "max": 4,
+      "weight": 1,
+      "levels": {
+        "1": "Ranked 5th-8th: the caption fits the look-alikes as well as the tile.",
+        "2": "Ranked 3rd-4th.",
+        "3": "Ranked 2nd.",
+        "4": "Ranked 1st: the caption singles out its tile."
+      }
+    }
+  ]
+}

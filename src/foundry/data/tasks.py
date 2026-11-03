@@ -131,3 +131,22 @@ def parse_expected(path: Path) -> dict[str, Expectation]:
                               '("name" or "server/name")')
         found[pid] = Expectation(stages, sha)
     return found
+
+
+def scorer_path(task_id: str) -> Path:
+    return task_dir(task_id) / "scorer.json"
+
+
+def load_scorer(task_id: str) -> dict | None:
+    """The task's output-scorer spec (requirement-gaps ADR-1): None when the task has no scorer.json, which means the
+    judge scores the output. A malformed file raises RubricError naming the file."""
+    path = scorer_path(task_id)
+    if not path.is_file():
+        return None
+    try:
+        spec = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RubricError(f"{path}: not valid JSON ({exc})") from None
+    if not isinstance(spec, dict) or not isinstance(spec.get("kind"), str):
+        raise RubricError(f'{path}: must be an object with a "kind"')
+    return spec

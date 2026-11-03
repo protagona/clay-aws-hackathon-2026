@@ -10,7 +10,7 @@ from pathlib import Path
 
 from strands import Agent
 
-from foundry.data import storage
+from foundry.data import samples, storage
 from foundry.config import Config
 from foundry.contract import CONTRACT_VERSION, HarnessRef, Limits, McpServerRef, ModelRef, Output, RunRecord
 from foundry.engine.harness import roles
@@ -19,7 +19,7 @@ from foundry.engine.harness.hooks import TraceHooks
 from foundry.engine.harness.mcp import McpServers, McpStartError, start_servers
 from foundry.engine.models.registry import build_provider
 from foundry.data.runs import RunDir, new_run_id, utc_now
-from foundry.data.tasks import Prompt, system_prompt
+from foundry.data.tasks import Prompt, RubricError, load_scorer, system_prompt
 from foundry.engine.tracing.base import build_tracers, tracer_label
 
 HARD_STOP_GRACE_S = 3
@@ -50,7 +50,7 @@ def run(cfg: Config, prompt: Prompt, runs_dir: str | Path, run_id: str | None = 
         tracer=tracer_label(cfg.tracing),
         mcp_servers=[McpServerRef(name=n, package=s.package, version=s.version, error_detection=s.error_detection)
                      for n, s in cfg.mcp.servers.items()],
-        rubric_id=_rubric_id(cfg.task.id), mode="live", status="running", started_at=utc_now(),
+        rubric_id=_rubric_id(cfg.task.id), reference_ids=_reference_ids(cfg.task.id), mode="live", status="running", started_at=utc_now(),
         limits=Limits(max_model_calls=cfg.limits.max_model_calls, max_input_tokens=cfg.limits.max_input_tokens,
                       max_seconds=cfg.limits.max_seconds),
         config=str(config_path) if config_path else None,
@@ -64,7 +64,8 @@ def run(cfg: Config, prompt: Prompt, runs_dir: str | Path, run_id: str | None = 
     servers = McpServers()
     status, final_text = "failed", ""
     try:
-        servers = start_servers(cfg.mcp.servers, cfg.limits.mcp_start_timeout_s, run_dir.path)
+        servers = start_servers(cfg.mcp.servers, cfg.limits.mcp_start_timeout_s, run_dir.path,
+                                samples=_sample_resolver(cfg, tracers))
     except McpStartError as exc:
         tracers.record(type="note", name="mcp_start", text=str(exc))
     else:
@@ -98,6 +99,17 @@ def run(cfg: Config, prompt: Prompt, runs_dir: str | Path, run_id: str | None = 
     servers.stop(timeout=2.0)
     storage.mirror(run_dir.path, cfg.storage)
     return run_dir.path, status
+
+
+def _sample_resolver(cfg: Config, tracers):
+    """Resolves "{sample:<name>}" in MCP server env: downloads or reuses the staged sample (requirement-gaps, sample
+    cache); records a note naming the staging command when it is missing. Counts toward max_seconds."""
+    def resolve(name: str) -> Path | None:
+        found = samples.ensure(name, cfg.storage)
+        if found is None:
+            tracers.record(type="note", name="sample", text=samples.staging_hint(name, cfg.storage))
+        return found
+    return resolve
 
 
 def _drive(work, hooks: TraceHooks, tracers, max_seconds: float, t_start: float,
@@ -206,6 +218,16 @@ def _pipeline(model, tools: list, task_system: str, prompt: str, hooks: TraceHoo
 def _final_text(result) -> str:
     message = getattr(result, "message", None) or {}
     return "\n".join(b["text"] for b in message.get("content", []) if "text" in b).strip()
+
+
+def _reference_ids(task_id: str) -> list[str]:
+    """The scorer's reference set id (e.g. the caption task's stand-in captions), for provenance; [] without one."""
+    try:
+        spec = load_scorer(task_id)
+    except RubricError:
+        return []
+    ref = (spec or {}).get("references_id")
+    return [ref] if isinstance(ref, str) and ref else []
 
 
 def _rubric_id(task_id: str) -> str | None:

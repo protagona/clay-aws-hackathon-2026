@@ -1,0 +1,11 @@
+[
+  {
+    "tool": "naip_tile",
+    "input": {
+      "tile_id": "t-r01-c04"
+    }
+  },
+  {
+    "text": "Electrical substation with transformers and steel structures inside a fenced gravel yard, south of a tree-lined east-west road."
+  }
+]

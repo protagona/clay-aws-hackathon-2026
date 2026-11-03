@@ -158,6 +158,7 @@ class TraceHooks(HookProvider):
         server = self.tool_server.get(name)
         result = event.result or {}
         text = "".join(c.get("text", "") for c in result.get("content", []) if isinstance(c, dict))
+        images = sum(1 for c in result.get("content", []) if isinstance(c, dict) and "image" in c)
 
         error = None
         if self.timed_out and (event.cancel_message or event.exception is not None or result.get("status") == "error"):
@@ -181,6 +182,8 @@ class TraceHooks(HookProvider):
         )
         if error:
             fields["error"] = error[:ERROR_CHARS]
+        if images:
+            fields["images"] = images  # requirement-gaps AC11: the trace shows the tool returned an image
         if pending.invalid:
             fields["invalid"] = True
         if key in self._errored:
@@ -193,7 +196,9 @@ class TraceHooks(HookProvider):
         if len(text) > cap:  # keep the agent's context (and cost) bounded
             # Rebuild the result rather than patching it: MCP results also carry structuredContent.
             event.result = {"toolUseId": result.get("toolUseId", use["toolUseId"]), "status": result.get("status", "success"),
-                            "content": [{"text": text[:cap] + f"\n[truncated {len(text) - cap} chars]"}]}
+                            "content": [{"text": text[:cap] + f"\n[truncated {len(text) - cap} chars]"},
+                                        *(c for c in result.get("content", [])  # keep images: only text is cut
+                                          if isinstance(c, dict) and "text" not in c and "json" not in c)]}
 
 
 def total_input_tokens(usage: dict) -> int | None:

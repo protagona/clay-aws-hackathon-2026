@@ -81,7 +81,7 @@ def checks_block(path_result: dict | None) -> str:
     if not items:
         lines.append("Cited S3 locations: none.")
     else:
-        lines.append("Cited S3 locations (anonymous S3 list requests):")
+        lines.append("Cited S3 locations (S3 list requests: anonymous, or signed for requester-pays buckets):")
         for it in items:
             reason = f" ({it['reason']})" if it.get("reason") else ""
             lines.append(f"{it['status']:<10} {_quoted(it['location'])}{reason}")

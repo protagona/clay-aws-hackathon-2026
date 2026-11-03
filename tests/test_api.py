@@ -29,7 +29,7 @@ def test_session(backend, tmp_path, monkeypatch):  # A1, U1
     backend.sync()
     c = backend.client
     s = c.get("/api/session").json()
-    assert s["csrf"] and "offline" in s["configs"] and "adb-001" in s["prompts"] and s["tasks"] == ["adb"]
+    assert s["csrf"] and "offline" in s["configs"] and "adb-001" in s["prompts"] and s["tasks"] == ["adb", "captions"]
     assert s["rubric"]["id"] == "adb-rubric-v0" and s["aws_profile"] == "sandbox" and "bedrock" not in s
 
 
