@@ -25,15 +25,18 @@ FOUND, NOT_FOUND, UNVERIFIED = "found", "not_found", "unverified"
 
 _BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _REGION = r"(?:[.-][a-z0-9-]+)?"
-_KEY = r"([^\s{}<>\[\]()$*`|;\"']*)"  # a key stops where markdown, lists or placeholders begin
+_KEY = r"([A-Za-z0-9._\-/=%]*)"  # % only so https keys can be percent-decoded; see _clean_key
 _PATTERNS = [  # (regex, is_https); group 1 = bucket, group 2 = key (may be empty)
     (re.compile(r"s3://([A-Za-z0-9.\-_]+)/?" + _KEY), False),
     (re.compile(r"arn:aws:s3:::([A-Za-z0-9.\-_]+)/?" + _KEY), False),
     (re.compile(r"https?://s3" + _REGION + r"\.amazonaws\.com/([A-Za-z0-9.\-_]+)/?" + _KEY), True),
     (re.compile(r"https?://([A-Za-z0-9.\-_]+)\.s3" + _REGION + r"\.amazonaws\.com/?" + _KEY), True),
 ]
-_CUT = re.compile(r"\.\.\.|…|[{<\[\]()>$*`|;\"'\s]")  # also applied after percent-decoding https keys
-_TRAIL = ".,;:)]'\"|"
+# Keys keep only these characters (hive partitions need "="). Cutting early is harmless - a shorter prefix of a real
+# path still lists as found - while cutting late turns a real location into not_found, so anything else ends the key:
+# markdown, quotes, lists, query strings, fragments, placeholders, dashes, non-ASCII.
+_KEY_SAFE = re.compile(r"[A-Za-z0-9._\-/=]*")
+_TRAIL = ".,;:)]'\"|_-"
 
 Lister = Callable[[str, str], tuple[str, str]]
 
@@ -55,7 +58,8 @@ def enabled(cfg) -> bool:
 def _clean_key(key: str, is_https: bool) -> str:
     if is_https:
         key = unquote(key)
-    key = _CUT.split(key, maxsplit=1)[0]
+    key = key.split("...", 1)[0]
+    key = _KEY_SAFE.match(key).group(0)
     return key.rstrip(_TRAIL)
 
 

@@ -132,11 +132,12 @@ agent ── MCP stdio ──▶ embeddings.py (FastMCP) ── DuckDB + httpfs 
   - `arn:aws:s3:::B/K`
   - `https://B.s3[.-]<region>.amazonaws.com/K` or `https://B.s3.amazonaws.com/K` (virtual-hosted)
   - `https://s3[.-]<region>.amazonaws.com/B/K` or `https://s3.amazonaws.com/B/K` (path-style)
-- Clean-up:
-  - For the two `https://` forms, the key is percent-decoded first (`urllib.parse.unquote`).
-  - The key is cut at the first `...`, `…`, `{`, `<`, `[`, `$`, `*`, backtick or whitespace, because placeholders are not part of a real path. Then trailing `.,;:)]'"` are stripped.
-  - Trailing `.,;:)]'"` are stripped from a bucket-only match too, before the bucket must match `^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`; anything else is dropped.
-  - Keys longer than 512 characters are dropped (no real citation needs more; it also caps what a cited key can carry).
+- Clean-up (revised after the Verify gate, 2026-11-03):
+  - Keys keep only `A-Z a-z 0-9 . _ - / =`. The `=` is there for hive partitions such as `year=2024`. Any other character ends the key: markdown, quotes, lists, query strings, fragments, placeholders, dashes and non-ASCII.
+  - Why an allowlist: cutting early is harmless, because a shorter prefix of a real path still lists as `found`. Cutting late turns a real location into `not_found`. The first design cut only at a list of placeholder characters, and two review passes kept finding ways real citations came out garbled.
+  - `https://` keys are percent-decoded first. A key is cut at `...`.
+  - Trailing `. , ; : ) ] ' " | _ -` are stripped from the key, and from a bucket-only match.
+  - The bucket must match `^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`; anything else is dropped. Keys longer than 512 characters are dropped.
   - Duplicates are removed by `(bucket, key)`, keeping first-seen order.
 - `check(refs, lister=None, limit=25, budget_s=30) -> dict`:
   - Checks the first `limit` refs on a `ThreadPoolExecutor(max_workers=8)` created without a `with` block. It collects results with `concurrent.futures.wait(futures, timeout=budget_s)` and then calls `executor.shutdown(wait=False, cancel_futures=True)`, so hung requests don't hold up evaluation.

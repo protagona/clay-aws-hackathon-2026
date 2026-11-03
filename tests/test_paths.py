@@ -51,6 +51,30 @@ def test_extract_markdown_links_autolinks_and_lists():  # verify-gate finding
                                                                          ("b-6", "d")]
 
 
+def test_extract_stops_at_anything_unsafe():  # Verify pass 2: early cuts are harmless, late cuts are not
+    cases = {
+        "s3://sentinel-cogs/sentinel-s2-l2a-cogs/—anonymous access": ("sentinel-cogs", "sentinel-s2-l2a-cogs/"),
+        "https://sentinel-cogs.s3.amazonaws.com/?prefix=sentinel-s2-l2a-cogs/": ("sentinel-cogs", ""),
+        "https://s3.us-west-2.amazonaws.com/sentinel-cogs?prefix=x": ("sentinel-cogs", ""),
+        "https://b-1.s3.amazonaws.com/a/B04.tif?versionId=abc": ("b-1", "a/B04.tif"),
+        "https://b-1.s3.amazonaws.com/index.html#k/": ("b-1", "index.html"),
+        "_s3://b-2/x/_": ("b-2", "x/"),
+        "~~s3://b-2/old/~~": ("b-2", "old/"),
+        "is it at s3://b-2/x/?": ("b-2", "x/"),
+        "s3://b-2/x/!": ("b-2", "x/"),
+        "（s3://b-2/x/）": ("b-2", "x/"),
+        "s3://b-2/x/、": ("b-2", "x/"),
+        "s3://b-2/x/\u200b": ("b-2", "x/"),
+        "s3://b-2/x/%s/": ("b-2", "x/"),
+        "s3://b-2/x/%(tile)s": ("b-2", "x/"),
+        "s3://b-2/S2?_L2A/": ("b-2", "S2"),
+        "s3://b-2/year=2024/month=07/": ("b-2", "year=2024/month=07/"),
+    }
+    for text, expected in cases.items():
+        assert refs(text) == [expected], text
+    assert refs("s3://sentinel-cogs/x/,s3://naip-analytic/") == [("sentinel-cogs", "x/"), ("naip-analytic", "")]
+
+
 def test_extract_drops_invalid():
     long_key = "a" * 600
     assert refs(f"s3://Bad_Bucket/x s3://ab s3://ok-bucket/{long_key} s3:// arn:aws:s3:::") == []

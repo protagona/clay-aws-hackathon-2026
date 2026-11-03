@@ -109,7 +109,7 @@ def test_run_offline_real_roda(tmp_path):  # AC5
     roda = [s for s in steps if s["type"] == "tool_call"]
     assert roda and all(s["server"] == "roda" and s["status"] == "ok" for s in roda)
     servers = [m["name"] for m in json.loads((run_dir / "run.json").read_text())["mcp_servers"]]
-    assert servers == ["roda", "stac"]
+    assert servers == ["roda", "stac", "embeddings"]
     for s in steps:
         assert {"step", "type", "name", "started_at", "duration_ms", "status"} <= s.keys()
     assert foundry("validate", str(run_dir)).returncode == 0

@@ -107,6 +107,9 @@ Spec: [spec.md](spec.md) · design: [design.md](design.md) · evidence: [evidenc
   - Pass 1: one blocker. Markdown links, autolinks and `;`-joined paths gave garbled `not_found` locations; fixed in the regex, with tests.
   - Its questions are answered under Risks to watch (two-partition worst case, approximate timeout) and in AC14 (coverage size measured).
   - The report wording now names both ways to turn the check off.
+  - Pass 2: em dashes, query strings, fragments, `,` lists, emphasis, `?`/`!`, non-ASCII punctuation and `%s` still garbled keys. Fixed by switching to the allowlist (16 cases in `test_extract_stops_at_anything_unsafe`).
+  - After the change, `pytest -m network` passed: 24 tests, including AC7 against real S3 and AC19's offline run of every prompt. One existing test that pinned the server list was updated to include `embeddings`.
+  - Pass 3: see below.
 
 ## Specialists consulted
 
@@ -121,7 +124,7 @@ Spec: [spec.md](spec.md) · design: [design.md](design.md) · evidence: [evidenc
 - **Spec AC15 relaxed to 60 s** under the pre-agreed rule.
 - **DuckDB memory limit lowered to 768 MB** (design said 1 GB).
 - **`enable_progress_bar`** is set with `SET` after connecting, because 1.5.6 rejects it as a connect option.
-- **The path check stops a key at characters that start markdown, lists or placeholders:** `|`, `[ ] ( )`, `< >`, `;`, quotes, `{ }`, `$`, `*` and backtick. This happens in the regex itself, so `s3://a/x;s3://b/y` yields two locations. Found by the verify run (tables) and the Verify gate (links, autolinks, lists). A bbox of strings is now a tool error.
+- **Path-check keys keep only `A-Z a-z 0-9 . _ - / =`;** any other character ends the key. Cutting early is harmless, because a shorter prefix of a real path still lists as `found`. Cutting late turns real locations into `not_found`. This replaced a list of placeholder characters to cut at, after the verify run and two Verify passes kept finding garbled citations: tables, links, autolinks, `;` and `,` lists, em dashes, query strings, fragments, emphasis, `%s`. A bbox of strings is now a tool error.
 - **`cloud_boot.py` seeding fix:** outside this feature's scope, but it blocked AC20. It's a one-line fix with a regression test.
 - **The judge input** gains the `<evaluator_checks>` block, while `templates.judge` stays `judge-v1`. `path_checker` marks runs that carried it.
 
