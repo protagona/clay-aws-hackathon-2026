@@ -43,6 +43,14 @@ def test_extract_markdown_table_cells():  # verify-run edge case
     assert refs("|s3://b-three|") == [("b-three", "")]
 
 
+def test_extract_markdown_links_autolinks_and_lists():  # verify-gate finding
+    assert refs("[s3://sentinel-cogs/x/](s3://sentinel-cogs/x/)") == [("sentinel-cogs", "x/")]
+    assert refs("[s3://b-1/x/](https://b-1.s3.us-west-2.amazonaws.com/x/)") == [("b-1", "x/")]
+    assert refs("<s3://sentinel-cogs/x/> and <https://b-2.s3.amazonaws.com/k>") == [("sentinel-cogs", "x/"), ("b-2", "k")]
+    assert refs("s3://b-3/a;s3://b-4/b \"s3://b-5/c\" 's3://b-6/d'") == [("b-3", "a"), ("b-4", "b"), ("b-5", "c"),
+                                                                         ("b-6", "d")]
+
+
 def test_extract_drops_invalid():
     long_key = "a" * 600
     assert refs(f"s3://Bad_Bucket/x s3://ab s3://ok-bucket/{long_key} s3:// arn:aws:s3:::") == []
@@ -227,7 +235,7 @@ def test_config_off(tmp_path, fixture_run, recording_judge):  # AC8 (env off via
     scores = _evaluate(tmp_path, run)
     assert scores["paths"] is None and scores["path_checker"] is None
     assert "<evaluator_checks>" not in recording_judge[0]
-    assert "Path check off ([checks] paths = false)." in (run / "report.md").read_text()
+    assert "Path check off ([checks] paths = false, or FOUNDRY_PATH_CHECK=off)." in (run / "report.md").read_text()
 
 
 def test_forged_block_neutralised():  # AC5

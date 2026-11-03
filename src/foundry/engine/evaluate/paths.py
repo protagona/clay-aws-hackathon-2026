@@ -25,13 +25,14 @@ FOUND, NOT_FOUND, UNVERIFIED = "found", "not_found", "unverified"
 
 _BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _REGION = r"(?:[.-][a-z0-9-]+)?"
+_KEY = r"([^\s{}<>\[\]()$*`|;\"']*)"  # a key stops where markdown, lists or placeholders begin
 _PATTERNS = [  # (regex, is_https); group 1 = bucket, group 2 = key (may be empty)
-    (re.compile(r"s3://([A-Za-z0-9.\-_]+)/?(\S*)"), False),
-    (re.compile(r"arn:aws:s3:::([A-Za-z0-9.\-_]+)/?(\S*)"), False),
-    (re.compile(r"https?://s3" + _REGION + r"\.amazonaws\.com/([A-Za-z0-9.\-_]+)/?(\S*)"), True),
-    (re.compile(r"https?://([A-Za-z0-9.\-_]+)\.s3" + _REGION + r"\.amazonaws\.com/?(\S*)"), True),
+    (re.compile(r"s3://([A-Za-z0-9.\-_]+)/?" + _KEY), False),
+    (re.compile(r"arn:aws:s3:::([A-Za-z0-9.\-_]+)/?" + _KEY), False),
+    (re.compile(r"https?://s3" + _REGION + r"\.amazonaws\.com/([A-Za-z0-9.\-_]+)/?" + _KEY), True),
+    (re.compile(r"https?://([A-Za-z0-9.\-_]+)\.s3" + _REGION + r"\.amazonaws\.com/?" + _KEY), True),
 ]
-_CUT = re.compile(r"\.\.\.|…|[{<\[$*`|\s]")  # | : markdown table cells
+_CUT = re.compile(r"\.\.\.|…|[{<\[\]()>$*`|;\"'\s]")  # also applied after percent-decoding https keys
 _TRAIL = ".,;:)]'\"|"
 
 Lister = Callable[[str, str], tuple[str, str]]

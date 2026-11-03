@@ -35,7 +35,7 @@ def _paths_section(scores: dict) -> list[str]:
     lines = ["", "## Cited S3 locations", ""]
     p = scores.get("paths")
     if p is None:
-        return lines + ["Path check off ([checks] paths = false)."]
+        return lines + ["Path check off ([checks] paths = false, or FOUNDRY_PATH_CHECK=off)."]
     if not p.get("items"):
         return lines + ["No S3 locations cited in the output."]
     lines += [f"Checked with anonymous S3 list requests during evaluation (path checker {esc(p.get('version'))}). "

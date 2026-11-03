@@ -41,7 +41,7 @@ Spec: [spec.md](spec.md) · design: [design.md](design.md) · evidence: [evidenc
 - [x] **AC11** (similar places): `test_similar_places_ranks_lookalikes`. Live on adb-008: 4.9 s.
 - [x] **AC12** (change): `test_embedding_change_finds_the_changed_cell` and `test_change_over_empty_area`. Live on adb-007: 27.4 s, then 15.6 s.
 - [x] **AC13** (errors): `test_errors` (11 cases), `test_four_partitions_refused`, and the verify-run edges (NaN, `2024-13`, `k=0`, strings).
-- [x] **AC14** (result size): `test_result_size_worst_case` (`k=25` and a full change, each under 8,000 characters).
+- [x] **AC14** (result size): `test_result_size_worst_case` (`k=25` and a full change, each under 8,000 characters). Real 10° coverage boxes over 6 partitions (California, Nepal and India, Amazon) returned 989, 1,917 and 2,246 characters.
 - [x] **AC15** (time and memory in the worker), measured live in the `embeddings` deployment:
   - Every embeddings call finished in under 60 s: coverage 0.5–0.8 s, `similar_places` 4.9 s, `embedding_change` 27.4 s and then 15.6 s.
   - Worker max memory: 1,741 MB with DuckDB at 1 GB, then 1,688 MB at 768 MB. Both are under 1,800 MB, of 2,048.
@@ -103,7 +103,10 @@ Spec: [spec.md](spec.md) · design: [design.md](design.md) · evidence: [evidenc
 
   The remaining trade-off (slow Lambda reads) went to the user, who chose: measure, then relax AC15 to 60 s if needed.
 - **Plan:** self-review.
-- **Verify:** subagent; see below.
+- **Verify:** subagent review.
+  - Pass 1: one blocker. Markdown links, autolinks and `;`-joined paths gave garbled `not_found` locations; fixed in the regex, with tests.
+  - Its questions are answered under Risks to watch (two-partition worst case, approximate timeout) and in AC14 (coverage size measured).
+  - The report wording now names both ways to turn the check off.
 
 ## Specialists consulted
 
@@ -118,7 +121,7 @@ Spec: [spec.md](spec.md) · design: [design.md](design.md) · evidence: [evidenc
 - **Spec AC15 relaxed to 60 s** under the pre-agreed rule.
 - **DuckDB memory limit lowered to 768 MB** (design said 1 GB).
 - **`enable_progress_bar`** is set with `SET` after connecting, because 1.5.6 rejects it as a connect option.
-- **The path check also cuts keys at `|`,** and a bbox of strings is a tool error. Both came from verify-run edge cases.
+- **The path check stops a key at characters that start markdown, lists or placeholders:** `|`, `[ ] ( )`, `< >`, `;`, quotes, `{ }`, `$`, `*` and backtick. This happens in the regex itself, so `s3://a/x;s3://b/y` yields two locations. Found by the verify run (tables) and the Verify gate (links, autolinks, lists). A bbox of strings is now a tool error.
 - **`cloud_boot.py` seeding fix:** outside this feature's scope, but it blocked AC20. It's a one-line fix with a regression test.
 - **The judge input** gains the `<evaluator_checks>` block, while `templates.judge` stays `judge-v1`. `path_checker` marks runs that carried it.
 
@@ -132,6 +135,8 @@ Spec: [spec.md](spec.md) · design: [design.md](design.md) · evidence: [evidenc
 
 ## Risks to watch
 
+- **Two-partition worst case not measured live:** both prompts fall inside one partition. A two-partition `embedding_change` reads 4 partition-months, about twice the data, with DuckDB spilling past 768 MB. Accepted for the hackathon. If it's slow or runs out of memory, the agent gets a tool error and can shrink the box.
+- **The 60 s timeout is approximate:** the interrupt lands after the HTTP read in flight, and calls queue on the lock, so one call can exceed 60 s. The run's own `max_seconds` (300 s) is the hard stop.
 - **Worker memory headroom:** about 360 MB at peak. A change query across two partitions reads twice the data, and DuckDB spills to `/tmp` past 768 MB, which is slower. Watch `Max Memory Used` in the worker's `REPORT` lines.
 - **source.coop layout changes** would surface as tool errors naming the path.
 - **On laptops,** embeddings queries take 30–110 s per partition, and the first call downloads httpfs.
