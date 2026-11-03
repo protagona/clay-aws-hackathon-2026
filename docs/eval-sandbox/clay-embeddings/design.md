@@ -1,7 +1,7 @@
 # Clay embeddings and path checks: Design
 
 **Spec:** ./spec.md   **Last updated:** 2026-11-02
-**Status:** Draft
+**Status:** Current
 
 ## Overview
 
