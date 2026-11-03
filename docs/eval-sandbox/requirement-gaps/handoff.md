@@ -1,6 +1,6 @@
 # Requirement gaps: Handoff
 
-**What shipped:** all four gaps from `docs/requirements.md`, on `prototype` and live in the `embeddings` deployment (build `a0f8702-888cce56` plus the fix commit below):
+**What shipped:** all four gaps from `docs/requirements.md`, on `prototype` and live in the `embeddings` deployment (build `ece9f3e`, a clean commit, `evidence/deploy-3.log`):
 - **Caption task:** runs and is scored end to end, by retrieval against Clay NAIP look-alikes.
 - **NAIP locations:** cited NAIP locations are checked for real, with signed requester-pays lists.
 - **Judge evidence:** a judge case proves the judge acts on the path evidence.
@@ -58,6 +58,7 @@
   - Two caption runs and their evaluations went through the real remote CLI.
   - The first two, on build `a0f8702`, failed in the deployment (`libexpat.so.1` missing from the Lambda image). That was fixed (ADR-9) and redeployed, and the re-runs succeeded.
 - **AC6:** one ADB run with a crafted prompt (added through `POST /api/prompts`).
+- **Final smoke run:** after redeploying clean `ece9f3e`, `2026-11-03T12-37-04Z_cap-08_1f94` succeeded with `naip_tile` ok, and its evaluation in the deployment scored overall 1.00.
 - **Local:** caption runs with Sonnet 4.6, Titan scoring, the scorer sanity check and the judge sanity check.
 
 **Security scans** (delegate, 2026-11-03):
@@ -82,7 +83,10 @@
   - **Pass 3, 1 blocker:** seeded task trees never update. You decided to freeze the caption data before the first deploy (ADR-8).
   - The vision spike before the gate replaced Kimi with Claude Sonnet 4.6 (ADR-7).
 - **Plan:** self-review; added commit points.
-- **Verify:** subagent pass, recorded below.
+- **Verify:** 1 subagent pass, no blockers. The reviewer re-ran `make test` (694 passed) and lint. Minors handled:
+  - **Fixed:** a malformed `tiles.json` and a bad sample name now give an unscored output and a clear error (`ece9f3e`). The deployment was redeployed from a clean commit.
+  - **Deferred (follow-ups below):** the soft embedder budget, the time-based path test, unit tests for the staging script, UI config/prompt pairing, dashboard stats mixing tasks, and the STAC landing-page GET.
+- **Launch:** self-review. `launch.md` covers rollout order, rollback for each part, signals, logs, post-launch checks and known limits.
 
 **Specialists consulted:**
 - **AI/ML:** scorer sanity, hard negatives, keyword-stuffing case, judge control.
@@ -109,6 +113,15 @@
 - **Upgrades and checks:** the `mcp` 2.2.0 upgrade (declined for now); checking rasterio's vendored native-library versions against upstream advisories.
 - **Sample cache on shared machines:** on a multi-user laptop the cache sits in the shared temp dir, where another user could swap files. Lambda isn't affected.
 - **Scorer robustness:** a keyword-stuffed caption fully games 2 of 12 tiles. Consider a length or term-density penalty.
+- **Verify-review minors:**
+  - The embedder's 60 s budget is checked between calls, so the worst case is about 90 s.
+  - `tests/test_paths.py` budget test uses a real sleep.
+  - No unit tests for the staging script's `source_index`/`check_grid`.
+  - The UI lets you pair a caption prompt with an ADB config. It's rejected, but with a poor message.
+  - Dashboard stats pool caption and ADB criteria and model averages.
+  - Opening the STAC client adds a landing-page GET.
+- **Back up the sample:** the canonical sample (`sample_id …20261103T112533Z`) exists only in the `embeddings` bucket and on one laptop. Back it up somewhere durable (a release asset or a fixed bucket path) before another deployment needs it.
+- **Committed URLs:** the deploy logs in git include the deployment's function URL and the account id (the email is redacted). Accept or scrub that before sharing the repo with Clay.
 
 **Risks to watch:**
 - **Cold-start latency:** the first `naip_tile` in a cold worker took 17 s (sample download plus loading rasterio), then 0.4 s.
