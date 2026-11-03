@@ -101,7 +101,7 @@ We followed the link in the docs ([source.coop/clay/lgnd-embeddings](https://sou
 - **Two sizes:** 1280 m chips with 256 dimensions, or 2560 m chips with 1024 dimensions.
 - **Only the monthly set exists:** `monthly-aggregated/` keeps one embedding per cell per month. The per-scene set is "coming soon".
 - **Where:** `s3://us-west-2.opendata.source.coop/clay/lgnd-embeddings/`, readable with `--no-sign-request`, in **us-west-2** (our region).
-- **Format:** GeoParquet 1.1, split into folders as `model_version=v1.5/collection=sentinel-2-l2a/chip_size=1280m/dims=256/geohash=9y/year=2025/month=01/*.parquet`. Columns: `chips_id`, `cell_id`, `rasters_id`, `stac_item_id`, `collection`, `datetime`, `embedding`, `bbox`, `geometry`. Each folder holds files of about 20 MB. The READMEs show DuckDB queries that filter on `bbox`.
+- **Format:** GeoParquet 1.1, split into folders as `model_version=v1.5/collection=sentinel-2-l2a/chip_size=1280m/dims=256/geohash=9y/year=2025/month=01/*.parquet`. Columns: `chips_id`, `cell_id`, `rasters_id`, `stac_item_id`, `collection`, `datetime`, `embedding`, `bbox`, `geometry`. One partition-month is a single file of up to ~345 MB (329 MiB for `9q` 2024-07), nearly all of it embeddings. The READMEs show DuckDB queries that filter on `bbox`.
 - **Source scene index:** `rasters/collection=sentinel-2-l2a/stac.parquet` (1.3 GB, STAC GeoParquet) lists each scene's footprint, time, and per-band image URLs. It joins to the embeddings on `stac_item_id`. A `collection=naip` index is listed as "(future)".
 - **Gaps:** the data ends April 2026, and some months are missing (no June 2024 or June 2025 over California or Nepal; no 2021 over Nepal; checked 2026-11-02).
 - **What this means for us:**
